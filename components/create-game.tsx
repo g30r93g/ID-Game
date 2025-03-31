@@ -11,7 +11,6 @@ import {api} from "@/convex/_generated/api";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import {NumberField} from "@/components/ui/number-field";
-import {Input} from "@/components/ui/input";
 
 const formSchema = z.object({
   numberOfRounds: z.number().min(1).default(10)
@@ -53,9 +52,6 @@ export default function CreateGame() {
               <FormItem>
                 <FormLabel>Number of Rounds</FormLabel>
                 <FormControl>
-                  {/*<Input {...field} type={"number"} min={1} max={20} onChange={(x) => {*/}
-                  {/*  field.onChange(Number.parseInt(x.target.value))*/}
-                  {/*}} />*/}
                   <NumberField {...field} min={1} max={20} />
                 </FormControl>
                 <FormDescription>

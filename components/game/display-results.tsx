@@ -4,7 +4,7 @@ import {Button} from "@/components/ui/button";
 import {ArrowRight, Check, X} from "lucide-react";
 import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
-import {useEffect} from "react";
+import {useCallback, useEffect} from "react";
 import {Id} from "@/convex/_generated/dataModel";
 import {Card, CardTitle} from "@/components/ui/card";
 
@@ -18,15 +18,15 @@ export default function DisplayResultsGamePhase({ roundId, isHost, advanceGame }
   const markGuessesForRound = useMutation(api.game.markGuessesForRound);
   const results = useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
 
+  const performGuessMarking = useCallback(async () => {
+    await markGuessesForRound({ roundId: roundId });
+  }, [markGuessesForRound, roundId]);
+
   useEffect(() => {
     if (isHost) {
       performGuessMarking();
     }
-  }, [])
-
-  async function performGuessMarking() {
-    await markGuessesForRound({ roundId: roundId });
-  }
+  }, [isHost, performGuessMarking])
 
   return (
     <div className={"flex flex-col gap-4"}>

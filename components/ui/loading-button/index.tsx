@@ -19,56 +19,47 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     if (asChild) {
       return (
-        (<Slot ref={ref} {...props}>
-          <>
-            {React.Children.map(
-              children as React.ReactElement<any>,
-              (child: React.ReactElement<any>) => {
-                return React.cloneElement(child, {
-                  className: cn(buttonVariants({ variant, size }), className),
-                  children: (
-                    <>
-                      {loading && (
-                        <Loader2
-                          className={cn(
-                            "h-4 w-4 animate-spin",
-                            children && "mr-2",
-                          )}
-                        />
-                      )}
-                      {child.props.children}
-                    </>
-                  ),
-                });
-              },
-            )}
-          </>
-        </Slot>)
+        <Slot ref={ref} {...props}>
+          {React.Children.map(children, (child) => {
+            if (React.isValidElement(child)) {
+              return React.cloneElement(child, {
+                className: cn(buttonVariants({ variant, size }), className),
+                children: (
+                  <>
+                    {loading && (
+                      <Loader2
+                        className={cn(
+                          "h-4 w-4 animate-spin",
+                          child.props.children && "mr-2"
+                        )}
+                      />
+                    )}
+                    {child.props.children}
+                  </>
+                ),
+              });
+            }
+            return child;
+          })}
+        </Slot>
       );
     }
 
     return (
       <Button
-        className={cn(
-          className,
-          "transition-all",
-        )}
+        className={cn(className, "transition-all")}
         variant={variant}
         disabled={loading}
         ref={ref}
         {...props}
       >
-        <>
-          {loading && (
-            <Loader2
-              className={cn("h-4 w-4 animate-spin", children && "mr-2")}
-            />
-          )}
-          {children}
-        </>
+        {loading && (
+          <Loader2 className={cn("h-4 w-4 animate-spin", children && "mr-2")} />
+        )}
+        {children}
       </Button>
     );
-  },
+  }
 );
 LoadingButton.displayName = "LoadingButton";
 
