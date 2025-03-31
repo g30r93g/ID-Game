@@ -113,7 +113,6 @@ export default function EmailPasswordAuthMethod() {
               <ArrowRight />
             </>
           )}
-          <ArrowRight />
         </LoadingButton>
       </form>
     </Form>
