@@ -9,8 +9,6 @@
 ## Auth
 - [ ] Google
 - [ ] Apple
-- [ ] Instagram
-- [ ] TikTok
 
 ## Gameplay
 
@@ -95,25 +93,3 @@ player_id: uuid fk(player) not null
 
 unique(game_id, round_id, player_id)
 ```
-
-## Database Functions
-1. Generate Room Code: Generate 6 alphanumerics to uniquely identify a game room
-2. Pick Scenarios: Pick 10 scenarios at random for each game
-3. Initialise Game Rounds: Take the number of rounds to play and create game rounds. generate the scenarios for each round
-4. Pick Game Host: Pick a host for the game. Gets players who have been host least and randomly selects from list of least hosted players. Eg: `{ 'player1': 1, 'player2': 2, 'player3': 1, } => ['player1', 'player2']`
-
-## Development Plan
-1. Auth
-2. Create games
-3. Users joining and leaving game
-    - Heartbeat (kicked out if heartbeat not received within 60 secs)
-4. Game start
-    - Initialise Game Rounds
-    - Set Game.current_round once rounds initialised
-5. Pick host for Game Round
-5. (HOST) Scenario selection and player ordering
-6. (PLAYERS) Scenario list and player order receive
-7. (PLAYERS) Guess scenario
-8. (HOST) Wait for guesses from players
-9. Display results and Game Round transition
-10. End game (teardown)
