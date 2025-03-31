@@ -15,15 +15,15 @@ export interface ButtonProps
 const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
     { className, variant, size, asChild = false, loading, children, ...props },
-    ref,
+    ref
   ) => {
     if (asChild) {
       return (
         <Slot ref={ref} {...props}>
           {React.Children.map(children, (child) => {
-            if (React.isValidElement(child)) {
+            if (React.isValidElement<{ className?: string; children?: React.ReactNode }>(child)) {
               return React.cloneElement(child, {
-                className: cn(buttonVariants({ variant, size }), className),
+                className: cn(buttonVariants({ variant, size }), child.props.className, className),
                 children: (
                   <>
                     {loading && (
