@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The ID Game
 
-## Getting Started
+## Run
 
-First, run the development server:
+1. Install dependencies via `pnpm install`
+2. Add environment variables to `.env.local` (see `.env.example`)
+3. Start app with `pnpm start`
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Auth
+- [ ] Google
+- [ ] Apple
+- [ ] Instagram
+- [ ] TikTok
+
+## Gameplay
+
+1. Create a game room
+2. Wait for players to join
+3. Start Round
+    1. Server allocates 10 scenarios to choose from
+    2. Round host picks 1 scenario from the list
+    3. Round host orders players in most-to-least likely
+    4. Non-host players receives the allocated 10 scenarios
+    5. Each player picks which scenario round host picked
+    6. Once all players have picked, results are shown
+4. Play again
+
+## Database Structure
+
+### Player
+```
+id: uuid pk not null
+user_id: uuid fk(auth.users) not null
+game_id: uuid fk(game) not null
+display_name: text
+last_alive: timestamptz default now() not null
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Game
+```
+id: uuid pk not null
+join_code: string not null auto-generated
+total_rounds: int4 not null default 10
+current_round: int4 nullable
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+unique(join_code)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Scenarios
+```
+id: uuid pk not null
+description: text not null
+category: text not null
+```
 
-## Learn More
+### Game_Round
+```
+id: uuid pk not null
+game_id: uuid fk(game) not null
+round_number: int4 not null
+host_player_id: uuid fk(player) nullable
 
-To learn more about Next.js, take a look at the following resources:
+unique(game_id, round_number)
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Game_Round_Scenarios
+```
+id: uuid pk not null
+game_id: uuid fk(game) not null
+round_id: uuid fk(game_round) not null
+scenario_id: uuid fk(scenario) not null
+selected: boolean default false not null
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+unique(game_id, scenario_id)
+```
 
-## Deploy on Vercel
+### Game_Round_Player_Ranking
+```
+id: uuid pk not null
+game_id: uuid fk(game) not null
+round_id: uuid fk(game_round) not null
+player_id: uuid fk(game_round) not null
+ranking: int4 not null
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+unique(game_id, round_id, player_id)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Game_Round_Guess
+```
+id: uuid pk not null
+game_id: uuid fk(game) not null
+round_id: uuid fk(round) not null
+scenario_id: uuid fk(game_round_scenario) not null
+player_id: uuid fk(player) not null
+
+unique(game_id, round_id, player_id)
+```
+
+## Database Functions
+1. Generate Room Code: Generate 6 alphanumerics to uniquely identify a game room
+2. Pick Scenarios: Pick 10 scenarios at random for each game
+3. Initialise Game Rounds: Take the number of rounds to play and create game rounds. generate the scenarios for each round
+4. Pick Game Host: Pick a host for the game. Gets players who have been host least and randomly selects from list of least hosted players. Eg: `{ 'player1': 1, 'player2': 2, 'player3': 1, } => ['player1', 'player2']`
+
+## Development Plan
+1. Auth
+2. Create games
+3. Users joining and leaving game
+    - Heartbeat (kicked out if heartbeat not received within 60 secs)
+4. Game start
+    - Initialise Game Rounds
+    - Set Game.current_round once rounds initialised
+5. Pick host for Game Round
+5. (HOST) Scenario selection and player ordering
+6. (PLAYERS) Scenario list and player order receive
+7. (PLAYERS) Guess scenario
+8. (HOST) Wait for guesses from players
+9. Display results and Game Round transition
+10. End game (teardown)
