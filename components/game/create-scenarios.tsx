@@ -30,7 +30,7 @@ export default function CreateScenariosGamePhase({ gameId, gameRoundId, advanceG
       // advance
       advanceGame()
     } catch (e) {
-      // todo: handle thrown errors
+      console.error(e)
     } finally {
       setIsLoading(false);
     }

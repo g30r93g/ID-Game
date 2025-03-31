@@ -2,7 +2,10 @@
 
 import {useAuthActions} from "@convex-dev/auth/react";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
-import {FaApple, FaGoogle} from "react-icons/fa6";
+import {
+  // FaApple,
+  FaGoogle
+} from "react-icons/fa6";
 import {IconType} from "react-icons/lib";
 import {Button} from "@/components/ui/button";
 import {Separator} from "@/components/ui/separator";

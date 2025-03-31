@@ -322,9 +322,7 @@ export const scenarioCategories = query({
       .collect();
 
     // Extract unique categories
-    const uniqueCategories = [...new Set(scenarios.map((s) => s.category))];
-
-    return uniqueCategories;
+    return [...new Set(scenarios.map((s) => s.category))];
   }
 })
 
@@ -530,12 +528,10 @@ export const getPlayerRankingsForRound = query({
     )).filter((x) => x !== null);
 
     // Combine rankings with player display names
-    const rankingsWithDisplayNames = rankings.map((ranking) => ({
+    return rankings.map((ranking) => ({
       ...ranking,
       playerDisplayName: players.find((p) => p._id === ranking.playerId)?.displayName ?? "Unknown Player",
     }));
-
-    return rankingsWithDisplayNames;
   }
 });
 
@@ -614,12 +610,10 @@ export const getGuessesForRound = query({
     )).filter((x) => x !== null);
 
     // Combine rankings with player display names
-    const guessesWithDisplayNames = guesses.map((guess) => ({
+    return guesses.map((guess) => ({
       ...guess,
       playerDisplayName: players.find((p) => p._id === guess.playerId)?.displayName ?? "Unknown Player",
     }));
-
-    return guessesWithDisplayNames;
   }
 })
 
