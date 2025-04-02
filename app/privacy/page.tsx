@@ -12,7 +12,7 @@ export default function PrivacyPolicyPage() {
       <ul className={"list-disc ml-8"}>
         <li><strong>Personal Information:</strong> When you sign up, we may collect your name, email address, and other necessary details. Authentication is managed by Clerk, which may collect additional personal data as per their policies.</li>
         <li><strong>Usage Data:</strong> We collect data about how you use the Service, such as interactions and preferences. This data is stored in Convex.</li>
-        <li><strong>Cookies and Tracking: </strong> We may use cookies and similar technologies to enable and enhance your experience whilst using the Game. Clerk may also use cookies to manage authentication sessions.</li>
+        <li><strong>Cookies and Tracking: </strong> We may use cookies and similar technologies to enable and enhance your experience whilst using the Game. We also track page views and user interactions such as button clicks with PostHog. Clerk may also use cookies to manage authentication sessions.</li>
       </ul>
       <h2 className="text-xl font-mono font-semibold mt-6">3. How We Use Your Information</h2>
       <ul className={"list-disc ml-8"}>

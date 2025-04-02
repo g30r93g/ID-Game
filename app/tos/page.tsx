@@ -21,6 +21,7 @@ export default function TermsOfServicePage() {
       <ul className={"list-disc ml-8"}>
         <li>Authentication is handled by Clerk, and access to your account is subject to Clerk’s authentication policies.</li>
         <li>Data storage and processing are managed using Convex, and you acknowledge that your data is stored securely in a database managed by them.</li>
+        <li>We use PostHog to collect user analytics, which helps us understand how the Game is used and improve the experience. PostHog may collect anonymized usage data in accordance with their <Link href="https://posthog.com/privacy" className="font-bold underline">Privacy Policy</Link>.</li>
       </ul>
       <h2 className="text-xl font-mono font-semibold mt-6">4. User Content</h2>
       <p>The content you submit to the Service is owned by you, the end user.</p>
