@@ -16,11 +16,11 @@ interface LobbyGamePhaseProps {
 
 export default function LobbyGamePhase({ joinCode, players, isHost, advanceGame }: LobbyGamePhaseProps) {
   const copyUrl = useCallback(async () => {
-    const url = `${window.location.origin}/game?joinCode=${joinCode}`;
+    const url = `${window.location.origin}/game/${joinCode}`;
 
     try {
       await navigator.clipboard.writeText(url);
-      toast("Join URL copied to clipboard", { description: `Use join code: ${joinCode}` });
+      toast("Join URL copied to clipboard", { description: `Or share join code: ${joinCode}` });
     } catch (err) {
       console.error("Failed to copy:", err);
       toast("Failed to copy URL", { description: url });
