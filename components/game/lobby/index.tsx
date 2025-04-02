@@ -1,15 +1,15 @@
 "use client";
 
-import {Card, CardHeader, CardTitle} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import {ArrowRight, Share} from "lucide-react";
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from "@/components/ui/input-otp";
 import { toast } from "sonner";
 import {useCallback} from "react";
+import PlayerCard from "@/components/game/lobby/player-card";
 
 interface LobbyGamePhaseProps {
   joinCode: string;
-  players: string[];
+  players: { id: string, name: string, userId: string }[];
   isHost: boolean;
   advanceGame: () => void;
 }
@@ -57,13 +57,9 @@ export default function LobbyGamePhase({ joinCode, players, isHost, advanceGame 
         <h2 className={"mb-2 font-semibold text-sm"}>Players</h2>
         <div className={"flex flex-col gap-4"}>
           <div className={"grid grid-cols-1 lg:grid-cols-2 gap-4"}>
-            {players.map((player) => (
-              <Card key={player}>
-                <CardHeader>
-                  <CardTitle>{player}</CardTitle>
-                </CardHeader>
-              </Card>
-            ))}
+            {players.map(({ id, name, userId }) => {
+              return <PlayerCard key={id} playerId={id} playerUserId={userId} playerName={name}/>
+            })}
           </div>
           {isHost && (
             <Button onClick={() => { advanceGame() }}>
