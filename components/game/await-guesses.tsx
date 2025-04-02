@@ -7,6 +7,7 @@ import {Card, CardTitle} from "@/components/ui/card";
 import {Check, Loader2} from "lucide-react";
 import {clsx} from "clsx";
 import {useEffect, useState} from "react";
+import {ScrollArea} from "@/components/ui/scroll-area";
 
 interface AwaitGuessesGamePhaseProps {
   gameRoundId: Id<'gameRounds'>;
@@ -45,19 +46,21 @@ export default function AwaitGuessesGamePhase({ gameRoundId, isHost, advanceGame
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-2">
-        {playerGuesses.map((playerGuess) => (
-          <Card
-            key={playerGuess.player}
-            className={clsx("p-4 flex flex-row items-center justify-between transition-opacity", {
-              "opacity-50": !!playerGuess.hasGuessed,
-            })}
-          >
-            <CardTitle>{playerGuess.displayName}</CardTitle>
-            {playerGuess.hasGuessed ? <Check className="text-green-500" /> : <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
-          </Card>
-        ))}
-      </div>
+      <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+        <div className="grid grid-cols-1 gap-2">
+          {playerGuesses.map((playerGuess) => (
+            <Card
+              key={playerGuess.player}
+              className={clsx("p-4 flex flex-row items-center justify-between transition-opacity", {
+                "opacity-50": !!playerGuess.hasGuessed,
+              })}
+            >
+              <CardTitle>{playerGuess.displayName}</CardTitle>
+              {playerGuess.hasGuessed ? <Check className="text-green-500" /> : <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
+            </Card>
+          ))}
+        </div>
+      </ScrollArea>
     </>
   )
 }

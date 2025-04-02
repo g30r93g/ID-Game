@@ -7,6 +7,7 @@ import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
 import {LoadingButton} from "@/components/ui/loading-button";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
+import {ScrollArea} from "@/components/ui/scroll-area";
 
 interface GuessScenarioGamePhaseProps {
   gameId: Id<'games'>;
@@ -56,22 +57,9 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
 
   return (
     <div className={"flex flex-col gap-8"}>
-      <Button className={"w-full"} variant={"ghost"} onClick={() => { toggleView() }}>
-        {view === "scenarios" ? (
-          <>
-            <ArrowUpDown />
-            View Rankings
-          </>
-        ) : (
-          <>
-            <AlignJustify />
-            View Scenarios
-          </>
-        )}
-      </Button>
-      {view === "scenarios" && (
+      <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
         <div className={"grid grid-cols-1 gap-2"}>
-          {scenarios?.map((scenario) => (
+          {view === "scenarios" && scenarios?.map((scenario) => (
             <Button
               key={scenario._id}
               variant={selectedScenario === scenario._id ? "default" : "outline"}
@@ -81,11 +69,7 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
               {scenario.scenarioDetails?.description}
             </Button>
           ))}
-        </div>
-      )}
-      {view === "rankings" && (
-        <div className={"grid grid-cols-1 gap-2"}>
-          {playerRankings?.map((ranking) => (
+          {view === "rankings" && playerRankings?.map((ranking) => (
             <Card
               key={ranking._id}
               className={"p-4"}
@@ -94,19 +78,34 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
             </Card>
           ))}
         </div>
-      )}
-      <LoadingButton
-        disabled={!selectedScenario}
-        loading={isLoading}
-        onClick={() => { performGuess() }}
-      >
-        {!isLoading && (
-          <>
-            Submit Guess
-            <Check />
-          </>
-        )}
-      </LoadingButton>
+      </ScrollArea>
+      <div className={"grid grid-cols-2 md:grid-cols-[1fr_2fr] gap-2"}>
+        <Button className={"w-full"} variant={"outline"} onClick={() => { toggleView() }}>
+          {view === "scenarios" ? (
+            <>
+              <ArrowUpDown />
+              View Rankings
+            </>
+          ) : (
+            <>
+              <AlignJustify />
+              View Scenarios
+            </>
+          )}
+        </Button>
+        <LoadingButton
+          disabled={!selectedScenario}
+          loading={isLoading}
+          onClick={() => { performGuess() }}
+        >
+          {!isLoading && (
+            <>
+              Submit Guess
+              <Check />
+            </>
+          )}
+        </LoadingButton>
+      </div>
     </div>
   )
 }
