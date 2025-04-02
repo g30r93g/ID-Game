@@ -588,22 +588,35 @@ export const getGuessesForRound = query({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
     const guesses = await ctx.db
-      .query('gameRoundGuesses')
-      .withIndex("byRound", (q) => q.eq('roundId', args.roundId))
+      .query("gameRoundGuesses")
+      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
       .collect();
 
-    // Get player IDs from guesses
+    // Get player details
     const players = (await Promise.all(
       guesses.map((g) => ctx.db.get(g.playerId))
     )).filter((x) => x !== null);
 
-    // Combine rankings with player display names
+    // Get gameRoundScenario documents
+    const gameRoundScenarios = (await Promise.all(
+      guesses.map((g) => g.scenarioId ? ctx.db.get(g.scenarioId) : null)
+    )).filter((x) => x !== null);
+
+    // Get actual scenario documents
+    const scenarios = (await Promise.all(
+      gameRoundScenarios.map((grs) => ctx.db.get(grs.scenarioId))
+    )).filter((x) => x !== null);
+
     return guesses.map((guess) => ({
       ...guess,
       playerDisplayName: players.find((p) => p._id === guess.playerId)?.displayName ?? "Unknown Player",
+      guessedScenarioDescription: scenarios.find((s) => s._id ===
+        gameRoundScenarios.find((grs) => grs._id === guess.scenarioId)?.scenarioId
+      )?.description ?? "Unknown Scenario"
     }));
   }
-})
+});
+
 
 export const getGuessesStatusForRound = query({
   args: { roundId: v.id("gameRounds") },
