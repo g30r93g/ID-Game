@@ -47,7 +47,7 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
               <FormItem>
                 <FormLabel>Join Code</FormLabel>
                 <FormControl>
-                  <InputOTP pattern={REGEXP_ONLY_DIGITS_AND_CHARS} maxLength={6} {...field}>
+                  <InputOTP pattern={REGEXP_ONLY_DIGITS_AND_CHARS} inputMode={"text"} maxLength={6} {...field}>
                     <InputOTPGroup>
                       <InputOTPSlot index={0} />
                       <InputOTPSlot index={1} />
