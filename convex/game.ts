@@ -39,6 +39,40 @@ export const sendHeartbeat = mutation({
   }
 })
 
+export const isUserPlayer = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to join a game.");
+    }
+
+    // Ensure game exists
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .first();
+    if (!game) {
+      throw new Error("Game does not exist.");
+    }
+
+    // Ensure game is open to new players
+    if (!game.isOpen) {
+      throw new Error("Game is not open to new players.")
+    }
+
+    // Only add user if not already in game
+    const userPlayer = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
+      .first();
+
+    return !!userPlayer;
+  }
+})
+
 export const fetchGameByJoinCode = query({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
@@ -100,13 +134,13 @@ export const joinGame = mutation({
     }
 
     // Only add user if not already in game
-    const userIsAlreadyInGame = await ctx.db
+    const userPlayer = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.id))
+      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
       .first();
 
-    if (!userIsAlreadyInGame) {
+    if (!userPlayer) {
       // Link player to game
       await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: game._id, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
     }

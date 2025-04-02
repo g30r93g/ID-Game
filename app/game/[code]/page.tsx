@@ -1,6 +1,8 @@
 import {Game} from "@/components/game";
 import { api } from "@/convex/_generated/api";
-import {preloadQuery} from "convex/nextjs";
+import {fetchMutation, fetchQuery, preloadQuery} from "convex/nextjs";
+import {redirect} from "next/navigation";
+import {getAuthToken} from "@/lib/auth";
 
 export default async function GamePage({ params }: { params?: Promise<{ code: string }> }) {
   // get join code
@@ -11,7 +13,25 @@ export default async function GamePage({ params }: { params?: Promise<{ code: st
     return <p>No Join Code Supplied</p>
   }
   if (joinCode.length !== 6) {
-    return <p>Join Code Invalid</p>
+    console.error("The join code was invalid");
+    redirect('/game')
+  }
+
+  // Get current user's ID
+  const token = await getAuthToken();
+  if (!token) {
+    console.error("No JWT for user")
+    redirect('/game');
+  }
+
+  // Ensure the current user is a player, otherwise join them
+  const isUserPlayer = await fetchQuery(api.game.isUserPlayer, { joinCode }, { token });
+  if (!isUserPlayer) {
+    try {
+      await fetchMutation(api.game.joinGame, {joinCode}, {token})
+    } catch {
+      redirect('/game');
+    }
   }
 
   // get game data
