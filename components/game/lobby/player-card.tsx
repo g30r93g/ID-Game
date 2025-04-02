@@ -3,7 +3,6 @@ import * as Editable from "@/components/ui/editable";
 import {Button} from "@/components/ui/button";
 import {Edit} from "lucide-react";
 import { useAuth } from "@clerk/nextjs"
-import {useCallback} from "react";
 
 interface PlayerCardProps {
   playerId: string,
