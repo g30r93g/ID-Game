@@ -1,14 +1,14 @@
 "use client";
 
-import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage} from "@/components/ui/form";
-import {Input} from "@/components/ui/input";
-import {LoadingButton} from "@/components/ui/loading-button";
-import {ArrowRight} from "lucide-react";
-import * as Clerk from '@clerk/elements/common'
-import * as ClerkSignIn from '@clerk/elements/sign-in'
+// import {Form, FormControl, FormField, FormItem, FormLabel, FormMessage} from "@/components/ui/form";
+// import {Input} from "@/components/ui/input";
+// import {LoadingButton} from "@/components/ui/loading-button";
+// import {ArrowRight} from "lucide-react";
+// import * as Clerk from '@clerk/elements/common'
+// import * as ClerkSignIn from '@clerk/elements/sign-in'
 
 export default function SignIn() {
-  return (
+  // return (
     // <Form {...form}>
     //   <form onSubmit={form.handleSubmit(onSignInSubmit)} className="space-y-6">
     //     <FormField
@@ -51,20 +51,7 @@ export default function SignIn() {
     //     </LoadingButton>
     //   </form>
     // </Form>
-    <ClerkSignIn.Root>
-      <ClerkSignIn.Step name="start">
-        <h1>Sign in to your account</h1>
+  // )
 
-        <Clerk.Connection name="google">Sign in with Google</Clerk.Connection>
-
-        <Clerk.Field name="identifier">
-          <Clerk.Label>Email</Clerk.Label>
-          <Clerk.Input />
-          <Clerk.FieldError />
-        </Clerk.Field>
-
-        <ClerkSignIn.Action submit>Continue</ClerkSignIn.Action>
-      </ClerkSignIn.Step>
-    </ClerkSignIn.Root>
-  )
+  return <p>Sign In</p>
 }
