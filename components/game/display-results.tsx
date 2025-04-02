@@ -1,27 +1,52 @@
 "use client";
 
 import {Button} from "@/components/ui/button";
-import {ArrowRight, Check, X} from "lucide-react";
+import {ArrowRight, Check, LogOut, X} from "lucide-react";
 import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
-import {useCallback, useEffect} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {Id} from "@/convex/_generated/dataModel";
 import {Card, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
+import {FaFlagCheckered} from "react-icons/fa6";
+import {useRouter} from "next/navigation";
+import {toast} from "sonner";
+import {LoadingButton} from "@/components/ui/loading-button";
 
 interface DisplayResultsGamePhaseProps {
+  gameId: Id<'games'>;
   roundId: Id<'gameRounds'>;
   isHost: boolean;
+  isGameFinished: () => boolean;
   advanceGame: () => void;
 }
 
-export default function DisplayResultsGamePhase({ roundId, isHost, advanceGame }: DisplayResultsGamePhaseProps) {
+export default function DisplayResultsGamePhase({ gameId, roundId, isHost, isGameFinished, advanceGame }: DisplayResultsGamePhaseProps) {
   const markGuessesForRound = useMutation(api.game.markGuessesForRound);
+  const leaveGameFn = useMutation(api.game.leaveGame);
   const results = useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
   const correctAnswer = useQuery(api.game.getCorrectAnswer, { roundId: roundId });
+
+  const { replace } = useRouter();
+
+  const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
+  const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
 
   const performGuessMarking = useCallback(async () => {
     await markGuessesForRound({ roundId: roundId });
   }, [markGuessesForRound, roundId]);
+
+  const leaveGame = useCallback(async () => {
+    try {
+      setIsLeavingInProgress(true);
+
+      await leaveGameFn({ gameId });
+      replace('/game')
+    } catch {
+      toast('Failed to leave game.')
+    } finally {
+      setIsLeavingInProgress(false);
+    }
+  }, [])
 
   useEffect(() => {
     if (isHost) {
@@ -45,11 +70,31 @@ export default function DisplayResultsGamePhase({ roundId, isHost, advanceGame }
             {r.isCorrect ? <Check className={"text-green-500"} /> : <X className={"text-red-500"} />}
         </Card>
       ))}
-      {isHost && results.length && (
-        <Button onClick={() => { advanceGame() }}>
-          Next Round
-          <ArrowRight />
+      {!isGameFinished() && !isHost && (
+        <LoadingButton className={"bg-red-200 text-black hover:text-white"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
+          {!isLeavingInProgress && (
+            <>
+              Leave Game
+              <LogOut />
+            </>
+          )}
+        </LoadingButton>
+      )}
+      {isGameFinished() && (
+        <Button onClick={() => { replace('/game') }}>
+          Finish Game
+          <FaFlagCheckered />
         </Button>
+      )}
+      {isHost && results.length && !isGameFinished() && (
+        <LoadingButton loading={isAdvancingGame} disabled={isAdvancingGame} onClick={() => { setIsAdvancingGame(true); advanceGame() }}>
+          {!isAdvancingGame && (
+            <>
+              Next Round
+              <ArrowRight />
+            </>
+          )}
+        </LoadingButton>
       )}
     </div>
   )

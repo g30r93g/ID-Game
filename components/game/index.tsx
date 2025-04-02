@@ -9,9 +9,10 @@ import DisplayResultsGamePhase from "@/components/game/display-results";
 import LobbyGamePhase from "@/components/game/lobby";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import CreateScenariosGamePhase from "@/components/game/create-scenarios";
-import {useEffect} from "react";
+import {useCallback, useEffect} from "react";
 import WaitGamePhase from "@/components/game/wait";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
+import {useRouter} from "next/navigation";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -30,6 +31,8 @@ export function Game({ preloadedGame }: GameProps) {
   const transitionRoundPhase = useMutation(api.game.transitionRoundPhase);
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
 
+  const { replace } = useRouter();
+
   useEffect(() => {
     const intervalId = setInterval(() => {
       sendHeartbeat()
@@ -40,6 +43,12 @@ export function Game({ preloadedGame }: GameProps) {
     return () => clearInterval(intervalId);
   }, [sendHeartbeat]);
 
+  useEffect(() => {
+    if (players.length <= 1 && currentRound?.phase === "display-results") {
+      replace('/game')
+    }
+  }, [players])
+
   const userIsHost = () => {
     if (game?.isOpen) {
       // check that the person who created the game is the current user
@@ -49,6 +58,13 @@ export function Game({ preloadedGame }: GameProps) {
 
     return currentRound?.hostPlayerId === userPlayer?._id;
   }
+
+  const isGameFinished = useCallback(() => {
+    const currentRound = game?.currentRound ?? 0;
+    const maxRounds = game?.totalRounds ?? 0;
+
+    return currentRound >= maxRounds;
+  }, [game?.currentRound, game?.totalRounds, game]);
 
   const advanceGame = () => {
     if (!game) {
@@ -167,8 +183,10 @@ export function Game({ preloadedGame }: GameProps) {
           />
       case "display-results":
         return <DisplayResultsGamePhase
+          gameId={game!._id}
           roundId={currentRound._id}
           isHost={userIsHost()}
+          isGameFinished={isGameFinished}
           advanceGame={advanceGame}
         />
     }

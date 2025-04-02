@@ -57,11 +57,6 @@ export const isUserPlayer = query({
       throw new Error("Game does not exist.");
     }
 
-    // Ensure game is open to new players
-    if (!game.isOpen) {
-      throw new Error("Game is not open to new players.")
-    }
-
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
@@ -144,6 +139,30 @@ export const joinGame = mutation({
       // Link player to game
       await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: game._id, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
     }
+  }
+})
+
+export const leaveGame = mutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to leave a game.");
+    }
+
+    // Get the player for the game
+    const userPlayer = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
+      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
+      .first();
+    if (!userPlayer) {
+      return;
+    }
+
+    // Delete them from the list of players
+    await ctx.db.delete(userPlayer._id);
   }
 })
 
