@@ -692,3 +692,30 @@ export const makeGuessForRound = mutation({
     });
   }
 })
+
+export const getCorrectAnswer = query({
+  args: { roundId: v.id("gameRounds") },
+  handler: async (ctx, args) => {
+    // get the gameRoundScenario for the round where `selected` is true
+    const gameRoundScenario = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
+      .filter((q) => q.eq(q.field("selected"), true))
+      .first();
+    if (!gameRoundScenario) {
+      // throw new Error("No game round scenario for this round is selected as the correct answer!")
+      return null;
+    }
+
+
+    // get the scenario
+    const scenario = await ctx.db.get(gameRoundScenario.scenarioId);
+    if (!scenario) {
+      // throw new Error("The scenario selected for this game round does not exist")
+      return null;
+    }
+
+    // return the scenario description
+    return scenario.description;
+  }
+})

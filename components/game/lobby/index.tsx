@@ -1,7 +1,7 @@
 "use client";
 
 import {Button} from "@/components/ui/button";
-import {ArrowRight, Share} from "lucide-react";
+import {ArrowRight, Loader2, Share} from "lucide-react";
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from "@/components/ui/input-otp";
 import { toast } from "sonner";
 import {useCallback} from "react";
@@ -54,14 +54,17 @@ export default function LobbyGamePhase({ joinCode, players, isHost, advanceGame 
         </div>
       </div>
       <div className={"mt-4"}>
-        <h2 className={"mb-2 font-semibold text-sm"}>Players</h2>
+        <h2 className={"mb-2 font-semibold text-sm flex flex-row gap-2 items-center"}>
+          Players
+          <Loader2 className={"h-3 w-3 animate-spin"} />
+        </h2>
         <div className={"flex flex-col gap-4"}>
           <div className={"grid grid-cols-1 lg:grid-cols-2 gap-4"}>
             {players.map(({ id, name, userId }) => {
               return <PlayerCard key={id} playerId={id} playerUserId={userId} playerName={name}/>
             })}
           </div>
-          {isHost && (
+          {isHost && players.length > 1 && (
             <Button onClick={() => { advanceGame() }}>
               Start Game
               <ArrowRight />
