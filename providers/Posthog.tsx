@@ -7,6 +7,15 @@ import { usePostHog } from 'posthog-js/react'
 import posthog from 'posthog-js'
 import { PostHogProvider as PHProvider } from 'posthog-js/react'
 
+export function PostHogProviderWrapper({ children }: { children: React.ReactNode }) {
+  if (process.env.NODE_ENV !== 'production') {
+    // only enable posthog in prod
+    return <>{children}</>
+  }
+
+  return <PostHogProvider>{children}</PostHogProvider>
+}
+
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
