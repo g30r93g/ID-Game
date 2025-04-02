@@ -48,7 +48,7 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
             <Button
               key={roundScenario._id}
               variant={selectedScenario === roundScenario._id ? "default" : "outline"}
-              className={"py-4"}
+              className={"py-2 whitespace-normal h-fit"}
               onClick={() => { setSelectedScenario(roundScenario._id) }}
             >
               {roundScenario.scenarioDetails?.description}
