@@ -1,6 +1,5 @@
 import {mutation, query} from "./_generated/server";
 import {v} from "convex/values";
-import {getAuthUserId} from "@convex-dev/auth/server";
 import {Id} from "./_generated/dataModel";
 
 // todo: extract authz logic into reusable functions
@@ -18,7 +17,7 @@ function generateOTP(length = 6): string {
 export const sendHeartbeat = mutation({
   handler: async (ctx) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
       throw new Error("User must be authenticated to send a heartbeat.");
     }
@@ -61,19 +60,16 @@ export const createGame = mutation({
   args: { numberOfRounds: v.number() },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
+    const user = await ctx.auth.getUserIdentity()
+    if (!user) {
       throw new Error("User must be authenticated to create a game.");
     }
 
     // create game
-    const gameId = await ctx.db.insert("games", { joinCode: generateOTP(), totalRounds: args.numberOfRounds, isOpen: true, createdBy: userId });
-
-    // get user's details
-    const user = await ctx.db.get(userId);
+    const gameId = await ctx.db.insert("games", { joinCode: generateOTP(), totalRounds: args.numberOfRounds, isOpen: true, createdBy: user.tokenIdentifier });
 
     // add player who created game to game
-    await ctx.db.insert("players", { userId: userId, gameId: gameId, lastAlive: Date.now(), displayName: user?.name ?? `Unknown Player` })
+    await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: gameId, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
 
     // return game
     return await ctx.db.get(gameId);
@@ -84,13 +80,9 @@ export const joinGame = mutation({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("User must be authenticated to join a game.");
-    }
-    const user = await ctx.db.get(userId);
+    const user = await ctx.auth.getUserIdentity();
     if (!user) {
-      throw new Error("No such user exists in the database!")
+      throw new Error("User must be authenticated to join a game.");
     }
 
     // Ensure game exists
@@ -111,12 +103,12 @@ export const joinGame = mutation({
     const userIsAlreadyInGame = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .filter((q) => q.eq(q.field("userId"), user.id))
       .first();
 
     if (!userIsAlreadyInGame) {
       // Link player to game
-      await ctx.db.insert("players", { userId: user._id, gameId: game._id, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
+      await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: game._id, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
     }
   }
 })
@@ -142,13 +134,9 @@ export const getPlayerForCurrentUserForGame = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
     // Get current user
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated.");
-    }
-    const user = await ctx.db.get(userId);
-    if (!user) {
-      throw new Error("No such user exists in the database!")
     }
 
     // Match user to player in game
@@ -191,7 +179,7 @@ export const getCurrentGameRound = query({
   },
 });
 
-export const getCurrentGameRoundHost = query({
+export const getCurrentGameRoundHostPlayer = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
     // get game
@@ -404,7 +392,7 @@ export const transitionRoundPhase = mutation({
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated to create a game.");
     }
@@ -434,7 +422,7 @@ export const selectGameRoundScenario = mutation({
   args: { gameRoundId: v.id("gameRounds"), gameRoundScenarioId: v.id("gameRoundScenarios") },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated to select a game round scenario.");
     }
@@ -481,7 +469,7 @@ export const submitPlayerRankingsForGameRound = mutation({
   args: { gameId: v.id("games"), roundId: v.id("gameRounds"), rankings: v.array(v.object({ ranking: v.number(), playerId: v.id("players") })) },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated to select a game round scenario.");
     }
@@ -539,7 +527,7 @@ export const markGuessesForRound = mutation({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated to select a game round scenario.");
     }
@@ -662,7 +650,7 @@ export const makeGuessForRound = mutation({
   args: { game: v.id("games"), gameRound: v.id("gameRounds"), scenario: v.id("gameRoundScenarios") },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = await getAuthUserId(ctx);
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
     if (!userId) {
       throw new Error("User must be authenticated to select a game round scenario.");
     }

@@ -22,7 +22,7 @@ export function Game({ preloadedGame }: GameProps) {
   const players = useQuery(api.game.getPlayersForGame, game ? { game: game._id } : "skip") ?? [];
   const userPlayer = useQuery(api.game.getPlayerForCurrentUserForGame, game ? { game: game._id } : "skip");
   const currentRound = useQuery(api.game.getCurrentGameRound, game ? { game: game._id } : "skip");
-  const currentRoundHost = useQuery(api.game.getCurrentGameRoundHost, game ? { game: game._id } : "skip");
+  const currentRoundHost = useQuery(api.game.getCurrentGameRoundHostPlayer, game ? { game: game._id } : "skip");
   const currentRoundScenarios = useQuery(api.game.gameRoundScenarios, currentRound ? { gameRound: currentRound._id  } : "skip") ?? [];
 
   const closeGameToNewPlayers = useMutation(api.game.closeGameToNewPlayers);
@@ -126,7 +126,13 @@ export function Game({ preloadedGame }: GameProps) {
   }
   const gamePhaseContent = () => {
     if (game?.isOpen) {
-      return <LobbyGamePhase joinCode={game.joinCode} players={players.map((p) => p.displayName)} isHost={userIsHost()} advanceGame={advanceGame} />
+      return <LobbyGamePhase joinCode={game.joinCode} players={players.map((p) => {
+        return {
+          id: p._id,
+          name: p.displayName,
+          userId: p.userId
+        }
+      })} isHost={userIsHost()} advanceGame={advanceGame} />
     }
 
     switch (currentRound?.phase) {

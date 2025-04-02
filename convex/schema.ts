@@ -1,12 +1,9 @@
 import { defineSchema, defineTable } from 'convex/server';
-import { authTables } from "@convex-dev/auth/server";
 import { v } from 'convex/values';
 
 export default defineSchema({
-  ...authTables,
-
   players: defineTable({
-    userId: v.id("users"),
+    userId: v.string(),
     gameId: v.id("games"),
     displayName: v.string(),
     lastAlive: v.number(),
@@ -18,7 +15,7 @@ export default defineSchema({
     totalRounds: v.number(),
     currentRound: v.optional(v.number()),
     isOpen: v.boolean(),
-    createdBy: v.id("users"),
+    createdBy: v.string(),
   }).index('byJoinCode', ['joinCode']),
 
   scenarios: defineTable({
