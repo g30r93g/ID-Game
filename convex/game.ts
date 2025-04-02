@@ -57,11 +57,6 @@ export const isUserPlayer = query({
       throw new Error("Game does not exist.");
     }
 
-    // Ensure game is open to new players
-    if (!game.isOpen) {
-      throw new Error("Game is not open to new players.")
-    }
-
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
