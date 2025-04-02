@@ -75,7 +75,7 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
             <Button
               key={scenario._id}
               variant={selectedScenario === scenario._id ? "default" : "outline"}
-              className={"py-4"}
+              className={"py-2 whitespace-normal h-fit"}
               onClick={() => { setSelectedScenario(scenario._id) }}
             >
               {scenario.scenarioDetails?.description}

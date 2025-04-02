@@ -6,7 +6,7 @@ import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
 import {useCallback, useEffect} from "react";
 import {Id} from "@/convex/_generated/dataModel";
-import {Card, CardTitle} from "@/components/ui/card";
+import {Card, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 
 interface DisplayResultsGamePhaseProps {
   roundId: Id<'gameRounds'>;
@@ -38,7 +38,10 @@ export default function DisplayResultsGamePhase({ roundId, isHost, advanceGame }
       )}
       {results?.map((r) => (
         <Card key={r._id} className={"p-4 items-center grid grid-cols-[1fr_auto] gap-2"}>
+          <CardHeader>
             <CardTitle>{r.playerDisplayName}</CardTitle>
+            <CardDescription>{r.guessedScenarioDescription}</CardDescription>
+          </CardHeader>
             {r.isCorrect ? <Check className={"text-green-500"} /> : <X className={"text-red-500"} />}
         </Card>
       ))}
