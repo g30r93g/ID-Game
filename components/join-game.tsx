@@ -10,6 +10,7 @@ import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from "@/compon
 import {api} from "@/convex/_generated/api";
 import {useMutation} from "convex/react";
 import {useRouter} from "next/navigation";
+import {REGEXP_ONLY_DIGITS_AND_CHARS} from "input-otp";
 
 const formSchema = z.object({
   joinCode: z.string().min(6, "Join Code must be 6 characters").max(6, "Join Code must be 6 characters"),
@@ -46,7 +47,7 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
               <FormItem>
                 <FormLabel>Join Code</FormLabel>
                 <FormControl>
-                  <InputOTP maxLength={6} {...field}>
+                  <InputOTP pattern={REGEXP_ONLY_DIGITS_AND_CHARS} maxLength={6} {...field}>
                     <InputOTPGroup>
                       <InputOTPSlot index={0} />
                       <InputOTPSlot index={1} />
