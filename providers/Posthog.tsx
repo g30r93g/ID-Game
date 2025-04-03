@@ -6,9 +6,10 @@ import { usePostHog } from 'posthog-js/react'
 
 import posthog from 'posthog-js'
 import { PostHogProvider as PHProvider } from 'posthog-js/react'
+import {env} from "@/env";
 
 export function PostHogProviderWrapper({ children }: { children: React.ReactNode }) {
-  if (process.env.NODE_ENV !== 'production') {
+  if (env.NODE_ENV !== 'production') {
     // only enable posthog in prod
     return <>{children}</>
   }
@@ -18,9 +19,9 @@ export function PostHogProviderWrapper({ children }: { children: React.ReactNode
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
-      api_host: process.env.NEXT_PUBLIC_POSTHOG_API_HOST || 'https://eu.i.posthog.com',
-      ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST,
+    posthog.init(env.NEXT_PUBLIC_POSTHOG_KEY as string, {
+      api_host: env.NEXT_PUBLIC_POSTHOG_API_HOST || 'https://eu.i.posthog.com',
+      ui_host: env.NEXT_PUBLIC_POSTHOG_UI_HOST,
       person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
       capture_pageview: false // Disable automatic pageview capture, as we capture manually
     })
