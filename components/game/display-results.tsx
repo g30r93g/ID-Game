@@ -57,7 +57,7 @@ export default function DisplayResultsGamePhase({ gameId, roundId, isHost, isGam
   return (
     <div className={"flex flex-col gap-4"}>
       {correctAnswer && (
-        <div className={"rounded-lg px-2 py-1 border border-muted-foreground/50 font-semibold bg-green-200/25 dark:bg-green-800/25"}>
+        <div className={"rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-green-200/25 dark:bg-green-800/25"}>
           {correctAnswer}
         </div>
       )}

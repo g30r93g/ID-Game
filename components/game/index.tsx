@@ -132,7 +132,7 @@ export function Game({ preloadedGame }: GameProps) {
       case "pick-scenario":
         return userIsHost() ? "Choose the scenario you're going to rank everyone on." : `${currentRoundHost?.displayName ?? 'Your host'} is picking the scenario.`
       case "rank-players":
-        return userIsHost() ? "Rank the players from most to least likely." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
+        return userIsHost() ? "Rank the players from most to least likely by dragging their names." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
       case "guess-scenario":
         return userIsHost() ? "Wait for the players to guess the scenario you've picked" : "Guess which scenario you think was picked."
       case "display-results":
