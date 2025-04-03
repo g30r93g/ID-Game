@@ -24,7 +24,6 @@ const nextConfig: NextConfig = {
     ];
   },
   skipTrailingSlashRedirect: true, // required for PostHog
-  transpilePackages: ['@t3-oss/env-nextjs', '@t3-oss/env-core'],
 };
 
 export default nextConfig;
