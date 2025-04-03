@@ -1,7 +1,7 @@
 import {Button} from "@/components/ui/button";
 import {AlignJustify, ArrowUpDown, Check} from "lucide-react";
 import {useState} from "react";
-import {Card, CardDescription, CardTitle} from "@/components/ui/card";
+import {Card, CardTitle} from "@/components/ui/card";
 import {Id} from "@/convex/_generated/dataModel";
 import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
@@ -72,7 +72,7 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
           {view === "rankings" && (
             <>
               <span className={"pl-3 text-muted-foreground text-sm"}>Most likely</span>
-              {playerRankings?.map((ranking, idx) => (
+              {playerRankings?.map((ranking) => (
                 <Card
                   key={ranking._id}
                   className={"p-4"}
