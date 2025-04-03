@@ -6,7 +6,7 @@ import {Toaster} from "@/components/ui/sonner";
 import {ConvexClerkClientProvider} from "@/providers/ConvexClerkClientProvider";
 import {ClerkProvider} from "@clerk/nextjs";
 import {PostHogProvider} from "@/providers/Posthog";
-import {env} from "@/env";
+import {env} from "@/app/env";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -6,7 +6,7 @@ import { usePostHog } from 'posthog-js/react'
 
 import posthog from 'posthog-js'
 import { PostHogProvider as PHProvider } from 'posthog-js/react'
-import {env} from "@/env";
+import {env} from "@/app/env";
 
 export function PostHogProviderWrapper({ children }: { children: React.ReactNode }) {
   if (env.NODE_ENV !== 'production') {
