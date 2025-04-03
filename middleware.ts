@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import {env} from "@/env";
+import {env} from "@/app/env";
 
 const isPublicRoute = createRouteMatcher(['/', '/auth', '/tos', '/privacy', '/ingest']);
 
