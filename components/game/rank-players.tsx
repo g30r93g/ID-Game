@@ -5,7 +5,7 @@ import {
   Sortable,
   SortableContent,
   SortableItem,
-} from "../ui/sortable";
+} from "@/components/ui/sortable";
 import {ArrowRight} from "lucide-react";
 import {Card, CardHeader, CardTitle} from "@/components/ui/card";
 import {useMutation, useQuery} from "convex/react";
@@ -44,25 +44,31 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
 
   return (
     <div className={"flex flex-col gap-8"}>
-      <p>&quot;{scenario}&quot;</p>
-      <Sortable
-        value={players}
-        onValueChange={setPlayers}
-        getItemValue={(item) => item._id}
-        orientation="vertical"
-      >
-        <SortableContent className="grid auto-rows-fr gap-2.5">
-          {players.map((player) => (
-            <SortableItem key={player._id} value={player._id} asChild asHandle>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{player.displayName}</CardTitle>
-                </CardHeader>
-              </Card>
-            </SortableItem>
-          ))}
-        </SortableContent>
-      </Sortable>
+      <div className={"rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-secondary/75"}>
+        {scenario}
+      </div>
+      <div className={"grid grid-cols-1 gap-2"}>
+        <span className={"pl-3 text-muted-foreground text-sm"}>Most likely</span>
+        <Sortable
+          value={players}
+          onValueChange={setPlayers}
+          getItemValue={(item) => item._id}
+          orientation="vertical"
+        >
+          <SortableContent className="grid auto-rows-fr gap-2.5">
+            {players.map((player) => (
+              <SortableItem key={player._id} value={player._id} asChild asHandle>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{player.displayName}</CardTitle>
+                  </CardHeader>
+                </Card>
+              </SortableItem>
+            ))}
+          </SortableContent>
+        </Sortable>
+        <span className={"pl-3 text-muted-foreground text-sm"}>Least likely</span>
+      </div>
       <LoadingButton
         loading={loading}
         disabled={loading}

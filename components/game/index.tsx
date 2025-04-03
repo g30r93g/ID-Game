@@ -9,10 +9,13 @@ import DisplayResultsGamePhase from "@/components/game/display-results";
 import LobbyGamePhase from "@/components/game/lobby";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import CreateScenariosGamePhase from "@/components/game/create-scenarios";
-import {useCallback, useEffect} from "react";
+import {useCallback, useEffect, useState} from "react";
 import WaitGamePhase from "@/components/game/wait";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
 import {useRouter} from "next/navigation";
+import {LoadingButton} from "@/components/ui/loading-button";
+import {LogOut} from "lucide-react";
+import {toast} from "sonner";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -30,8 +33,10 @@ export function Game({ preloadedGame }: GameProps) {
   const startNewGameRound = useMutation(api.game.startNewGameRound);
   const transitionRoundPhase = useMutation(api.game.transitionRoundPhase);
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
+  const leaveGameFn = useMutation(api.game.leaveGame);
 
   const { replace } = useRouter();
+  const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -65,6 +70,19 @@ export function Game({ preloadedGame }: GameProps) {
 
     return currentRound >= maxRounds;
   }, [game?.currentRound, game?.totalRounds, game]);
+
+  const leaveGame = useCallback(async () => {
+    try {
+      setIsLeavingInProgress(true);
+
+      await leaveGameFn({ gameId: game!._id });
+      replace('/game')
+    } catch {
+      toast('Failed to leave game.')
+    } finally {
+      setIsLeavingInProgress(false);
+    }
+  }, [])
 
   const advanceGame = () => {
     if (!game) {
@@ -132,7 +150,7 @@ export function Game({ preloadedGame }: GameProps) {
       case "pick-scenario":
         return userIsHost() ? "Choose the scenario you're going to rank everyone on." : `${currentRoundHost?.displayName ?? 'Your host'} is picking the scenario.`
       case "rank-players":
-        return userIsHost() ? "Rank the players from most to least likely." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
+        return userIsHost() ? "Rank the players from most to least likely by dragging their names." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
       case "guess-scenario":
         return userIsHost() ? "Wait for the players to guess the scenario you've picked" : "Guess which scenario you think was picked."
       case "display-results":
@@ -183,7 +201,6 @@ export function Game({ preloadedGame }: GameProps) {
           />
       case "display-results":
         return <DisplayResultsGamePhase
-          gameId={game!._id}
           roundId={currentRound._id}
           isHost={userIsHost()}
           isGameFinished={isGameFinished}
@@ -193,12 +210,24 @@ export function Game({ preloadedGame }: GameProps) {
   }
 
   return (
-    <Card className={"w-full md:w-[75%]"}>
-      <CardHeader>
-        <CardTitle>{gamePhaseTitle()}</CardTitle>
-        <CardDescription>{gamePhaseDescription()}</CardDescription>
-      </CardHeader>
-      <CardContent>{gamePhaseContent()}</CardContent>
-    </Card>
+    <div className="w-full md:w-[75%] items-center flex flex-col gap-4">
+      {!isGameFinished() && !userIsHost() && (
+        <LoadingButton className={"bg-red-200 hover:bg-red-500 text-white w-fit self-end"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
+          {!isLeavingInProgress && (
+            <>
+              Leave Game
+              <LogOut />
+            </>
+          )}
+        </LoadingButton>
+      )}
+      <Card className={"w-full"}>
+        <CardHeader>
+          <CardTitle>{gamePhaseTitle()}</CardTitle>
+          <CardDescription>{gamePhaseDescription()}</CardDescription>
+        </CardHeader>
+        <CardContent>{gamePhaseContent()}</CardContent>
+      </Card>
+    </div>
   )
 }
