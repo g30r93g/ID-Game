@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import {env} from "@/app/env";
 
 const isPublicRoute = createRouteMatcher(['/', '/auth', '/tos', '/privacy', '/ingest']);
 
@@ -7,7 +8,7 @@ export default clerkMiddleware(async (auth, req) => {
 
   await auth.protect();
 }, {
-  debug: process.env.NODE_ENV === 'development',
+  debug: env.NODE_ENV === 'development',
 })
 
 export const config = {
