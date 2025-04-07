@@ -3,12 +3,52 @@
 ## Run
 
 1. Install dependencies via `pnpm install`
-2. Add environment variables to `.env.local` (see `.env.example`)
-3. Start app with `pnpm start`
+2. Add environment variables to `.env.local`
+   ```env
+   NODE_ENV=development
 
-## Auth
-- [ ] Google
-- [ ] Apple
+    # Convex
+    CONVEX_DEPLOYMENT=<your-convex-deployment>
+    NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
+    
+    # Clerk
+    CLERK_JWT_ISSUER_DOMAIN=<your-clerk-domain>
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
+    CLERK_SECRET_KEY=<your-clerk-secret-key>
+    
+    # Posthog
+    NEXT_PUBLIC_POSTHOG_KEY=<your-posthog-key>
+    NEXT_PUBLIC_POSTHOG_API_HOST=/ingest # DO NOT CHANGE
+    NEXT_PUBLIC_POSTHOG_UI_HOST=<your-posthog-host-url>
+    ```
+4. Start app with `pnpm start`
+
+## Architecture
+
+### Backend
+
+- [Convex](https://www.convex.dev): "Reactive" real-time database
+- [Clerk](https://clerk.com): User Identity and Access Management
+- [PostHog](): Analytics
+- [Vercel](): Server deployment
+
+The backend needed to support multiple clients, with varying network conditions,
+but transmit updates reliably. There was a case for a peer-to-peer network using
+WebRTC but there were concerns about NAT and firewall protections within the target
+user demographic, such as university networks. Convex provided stronger consistency
+guarantees which was crucial for ensuring correct game state across clients,
+ultimately suiting the needs of the game closer.
+
+### Frontend
+
+- [Next.js](https://nextjs.org)
+- [Tailwind](https://tailwindcss.com)
+- [shadcn/ui](https://ui.shadcn.com)
+- [Dice UI](https://www.diceui.com)
+
+These are tools were selected due to their familiarity and my ability to quickly iterate
+toward a functional game. Since Convex was built for React, the seamless integration enabled
+straightforward state management and UI synchronisation, providing a responsive user experience with minimal overhead.
 
 ## Gameplay
 
@@ -19,77 +59,10 @@
     2. Round host picks 1 scenario from the list
     3. Round host orders players in most-to-least likely
     4. Non-host players receives the allocated 10 scenarios
-    5. Each player picks which scenario round host picked
+    5. Each player guesses which scenario round host picked
     6. Once all players have picked, results are shown
 4. Play again
 
-## Database Structure
+## DB Schema
 
-### Player
-```
-id: uuid pk not null
-user_id: uuid fk(auth.users) not null
-game_id: uuid fk(game) not null
-display_name: text
-last_alive: timestamptz default now() not null
-```
-
-### Game
-```
-id: uuid pk not null
-join_code: string not null auto-generated
-total_rounds: int4 not null default 10
-current_round: int4 nullable
-
-unique(join_code)
-```
-
-### Scenarios
-```
-id: uuid pk not null
-description: text not null
-category: text not null
-```
-
-### Game_Round
-```
-id: uuid pk not null
-game_id: uuid fk(game) not null
-round_number: int4 not null
-host_player_id: uuid fk(player) nullable
-
-unique(game_id, round_number)
-```
-
-### Game_Round_Scenarios
-```
-id: uuid pk not null
-game_id: uuid fk(game) not null
-round_id: uuid fk(game_round) not null
-scenario_id: uuid fk(scenario) not null
-selected: boolean default false not null
-
-unique(game_id, scenario_id)
-```
-
-### Game_Round_Player_Ranking
-```
-id: uuid pk not null
-game_id: uuid fk(game) not null
-round_id: uuid fk(game_round) not null
-player_id: uuid fk(game_round) not null
-ranking: int4 not null
-
-unique(game_id, round_id, player_id)
-```
-
-### Game_Round_Guess
-```
-id: uuid pk not null
-game_id: uuid fk(game) not null
-round_id: uuid fk(round) not null
-scenario_id: uuid fk(game_round_scenario) not null
-player_id: uuid fk(player) not null
-
-unique(game_id, round_id, player_id)
-```
+Navigate to `./convex/schema.ts` to view the schema definitions.
