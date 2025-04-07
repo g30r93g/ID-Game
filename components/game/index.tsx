@@ -17,6 +17,7 @@ import {LoadingButton} from "@/components/ui/loading-button";
 import {LogOut} from "lucide-react";
 import {toast} from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
+import {usePostHog} from "posthog-js/react";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -37,6 +38,7 @@ export function Game({ preloadedGame }: GameProps) {
   const leaveGameFn = useMutation(api.game.leaveGame);
 
   const { replace } = useRouter();
+  const { capture } = usePostHog();
   const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
 
   useEffect(() => {
@@ -76,6 +78,8 @@ export function Game({ preloadedGame }: GameProps) {
     try {
       setIsLeavingInProgress(true);
 
+      capture('game_leave', { phase: currentRound?.phase, isFinished: isGameFinished });
+
       await leaveGameFn({ gameId: game!._id });
       replace('/game')
     } catch {
@@ -102,6 +106,8 @@ export function Game({ preloadedGame }: GameProps) {
       throw new Error("User is not host. Cannot advance the game if user is not the host.");
     }
 
+    capture('game_advance', { phase: currentRound?.phase });
+
     switch (currentRound?.phase) {
       case "create-scenarios":
         transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "pick-scenario" })
@@ -122,6 +128,7 @@ export function Game({ preloadedGame }: GameProps) {
         return;
     }
   }
+
   const gamePhaseTitle = () => {
     if (game?.isOpen) {
       return "Lobby";
@@ -140,6 +147,7 @@ export function Game({ preloadedGame }: GameProps) {
         return "Results";
     }
   }
+
   const gamePhaseDescription = () => {
     if (game?.isOpen) {
       return "Waiting for players to join"
@@ -159,6 +167,7 @@ export function Game({ preloadedGame }: GameProps) {
         return undefined;
     }
   }
+
   const gamePhaseContent = () => {
     if (game?.isOpen) {
       return <LobbyGamePhase joinCode={game.joinCode} players={players.map((p) => {

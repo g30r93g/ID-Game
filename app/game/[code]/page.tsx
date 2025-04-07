@@ -28,6 +28,7 @@ export default async function GamePage({ params }: { params?: Promise<{ code: st
   const isUserPlayer = await fetchQuery(api.game.isUserPlayer, { joinCode }, { token });
   if (!isUserPlayer) {
     try {
+      // todo: add posthog capture
       await fetchMutation(api.game.joinGame, {joinCode}, {token})
     } catch {
       redirect('/game');

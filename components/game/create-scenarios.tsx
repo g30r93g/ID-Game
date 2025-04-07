@@ -7,6 +7,7 @@ import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
 import {LoadingButton} from "@/components/ui/loading-button";
 import {Id} from "@/convex/_generated/dataModel";
+import {usePostHog} from "posthog-js/react";
 
 interface CreateScenarioGamePhaseProps {
   gameId: Id<"games">;
@@ -18,12 +19,18 @@ export default function CreateScenariosGamePhase({ gameId, gameRoundId, advanceG
   const scenarioCategories = useQuery(api.game.scenarioCategories);
   const generateScenarios = useMutation(api.game.selectScenariosForGameRound);
 
+  const { capture } = usePostHog();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
 
   async function handleCategorySelection() {
+    if (!selectedCategory) return;
+
     setIsLoading(true);
     try {
+      // capture analytics event
+      capture('game_scenario_category_select', { scenario: selectedCategory });
+
       // perform and await mutation
       await generateScenarios({ game: gameId, gameRound: gameRoundId, category: selectedCategory })
 

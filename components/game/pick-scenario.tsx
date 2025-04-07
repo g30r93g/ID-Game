@@ -1,12 +1,13 @@
 "use client";
 
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Button} from "@/components/ui/button";
 import {ArrowRight} from "lucide-react";
 import {Id} from "@/convex/_generated/dataModel";
 import {useMutation, useQuery} from "convex/react";
 import {api} from "@/convex/_generated/api";
 import {ScrollArea} from "@/components/ui/scroll-area";
+import {usePostHog} from "posthog-js/react";
 
 interface PickScenarioGamePhaseProps {
   gameRound: Id<"gameRounds">;
@@ -17,8 +18,15 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
   const roundScenarios = useQuery(api.game.gameRoundScenarios, { gameRound })
   const performRoundScenarioSelection = useMutation(api.game.selectGameRoundScenario)
 
+  const { capture } = usePostHog();
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [selectedScenario, setSelectedScenario] = useState<Id<"gameRoundScenarios"> | undefined>(undefined);
+
+  useEffect(() => {
+    if (!selectedScenario) return;
+    
+    capture('game_scenario_select', { scenario: selectedScenario });
+  }, [selectedScenario]);
 
   async function handleScenarioSelection() {
     try {

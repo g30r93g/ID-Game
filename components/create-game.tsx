@@ -11,6 +11,7 @@ import {api} from "@/convex/_generated/api";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import {NumberField} from "@/components/ui/number-field";
+import posthog from "posthog-js";
 
 const formSchema = z.object({
   numberOfRounds: z.number().min(1).default(10)
@@ -28,6 +29,8 @@ export default function CreateGame() {
 
   async function onSubmit({ numberOfRounds }: z.infer<typeof formSchema>) {
     try {
+      posthog.capture('new_game');
+
       const game = await createGame({ numberOfRounds });
 
       if (!game) {

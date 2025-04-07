@@ -11,6 +11,7 @@ import {api} from "@/convex/_generated/api";
 import {useMutation} from "convex/react";
 import {useRouter} from "next/navigation";
 import {REGEXP_ONLY_DIGITS_AND_CHARS} from "input-otp";
+import {usePostHog} from "posthog-js/react";
 
 const formSchema = z.object({
   joinCode: z.string().min(6, "Join Code must be 6 characters").max(6, "Join Code must be 6 characters"),
@@ -24,10 +25,13 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
     }
   });
   const { replace } = useRouter();
+  const { capture } = usePostHog()
   const performJoinGame = useMutation(api.game.joinGame);
 
   async function onSubmit({ joinCode }: z.infer<typeof formSchema>) {
     try {
+      capture('join_game', {joinCode});
+
       await performJoinGame({ joinCode })
 
       replace(`/game/${joinCode}`)
