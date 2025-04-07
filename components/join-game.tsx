@@ -51,17 +51,26 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
               <FormItem>
                 <FormLabel>Join Code</FormLabel>
                 <FormControl>
-                  <InputOTP pattern={REGEXP_ONLY_DIGITS_AND_CHARS} inputMode={"text"} maxLength={6} {...field}>
+                  <InputOTP
+                    className={"font-mono"}
+                    pattern={REGEXP_ONLY_DIGITS_AND_CHARS}
+                    inputMode={"text"}
+                    maxLength={6}
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e.toUpperCase());
+                    }}
+                  >
                     <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
+                      <InputOTPSlot className={"font-mono"} index={0} />
+                      <InputOTPSlot className={"font-mono"} index={1} />
+                      <InputOTPSlot className={"font-mono"} index={2} />
                     </InputOTPGroup>
                     <InputOTPSeparator />
                     <InputOTPGroup>
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
+                      <InputOTPSlot className={"font-mono"} index={3} />
+                      <InputOTPSlot className={"font-mono"} index={4} />
+                      <InputOTPSlot className={"font-mono"} index={5} />
                     </InputOTPGroup>
                   </InputOTP>
                 </FormControl>
