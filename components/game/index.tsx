@@ -16,6 +16,7 @@ import {useRouter} from "next/navigation";
 import {LoadingButton} from "@/components/ui/loading-button";
 import {LogOut} from "lucide-react";
 import {toast} from "sonner";
+import GameInstructions from "@/components/game/game-instructions";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -211,16 +212,19 @@ export function Game({ preloadedGame }: GameProps) {
 
   return (
     <div className="w-full md:w-[75%] items-center flex flex-col gap-4">
-      {!isGameFinished() && !userIsHost() && (
-        <LoadingButton className={"bg-red-200 hover:bg-red-500 text-white w-fit self-end"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
-          {!isLeavingInProgress && (
-            <>
-              Leave Game
-              <LogOut />
-            </>
-          )}
-        </LoadingButton>
-      )}
+      <div className={"w-full flex flex-row gap-2"}>
+        <GameInstructions />
+        {!isGameFinished() && !userIsHost() && (
+          <LoadingButton className={"bg-red-200 hover:bg-red-500 text-white w-fit"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
+            {!isLeavingInProgress && (
+              <>
+                Leave Game
+                <LogOut />
+              </>
+            )}
+          </LoadingButton>
+        )}
+      </div>
       <Card className={"w-full"}>
         <CardHeader>
           <CardTitle>{gamePhaseTitle()}</CardTitle>

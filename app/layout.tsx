@@ -33,18 +33,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-      >
-        <main className={"container mx-auto px-4 md:px-0"}>
-          <PostHogProvider>
-            {children}
-          </PostHogProvider>
-        </main>
-        <Toaster />
-      </ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+        >
+          <main className={"container mx-auto px-4 md:px-0"}>
+            <PostHogProvider>
+              {children}
+            </PostHogProvider>
+          </main>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
