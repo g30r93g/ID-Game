@@ -33,19 +33,21 @@ export default async function GamePage({ params }: { params?: Promise<{ code: st
     redirect('/game')
   }
 
-  const { capture } = PostHogClient();
+  const posthog = PostHogClient();
 
   // Ensure the current user is a player, otherwise join them
   const isUserPlayer = await fetchQuery(api.game.isUserPlayer, { joinCode }, { token });
   if (!isUserPlayer) {
     try {
-      capture({
-        distinctId: user.id,
-        event: "game_join",
-        properties: {
-          joinCode
-        }
-      });
+      if (posthog) {
+        posthog.capture({
+          distinctId: user.id,
+          event: "game_join",
+          properties: {
+            joinCode
+          }
+        });
+      }
 
       await fetchMutation(api.game.joinGame, {joinCode}, {token})
     } catch {

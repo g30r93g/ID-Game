@@ -18,15 +18,16 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
   const roundScenarios = useQuery(api.game.gameRoundScenarios, { gameRound })
   const performRoundScenarioSelection = useMutation(api.game.selectGameRoundScenario)
 
-  const { capture } = usePostHog();
+  const posthog = usePostHog();
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [selectedScenario, setSelectedScenario] = useState<Id<"gameRoundScenarios"> | undefined>(undefined);
 
   useEffect(() => {
     if (!selectedScenario) return;
+    if (!posthog) return;
     
-    capture('game_scenario_select', { scenario: selectedScenario });
-  }, [selectedScenario]);
+    posthog.capture('game_scenario_select', { scenario: selectedScenario });
+  }, [selectedScenario, posthog]);
 
   async function handleScenarioSelection() {
     try {
