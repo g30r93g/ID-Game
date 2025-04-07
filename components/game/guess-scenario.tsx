@@ -69,14 +69,20 @@ export default function GuessScenarioGamePhase({ gameId, roundId }: GuessScenari
               {scenario.scenarioDetails?.description}
             </Button>
           ))}
-          {view === "rankings" && playerRankings?.map((ranking) => (
-            <Card
-              key={ranking._id}
-              className={"p-4"}
-            >
-              <CardTitle>{ranking.playerDisplayName}</CardTitle>
-            </Card>
-          ))}
+          {view === "rankings" && (
+            <>
+              <span className={"pl-3 text-muted-foreground text-sm"}>Most likely</span>
+              {playerRankings?.map((ranking) => (
+                <Card
+                  key={ranking._id}
+                  className={"p-4"}
+                >
+                  <CardTitle>{ranking.playerDisplayName}</CardTitle>
+                </Card>
+              ))}
+              <span className={"pl-3 text-muted-foreground text-sm"}>Least likely</span>
+            </>
+          )}
         </div>
       </ScrollArea>
       <div className={"grid grid-cols-2 md:grid-cols-[1fr_2fr] gap-2"}>

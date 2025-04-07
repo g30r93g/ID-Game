@@ -3,8 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import {ThemeProvider} from "next-themes";
 import {Toaster} from "@/components/ui/sonner";
-import {ConvexClerkClientProvider} from "@/providers/ConvexClerkClientProvider";
-import {ClerkProvider} from "@clerk/nextjs";
 import {PostHogProvider} from "@/providers/Posthog";
 
 const geistSans = Geist({
@@ -35,22 +33,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-      >
-        <main className={"container mx-auto px-4 md:px-0"}>
-          <PostHogProvider>
-            <ClerkProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY} dynamic>
-              <ConvexClerkClientProvider>
-                {children}
-              </ConvexClerkClientProvider>
-            </ClerkProvider>
-          </PostHogProvider>
-        </main>
-        <Toaster />
-      </ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+        >
+          <main className={"container mx-auto px-4 md:px-0"}>
+            <PostHogProvider>
+              {children}
+            </PostHogProvider>
+          </main>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
