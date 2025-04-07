@@ -19,7 +19,7 @@ export default function CreateScenariosGamePhase({ gameId, gameRoundId, advanceG
   const scenarioCategories = useQuery(api.game.scenarioCategories);
   const generateScenarios = useMutation(api.game.selectScenariosForGameRound);
 
-  const { capture } = usePostHog();
+  const posthog = usePostHog();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
 
@@ -29,7 +29,9 @@ export default function CreateScenariosGamePhase({ gameId, gameRoundId, advanceG
     setIsLoading(true);
     try {
       // capture analytics event
-      capture('game_scenario_category_select', { scenario: selectedCategory });
+      if (posthog) {
+        posthog.capture('game_scenario_category_select', { scenario: selectedCategory });
+      }
 
       // perform and await mutation
       await generateScenarios({ game: gameId, gameRound: gameRoundId, category: selectedCategory })

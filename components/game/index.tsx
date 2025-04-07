@@ -38,7 +38,7 @@ export function Game({ preloadedGame }: GameProps) {
   const leaveGameFn = useMutation(api.game.leaveGame);
 
   const { replace } = useRouter();
-  const { capture } = usePostHog();
+  const posthog = usePostHog();
   const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
 
   useEffect(() => {
@@ -78,7 +78,9 @@ export function Game({ preloadedGame }: GameProps) {
     try {
       setIsLeavingInProgress(true);
 
-      capture('game_leave', { phase: currentRound?.phase, isFinished: isGameFinished });
+      if (posthog) {
+        posthog.capture('game_leave', {phase: currentRound?.phase, isFinished: isGameFinished});
+      }
 
       await leaveGameFn({ gameId: game!._id });
       replace('/game')
@@ -106,7 +108,9 @@ export function Game({ preloadedGame }: GameProps) {
       throw new Error("User is not host. Cannot advance the game if user is not the host.");
     }
 
-    capture('game_advance', { phase: currentRound?.phase });
+    if (posthog) {
+      posthog.capture('game_advance', { phase: currentRound?.phase });
+    }
 
     switch (currentRound?.phase) {
       case "create-scenarios":

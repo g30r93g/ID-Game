@@ -29,7 +29,9 @@ export default function CreateGame() {
 
   async function onSubmit({ numberOfRounds }: z.infer<typeof formSchema>) {
     try {
-      posthog.capture('new_game');
+      if (posthog) {
+        posthog.capture('new_game');
+      }
 
       const game = await createGame({ numberOfRounds });
 

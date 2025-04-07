@@ -4,6 +4,7 @@ import "./globals.css";
 import {ThemeProvider} from "next-themes";
 import {Toaster} from "@/components/ui/sonner";
 import {PostHogProvider} from "@/providers/Posthog";
+import {env} from "@/app/env";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,9 +40,7 @@ export default function RootLayout({
           enableSystem
         >
           <main className={"container mx-auto px-4 md:px-0"}>
-            <PostHogProvider>
-              {children}
-            </PostHogProvider>
+            {env.NODE_ENV !== 'production' ? children : <PostHogProvider>{children}</PostHogProvider>}
           </main>
           <Toaster />
         </ThemeProvider>
