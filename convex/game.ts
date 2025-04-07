@@ -2,10 +2,9 @@ import {mutation, query} from "./_generated/server";
 import {v} from "convex/values";
 import {Id} from "./_generated/dataModel";
 
-// todo: extract authz logic into reusable functions
-
 function generateOTP(length = 6): string {
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const characters = 'ABCDEGHIKLMNPQRSTUVXYZ0123456789'; // some are missing to reduce ambiguity
+
   let otp = '';
   for (let i = 0; i < length; i++) {
     const randomIndex = Math.floor(Math.random() * characters.length);
