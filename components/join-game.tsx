@@ -12,6 +12,7 @@ import {useMutation} from "convex/react";
 import {useRouter} from "next/navigation";
 import {REGEXP_ONLY_DIGITS_AND_CHARS} from "input-otp";
 import {usePostHog} from "posthog-js/react";
+import {useState} from "react";
 
 const formSchema = z.object({
   joinCode: z.string().min(6, "Join Code must be 6 characters").max(6, "Join Code must be 6 characters"),
@@ -24,19 +25,26 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
       joinCode: defaultJoinCode,
     }
   });
+  const [isLoading, setLoading] = useState<boolean>(false);
   const { replace } = useRouter();
-  const { capture } = usePostHog()
+  const posthog = usePostHog()
   const performJoinGame = useMutation(api.game.joinGame);
 
   async function onSubmit({ joinCode }: z.infer<typeof formSchema>) {
     try {
-      capture('join_game', {joinCode});
+      setLoading(true);
+
+      if (posthog) {
+        posthog.capture('join_game', {joinCode});
+      }
 
       await performJoinGame({ joinCode })
 
       replace(`/game/${joinCode}`)
     } catch (error) {
       console.error(error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -75,10 +83,10 @@ export default function JoinGame({ defaultJoinCode }: { defaultJoinCode?: string
           <LoadingButton
             variant={"default"}
             className={"w-full"}
-            disabled={form.formState.isLoading || !form.formState.isValid}
-            loading={form.formState.isLoading}
+            disabled={form.formState.isLoading || !form.formState.isValid || isLoading}
+            loading={isLoading}
           >
-            {!form.formState.isLoading && (
+            {!isLoading && (
               <>
                 Join
                 <ArrowRight />
