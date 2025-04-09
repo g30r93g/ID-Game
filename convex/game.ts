@@ -784,3 +784,30 @@ export const getCorrectAnswer = query({
     return scenario.description;
   }
 })
+
+export const submitRating = mutation({
+  args: { joinCode: v.string(), rating: v.number() },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    if (!userId) {
+      throw new Error("User must be authenticated to submit a rating for the game.");
+    }
+
+    // Obtain the game from the join code
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .first();
+    if (!game) {
+      throw new Error("Game does not exist.");
+    }
+
+    // create game rating entry
+    return await ctx.db.insert("gameRating", {
+      gameId: game._id,
+      userId: userId,
+      rating: args.rating
+    })
+  }
+})
