@@ -215,6 +215,7 @@ export function Game({ preloadedGame }: GameProps) {
           />
       case "display-results":
         return <DisplayResultsGamePhase
+          joinCode={game!.joinCode}
           roundId={currentRound._id}
           isHost={userIsHost()}
           isGameFinished={isGameFinished}

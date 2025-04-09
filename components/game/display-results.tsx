@@ -8,22 +8,21 @@ import {useCallback, useEffect, useState} from "react";
 import {Id} from "@/convex/_generated/dataModel";
 import {Card, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {FaFlagCheckered} from "react-icons/fa6";
-import {useRouter} from "next/navigation";
 import {LoadingButton} from "@/components/ui/loading-button";
+import Link from "next/link";
 
 interface DisplayResultsGamePhaseProps {
+  joinCode: string;
   roundId: Id<'gameRounds'>;
   isHost: boolean;
   isGameFinished: () => boolean;
   advanceGame: () => void;
 }
 
-export default function DisplayResultsGamePhase({ roundId, isHost, isGameFinished, advanceGame }: DisplayResultsGamePhaseProps) {
+export default function DisplayResultsGamePhase({ joinCode, roundId, isHost, isGameFinished, advanceGame }: DisplayResultsGamePhaseProps) {
   const markGuessesForRound = useMutation(api.game.markGuessesForRound);
   const results = useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
   const correctAnswer = useQuery(api.game.getCorrectAnswer, { roundId: roundId });
-
-  const { replace } = useRouter();
 
   const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
 
@@ -55,10 +54,12 @@ export default function DisplayResultsGamePhase({ roundId, isHost, isGameFinishe
         </Card>
       ))}
       {isGameFinished() && (
-        <Button onClick={() => { replace('/game') }}>
-          Finish Game
-          <FaFlagCheckered />
-        </Button>
+        <Link href={`/game/${joinCode}/rate`} replace={true}>
+          <Button className={"w-full"}>
+            Finish Game
+            <FaFlagCheckered />
+          </Button>
+        </Link>
       )}
       {isHost && results.length && !isGameFinished() && (
         <LoadingButton loading={isAdvancingGame} disabled={isAdvancingGame} onClick={() => { setIsAdvancingGame(true); advanceGame() }}>

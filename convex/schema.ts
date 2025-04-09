@@ -60,4 +60,10 @@ export default defineSchema({
     playerId: v.id("players"),
     isCorrect: v.optional(v.boolean()),
   }).index('byRound', ['roundId']),
+
+  gameRating: defineTable({
+    gameId: v.id("games"),
+    userId: v.string(),
+    rating: v.number()
+  })
 });
