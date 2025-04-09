@@ -3,7 +3,7 @@ import {v} from "convex/values";
 import {Id} from "./_generated/dataModel";
 
 function generateOTP(length = 6): string {
-  const characters = 'ABCDEGHIKLMNPQRSTUVXYZ0123456789'; // some are missing to reduce ambiguity
+  const characters = 'ACDEGHIKLMNPQRSTUVXYZ0123456789'; // some are missing to reduce ambiguity
 
   let otp = '';
   for (let i = 0; i < length; i++) {
