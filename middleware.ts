@@ -1,12 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import {env} from "@/app/env";
 
-const isPublicRoute = createRouteMatcher(['/', '/auth', '/tos', '/privacy', '/ingest']);
+const isPrivateRoute = createRouteMatcher(['/game']);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isPublicRoute(req)) return;
-
-  await auth.protect();
+  if (isPrivateRoute(req)) {
+    await auth.protect();
+  }
 }, {
   debug: env.NODE_ENV === 'development',
 })
