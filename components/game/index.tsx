@@ -225,8 +225,8 @@ export function Game({ preloadedGame }: GameProps) {
   }
 
   return (
-    <div className="w-full md:w-[75%] items-center flex flex-col gap-4">
-      <div className={"w-full flex flex-row gap-2"}>
+    <div className={"flex flex-col w-full md:w-[75%] h-full max-h-svh gap-4 py-4"}>
+      <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
         {!isGameFinished() && !userIsHost() && (
           <LoadingButton className={"bg-red-200 hover:bg-red-500 text-white w-fit"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
@@ -239,12 +239,14 @@ export function Game({ preloadedGame }: GameProps) {
           </LoadingButton>
         )}
       </div>
-      <Card className={"w-full"}>
-        <CardHeader>
+      <Card className={"grow flex flex-col overflow-y-hidden"}>
+        <CardHeader className={"shrink-0"}>
           <CardTitle>{gamePhaseTitle()}</CardTitle>
           <CardDescription>{gamePhaseDescription()}</CardDescription>
         </CardHeader>
-        <CardContent>{gamePhaseContent()}</CardContent>
+        <CardContent className={"grow overflow-y-auto min-h-0"}>
+          <div className={"flex flex-col h-full"}>{gamePhaseContent()}</div>
+        </CardContent>
       </Card>
     </div>
   )

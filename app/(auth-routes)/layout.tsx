@@ -8,7 +8,7 @@ export default function GameLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className={"min-h-svh max-h-lvh flex items-center justify-center"}>
+    <div className={"min-h-svh max-h-svh flex items-center justify-center"}>
       <ClerkProvider publishableKey={env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY} dynamic>
         <ConvexClerkClientProvider>
           {children}
