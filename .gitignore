@@ -42,3 +42,6 @@ next-env.d.ts
 
 # worktrees
 .worktrees/
+
+# plans
+docs/plans/
