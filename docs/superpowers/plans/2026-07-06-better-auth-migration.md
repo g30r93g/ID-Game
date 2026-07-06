@@ -28,9 +28,11 @@
 ### Task 1: Maintenance page
 
 **Files:**
+
 - Create: `app/maintenance/page.tsx`
 
 **Interfaces:**
+
 - Produces: route `/maintenance` rendering a standalone branded message page. Task 2's proxy rewrites to this path.
 
 - [ ] **Step 1: Create the page**
@@ -38,7 +40,13 @@
 ```tsx
 // app/maintenance/page.tsx
 import type { Metadata } from "next";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Back soon — The ID Game",
@@ -84,11 +92,13 @@ git commit -m "feat: add maintenance page"
 ### Task 2: Maintenance gate in proxy + env vars
 
 **Files:**
+
 - Modify: `proxy.ts`
 - Modify: `app/env.ts`
 - Modify: `README.md:9-23` (env var docs)
 
 **Interfaces:**
+
 - Consumes: `/maintenance` route from Task 1.
 - Produces: env vars `MAINTENANCE_MODE` (`"true"`/`"false"`, optional) and `MAINTENANCE_BYPASS_SECRET` (optional string) in `env`; a `maintenanceResponse(req)` gate that Task 8 re-uses verbatim when the proxy is rewritten for Better Auth. Bypass cookie name: `maintenance-bypass`.
 
@@ -113,13 +123,13 @@ In `runtimeEnv:` add:
 Replace the whole file with:
 
 ```ts
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse, type NextRequest } from 'next/server';
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/app/env";
 
-const isPrivateRoute = createRouteMatcher(['/game']);
+const isPrivateRoute = createRouteMatcher(["/game"]);
 
-const BYPASS_COOKIE = 'maintenance-bypass';
+const BYPASS_COOKIE = "maintenance-bypass";
 
 /**
  * Returns a response if the request should be intercepted by maintenance
@@ -127,37 +137,46 @@ const BYPASS_COOKIE = 'maintenance-bypass';
  * ?bypass=<MAINTENANCE_BYPASS_SECRET> sets a cookie that skips the gate.
  */
 export function maintenanceResponse(req: NextRequest): NextResponse | null {
-  if (env.MAINTENANCE_MODE !== 'true') return null;
+  if (env.MAINTENANCE_MODE !== "true") return null;
 
   const url = req.nextUrl;
   const secret = env.MAINTENANCE_BYPASS_SECRET;
 
-  if (secret && url.searchParams.get('bypass') === secret) {
+  if (secret && url.searchParams.get("bypass") === secret) {
     const clean = new URL(url.pathname, req.url);
     const response = NextResponse.redirect(clean);
-    response.cookies.set(BYPASS_COOKIE, secret, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
+    response.cookies.set(BYPASS_COOKIE, secret, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    });
     return response;
   }
 
-  const hasBypass = secret !== undefined && req.cookies.get(BYPASS_COOKIE)?.value === secret;
-  if (hasBypass || url.pathname === '/maintenance') return null;
+  const hasBypass =
+    secret !== undefined && req.cookies.get(BYPASS_COOKIE)?.value === secret;
+  if (hasBypass || url.pathname === "/maintenance") return null;
 
-  return NextResponse.rewrite(new URL('/maintenance', req.url), {
+  return NextResponse.rewrite(new URL("/maintenance", req.url), {
     status: 503,
-    headers: { 'Retry-After': '3600' },
+    headers: { "Retry-After": "3600" },
   });
 }
 
-export default clerkMiddleware(async (auth, req) => {
-  const maintenance = maintenanceResponse(req);
-  if (maintenance) return maintenance;
+export default clerkMiddleware(
+  async (auth, req) => {
+    const maintenance = maintenanceResponse(req);
+    if (maintenance) return maintenance;
 
-  if (isPrivateRoute(req)) {
-    await auth.protect();
-  }
-}, {
-  debug: env.NODE_ENV === 'development',
-})
+    if (isPrivateRoute(req)) {
+      await auth.protect();
+    }
+  },
+  {
+    debug: env.NODE_ENV === "development",
+  },
+);
 
 export const config = {
   // The following matcher runs middleware on all routes except static assets.
@@ -213,6 +232,7 @@ Also add both vars to Vercel now (dormant): `MAINTENANCE_MODE=false`, `MAINTENAN
 ### Task 3: Install deps and scaffold the Better Auth Convex component (local install)
 
 **Files:**
+
 - Modify: `package.json` (via pnpm)
 - Create: `convex/convex.config.ts`
 - Create: `convex/betterAuth/convex.config.ts`
@@ -222,6 +242,7 @@ Also add both vars to Vercel now (dormant): `MAINTENANCE_MODE=false`, `MAINTENAN
 - Create: `convex/auth.ts`
 
 **Interfaces:**
+
 - Produces: `authComponent` (component client), `createAuthOptions(ctx)`, `createAuth(ctx)`, and query `api.auth.getCurrentUser` (returns `{ id: string, name: string | null, email: string, image: string | null } | null`) — all from `convex/auth.ts`. Every later task that touches Convex auth imports from here.
 - Consumes: nothing from earlier tasks (independent of Tasks 1–2).
 
@@ -293,7 +314,9 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         // timing side-channels on whether an account exists.
         sendVerificationOTP: async ({ email, otp }) => {
           await resend.sendEmail(requireActionCtx(ctx), {
-            from: process.env.AUTH_EMAIL_FROM ?? "The ID Game <onboarding@resend.dev>",
+            from:
+              process.env.AUTH_EMAIL_FROM ??
+              "The ID Game <onboarding@resend.dev>",
             to: email,
             subject: `${otp} is your ID Game sign-in code`,
             html: `<p>Your sign-in code is <strong>${otp}</strong>.</p><p>It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
@@ -337,12 +360,12 @@ Note: this imports `./auth.config`, which is rewritten in Task 4 — write Task 
 - [ ] **Step 5: Schema-gen shim — `convex/betterAuth/auth.ts`**
 
 ```ts
-import { createAuth } from '../auth'
+import { createAuth } from "../auth";
 
 // Export a static instance for Better Auth schema generation.
 // This file must contain ONLY this export — importing it at runtime
 // errors due to missing environment variables.
-export const auth = createAuth({} as any)
+export const auth = createAuth({} as any);
 ```
 
 - [ ] **Step 6: Generate the schema**
@@ -416,10 +439,12 @@ git commit -m "feat: add Better Auth Convex component (local install) with passk
 ### Task 4: Convex auth config + HTTP routes
 
 **Files:**
+
 - Modify: `convex/auth.config.ts` (replace contents)
 - Create: `convex/http.ts`
 
 **Interfaces:**
+
 - Consumes: `authComponent`, `createAuth` from `convex/auth.ts` (Task 3).
 - Produces: Convex deployment trusts Better Auth JWTs; Better Auth HTTP endpoints served on the Convex site URL.
 
@@ -477,6 +502,7 @@ git commit -m "feat: switch Convex auth config to Better Auth and register auth 
 ### Task 5: Next.js auth wiring (client, server helpers, route handler, provider)
 
 **Files:**
+
 - Create: `lib/auth-client.ts`
 - Create: `lib/auth-server.ts`
 - Create: `app/api/auth/[...all]/route.ts`
@@ -484,6 +510,7 @@ git commit -m "feat: switch Convex auth config to Better Auth and register auth 
 - Modify: `app/env.ts` (add `NEXT_PUBLIC_CONVEX_SITE_URL`, `NEXT_PUBLIC_SITE_URL`)
 
 **Interfaces:**
+
 - Consumes: nothing app-side yet (Clerk still wired up — both stacks coexist after this task).
 - Produces: `authClient` (with `authClient.useSession()`, `authClient.signIn.passkey()`, `authClient.signIn.emailOtp()`, `authClient.emailOtp.sendVerificationOtp()`, `authClient.passkey.addPasskey()`, `authClient.passkey.listUserPasskeys()`, `authClient.signOut()`) from `@/lib/auth-client`; `getToken()`, `isAuthenticated()`, `fetchAuthQuery(fn, args)`, `fetchAuthMutation(fn, args)`, `preloadAuthQuery(fn, args)`, `handler` from `@/lib/auth-server`; `<ConvexClientProvider initialToken?>` from `@/providers/ConvexClientProvider`.
 
@@ -602,12 +629,14 @@ git commit -m "feat: wire Better Auth client, server helpers, route handler, and
 ### Task 6: New sign-in page (passkey + email OTP); retire sign-up and sso-callback
 
 **Files:**
+
 - Rewrite: `app/(auth-routes)/sign-in/[[...sign-in]]/page.tsx`
 - Delete: `app/(auth-routes)/sign-up/[[...sign-up]]/page.tsx` (directory)
 - Create: `app/(auth-routes)/sign-up/page.tsx` (redirect stub — external links/bookmarks)
 - Delete: `app/(auth-routes)/sso-callback/page.tsx` (directory)
 
 **Interfaces:**
+
 - Consumes: `authClient` from `@/lib/auth-client` (Task 5).
 - Produces: `/sign-in` — the single auth page. `/sign-up` 307s to `/sign-in`. Redirects to `/game` on success.
 
@@ -616,12 +645,12 @@ git commit -m "feat: wire Better Auth client, server helpers, route handler, and
 Replace the entire contents of `app/(auth-routes)/sign-in/[[...sign-in]]/page.tsx` with:
 
 ```tsx
-'use client'
+"use client";
 
-import * as React from 'react'
-import { useRouter } from 'next/navigation'
-import { authClient } from '@/lib/auth-client'
-import { Button } from '@/components/ui/button'
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -629,134 +658,151 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Icons } from '@/components/ui/icons'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
-import { Fingerprint } from 'lucide-react'
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Icons } from "@/components/ui/icons";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import { Fingerprint } from "lucide-react";
 
-type Step = 'start' | 'otp' | 'add-passkey'
+type Step = "start" | "otp" | "add-passkey";
 
-const RESEND_SECONDS = 30
+const RESEND_SECONDS = 30;
 
 export default function SignInPage() {
-  const router = useRouter()
+  const router = useRouter();
 
-  const [step, setStep] = React.useState<Step>('start')
-  const [email, setEmail] = React.useState('')
-  const [name, setName] = React.useState('')
-  const [code, setCode] = React.useState('')
-  const [error, setError] = React.useState<string | null>(null)
-  const [busy, setBusy] = React.useState(false)
-  const [resendCountdown, setResendCountdown] = React.useState(0)
+  const [step, setStep] = React.useState<Step>("start");
+  const [email, setEmail] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [code, setCode] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [resendCountdown, setResendCountdown] = React.useState(0);
 
   React.useEffect(() => {
-    if (resendCountdown <= 0) return
+    if (resendCountdown <= 0) return;
     const timer = setInterval(() => {
-      setResendCountdown((seconds) => Math.max(0, seconds - 1))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [resendCountdown])
+      setResendCountdown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCountdown]);
 
   // Conditional-UI passkey autofill: offer stored passkeys from the email
   // field's autocomplete dropdown on supporting browsers.
   React.useEffect(() => {
     if (
-      typeof window === 'undefined' ||
+      typeof window === "undefined" ||
       !window.PublicKeyCredential?.isConditionalMediationAvailable
-    ) return
-    let cancelled = false
-    void PublicKeyCredential.isConditionalMediationAvailable().then((available) => {
-      if (!available || cancelled) return
-      void authClient.signIn.passkey({
-        autoFill: true,
-        fetchOptions: {
-          onSuccess: () => router.push('/game'),
-        },
-      })
-    })
-    return () => { cancelled = true }
-  }, [router])
+    )
+      return;
+    let cancelled = false;
+    void PublicKeyCredential.isConditionalMediationAvailable().then(
+      (available) => {
+        if (!available || cancelled) return;
+        void authClient.signIn.passkey({
+          autoFill: true,
+          fetchOptions: {
+            onSuccess: () => router.push("/game"),
+          },
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handlePasskey = async () => {
-    setError(null)
-    setBusy(true)
-    const { error } = await authClient.signIn.passkey()
-    setBusy(false)
+    setError(null);
+    setBusy(true);
+    const { error } = await authClient.signIn.passkey();
+    setBusy(false);
     if (error) {
-      setError(error.message ?? 'Passkey sign-in failed. Try emailing yourself a code instead.')
-      return
+      setError(
+        error.message ??
+          "Passkey sign-in failed. Try emailing yourself a code instead.",
+      );
+      return;
     }
-    router.push('/game')
-  }
+    router.push("/game");
+  };
 
   const sendCode = async () => {
-    setError(null)
-    setBusy(true)
+    setError(null);
+    setBusy(true);
     const { error } = await authClient.emailOtp.sendVerificationOtp({
       email: email.trim().toLowerCase(),
-      type: 'sign-in',
-    })
-    setBusy(false)
+      type: "sign-in",
+    });
+    setBusy(false);
     if (error) {
-      setError(error.message ?? 'Could not send the code. Check the email address and try again.')
-      return
+      setError(
+        error.message ??
+          "Could not send the code. Check the email address and try again.",
+      );
+      return;
     }
-    setCode('')
-    setResendCountdown(RESEND_SECONDS)
-    setStep('otp')
-  }
+    setCode("");
+    setResendCountdown(RESEND_SECONDS);
+    setStep("otp");
+  };
 
   const handleStart = async (event: React.FormEvent) => {
-    event.preventDefault()
-    await sendCode()
-  }
+    event.preventDefault();
+    await sendCode();
+  };
 
   const verifyCode = async (value: string) => {
-    setError(null)
-    setBusy(true)
-    const trimmedName = name.trim()
+    setError(null);
+    setBusy(true);
+    const trimmedName = name.trim();
     const { error } = await authClient.signIn.emailOtp({
       email: email.trim().toLowerCase(),
       otp: value,
       // Only used when this OTP registers a brand-new account.
       ...(trimmedName ? { name: trimmedName } : {}),
-    })
-    setBusy(false)
+    });
+    setBusy(false);
     if (error) {
-      setError(error.message ?? 'That code didn’t work. Try again or resend.')
-      return
+      setError(error.message ?? "That code didn’t work. Try again or resend.");
+      return;
     }
     // Signed in — nudge towards a passkey if they don't have one yet.
-    const { data: passkeys } = await authClient.passkey.listUserPasskeys()
+    const { data: passkeys } = await authClient.passkey.listUserPasskeys();
     if (!passkeys || passkeys.length === 0) {
-      setStep('add-passkey')
+      setStep("add-passkey");
     } else {
-      router.push('/game')
+      router.push("/game");
     }
-  }
+  };
 
   const handleCodeSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    await verifyCode(code)
-  }
+    event.preventDefault();
+    await verifyCode(code);
+  };
 
   const handleAddPasskey = async () => {
-    setError(null)
-    setBusy(true)
-    const result = await authClient.passkey.addPasskey()
-    setBusy(false)
+    setError(null);
+    setBusy(true);
+    const result = await authClient.passkey.addPasskey();
+    setBusy(false);
     if (result?.error) {
-      setError(result.error.message ?? 'Could not create a passkey on this device.')
-      return
+      setError(
+        result.error.message ?? "Could not create a passkey on this device.",
+      );
+      return;
     }
-    router.push('/game')
-  }
+    router.push("/game");
+  };
 
   return (
     <div className="grid w-full grow items-center px-4 sm:justify-center">
-      {step === 'start' && (
+      {step === "start" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleStart}>
             <CardHeader>
@@ -790,8 +836,10 @@ export default function SignInPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="name">
-                  Display name{' '}
-                  <span className="text-muted-foreground font-normal">(first time playing?)</span>
+                  Display name{" "}
+                  <span className="text-muted-foreground font-normal">
+                    (first time playing?)
+                  </span>
                 </Label>
                 <Input
                   id="name"
@@ -801,12 +849,18 @@ export default function SignInPage() {
                   onChange={(event) => setName(event.target.value)}
                 />
               </div>
-              {error && <p className="block text-sm text-destructive">{error}</p>}
+              {error && (
+                <p className="block text-sm text-destructive">{error}</p>
+              )}
             </CardContent>
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={busy}>
-                  {busy ? <Icons.spinner className="size-4 animate-spin" /> : 'Email me a code'}
+                  {busy ? (
+                    <Icons.spinner className="size-4 animate-spin" />
+                  ) : (
+                    "Email me a code"
+                  )}
                 </Button>
               </div>
             </CardFooter>
@@ -814,12 +868,14 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === 'otp' && (
+      {step === "otp" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleCodeSubmit}>
             <CardHeader>
               <CardTitle>Check your email</CardTitle>
-              <CardDescription>Enter the sign-in code sent to your email</CardDescription>
+              <CardDescription>
+                Enter the sign-in code sent to your email
+              </CardDescription>
               <p className="text-sm text-muted-foreground">{email}</p>
             </CardHeader>
             <CardContent className="grid gap-y-4">
@@ -829,8 +885,8 @@ export default function SignInPage() {
                     maxLength={6}
                     value={code}
                     onChange={(value) => {
-                      setCode(value)
-                      if (value.length === 6) void verifyCode(value)
+                      setCode(value);
+                      if (value.length === 6) void verifyCode(value);
                     }}
                   >
                     <InputOTPGroup>
@@ -844,7 +900,9 @@ export default function SignInPage() {
                   </InputOTP>
                 </div>
                 {error && (
-                  <p className="block text-center text-sm text-destructive">{error}</p>
+                  <p className="block text-center text-sm text-destructive">
+                    {error}
+                  </p>
                 )}
                 {resendCountdown > 0 ? (
                   <Button variant="link" size="sm" type="button" disabled>
@@ -867,13 +925,20 @@ export default function SignInPage() {
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={busy}>
-                  {busy ? <Icons.spinner className="size-4 animate-spin" /> : 'Continue'}
+                  {busy ? (
+                    <Icons.spinner className="size-4 animate-spin" />
+                  ) : (
+                    "Continue"
+                  )}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="link"
-                  onClick={() => { setStep('start'); setError(null) }}
+                  onClick={() => {
+                    setStep("start");
+                    setError(null);
+                  }}
                 >
                   Use a different email
                 </Button>
@@ -883,12 +948,13 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === 'add-passkey' && (
+      {step === "add-passkey" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
             <CardTitle>Add a passkey</CardTitle>
             <CardDescription>
-              Sign in next time with your fingerprint, face, or device PIN — no codes needed.
+              Sign in next time with your fingerprint, face, or device PIN — no
+              codes needed.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-y-4">
@@ -897,7 +963,9 @@ export default function SignInPage() {
           <CardFooter>
             <div className="grid w-full gap-y-4">
               <Button type="button" disabled={busy} onClick={handleAddPasskey}>
-                {busy ? <Icons.spinner className="size-4 animate-spin" /> : (
+                {busy ? (
+                  <Icons.spinner className="size-4 animate-spin" />
+                ) : (
                   <>
                     <Fingerprint className="mr-2 size-4" />
                     Create passkey
@@ -908,7 +976,7 @@ export default function SignInPage() {
                 type="button"
                 size="sm"
                 variant="link"
-                onClick={() => router.push('/game')}
+                onClick={() => router.push("/game")}
               >
                 Maybe later
               </Button>
@@ -917,7 +985,7 @@ export default function SignInPage() {
         </Card>
       )}
     </div>
-  )
+  );
 }
 ```
 
@@ -945,6 +1013,7 @@ pnpm lint && pnpm build
 ```
 
 Expected: clean build (nothing imports the deleted pages). Then manually with `pnpm dev` + `npx convex dev` running:
+
 1. Visit `http://localhost:3000/sign-in` — page renders, no console errors.
 2. Enter your real email + a display name → "Email me a code" → receive OTP (Resend dev: check the Resend dashboard logs) → enter code → lands on "Add a passkey" step.
 3. "Create passkey" with the browser's virtual authenticator (Chrome DevTools → WebAuthn) or "Maybe later" → lands on `/game`.
@@ -963,6 +1032,7 @@ git commit -m "feat: passkey + email OTP sign-in page; retire sign-up and sso-ca
 ### Task 7: Swap app components and server pages off Clerk
 
 **Files:**
+
 - Modify: `components/user-tray.tsx`
 - Modify: `components/game/lobby/player-card.tsx`
 - Modify: `app/(auth-routes)/layout.tsx`
@@ -971,6 +1041,7 @@ git commit -m "feat: passkey + email OTP sign-in page; retire sign-up and sso-ca
 - Delete: `providers/ConvexClerkClientProvider.tsx`
 
 **Interfaces:**
+
 - Consumes: `authClient` (Task 5), `getToken`/`fetchAuthQuery`/`fetchAuthMutation`/`preloadAuthQuery` from `@/lib/auth-server` (Task 5), `ConvexClientProvider` (Task 5), `api.auth.getCurrentUser` (Task 3).
 - Produces: no Clerk imports remain outside `proxy.ts` (Task 8) and `app/env.ts`/`package.json` (Task 10).
 
@@ -981,11 +1052,11 @@ Replace the imports and hook usage (full new file):
 ```tsx
 "use client";
 
-import {LogOut} from "lucide-react";
-import {authClient} from "@/lib/auth-client";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Button} from "@/components/ui/button";
-import {cn} from "@/lib/utils";
+import { LogOut } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * A frosted-glass identity bar shown above the game card: greeting + avatar on
@@ -996,7 +1067,7 @@ import {cn} from "@/lib/utils";
  * card's top edge).
  */
 export function UserTray({ className }: { className?: string }) {
-  const {data: session, isPending} = authClient.useSession();
+  const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
 
   const firstName = user?.name?.trim().split(/\s+/)[0];
@@ -1005,13 +1076,24 @@ export function UserTray({ className }: { className?: string }) {
   const greeting = firstName ? `Hey ${firstName} 👋` : "Welcome 👋";
 
   return (
-    <div className={cn("flex items-center justify-between gap-3 rounded-t-2xl px-3 py-2 backdrop-blur-sm bg-[rgba(248,248,248,0.9)] dark:bg-[rgba(19,19,22,0.9)] shadow-[0_0_0_0.5px_rgba(255,255,255,0.9)_inset,0_0_0_0.5px_rgba(19,19,22,0.15),0_2px_3px_0_rgba(0,0,0,0.04),0_4px_6px_0_rgba(34,42,53,0.04),0_1px_1px_0_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_0.5px_rgba(247,247,248,0.15)_inset,0_0_0_0.5px_rgba(19,19,22,0.8),0_2px_3px_0_rgba(0,0,0,0.16),0_4px_6px_0_rgba(34,42,53,0.16),0_1px_1px_0_rgba(0,0,0,0.16)]", className)}>
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-t-2xl px-3 py-2 backdrop-blur-sm bg-[rgba(248,248,248,0.9)] dark:bg-[rgba(19,19,22,0.9)] shadow-[0_0_0_0.5px_rgba(255,255,255,0.9)_inset,0_0_0_0.5px_rgba(19,19,22,0.15),0_2px_3px_0_rgba(0,0,0,0.04),0_4px_6px_0_rgba(34,42,53,0.04),0_1px_1px_0_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_0.5px_rgba(247,247,248,0.15)_inset,0_0_0_0.5px_rgba(19,19,22,0.8),0_2px_3px_0_rgba(0,0,0,0.16),0_4px_6px_0_rgba(34,42,53,0.16),0_1px_1px_0_rgba(0,0,0,0.16)]",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-center gap-2.5">
         <Avatar className="size-7">
-          {user?.image ? <AvatarImage src={user.image} alt={firstName ?? "You"}/> : null}
-          <AvatarFallback className="text-xs font-medium">{isPending ? "" : initial}</AvatarFallback>
+          {user?.image ? (
+            <AvatarImage src={user.image} alt={firstName ?? "You"} />
+          ) : null}
+          <AvatarFallback className="text-xs font-medium">
+            {isPending ? "" : initial}
+          </AvatarFallback>
         </Avatar>
-        <span className="truncate text-sm font-medium">{isPending ? " " : greeting}</span>
+        <span className="truncate text-sm font-medium">
+          {isPending ? " " : greeting}
+        </span>
       </div>
       <Button
         variant="ghost"
@@ -1019,11 +1101,15 @@ export function UserTray({ className }: { className?: string }) {
         className="shrink-0 text-muted-foreground"
         onClick={() => {
           void authClient.signOut({
-            fetchOptions: { onSuccess: () => { window.location.href = "/sign-in"; } },
+            fetchOptions: {
+              onSuccess: () => {
+                window.location.href = "/sign-in";
+              },
+            },
           });
         }}
       >
-        <LogOut/>
+        <LogOut />
         Sign out
       </Button>
     </div>
@@ -1036,24 +1122,24 @@ export function UserTray({ className }: { className?: string }) {
 Replace line 5 (`import { useAuth } from "@clerk/nextjs"`) with:
 
 ```ts
-import { authClient } from "@/lib/auth-client"
+import { authClient } from "@/lib/auth-client";
 ```
 
 Replace lines 14–25 (the `useAuth` call and `currentUserIsHostPlayer`) with:
 
 ```ts
-  const { data: session } = authClient.useSession();
+const { data: session } = authClient.useSession();
 
-  // const updatePlayerDisplayName = useCallback(async (value: string) => {
-  // }, [])
+// const updatePlayerDisplayName = useCallback(async (value: string) => {
+// }, [])
 
-  const currentUserIsHostPlayer = () => {
-    const userId = session?.user.id;
+const currentUserIsHostPlayer = () => {
+  const userId = session?.user.id;
 
-    if (!userId) return false;
+  if (!userId) return false;
 
-    return playerUserId === userId;
-  }
+  return playerUserId === userId;
+};
 ```
 
 - [ ] **Step 3: `app/(auth-routes)/layout.tsx` — swap providers**
@@ -1061,8 +1147,8 @@ Replace lines 14–25 (the `useAuth` call and `currentUserIsHostPlayer`) with:
 Full new file:
 
 ```tsx
-import {getToken} from "@/lib/auth-server";
-import {ConvexClientProvider} from "@/providers/ConvexClientProvider";
+import { getToken } from "@/lib/auth-server";
+import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
 
 export default async function GameLayout({
   children,
@@ -1077,7 +1163,7 @@ export default async function GameLayout({
         {children}
       </ConvexClientProvider>
     </div>
-  )
+  );
 }
 ```
 
@@ -1086,41 +1172,52 @@ export default async function GameLayout({
 Full new file:
 
 ```tsx
-import {Game} from "@/components/game";
+import { Game } from "@/components/game";
 import { api } from "@/convex/_generated/api";
-import {redirect} from "next/navigation";
-import {fetchAuthMutation, fetchAuthQuery, getToken, preloadAuthQuery} from "@/lib/auth-server";
+import { redirect } from "next/navigation";
+import {
+  fetchAuthMutation,
+  fetchAuthQuery,
+  getToken,
+  preloadAuthQuery,
+} from "@/lib/auth-server";
 import PostHogClient from "@/lib/posthog";
 
-export default async function GamePage({ params }: { params?: Promise<{ code: string }> }) {
+export default async function GamePage({
+  params,
+}: {
+  params?: Promise<{ code: string }>;
+}) {
   const token = await getToken();
   if (!token) {
-    console.error("No authentication token found")
-    redirect('/game');
+    console.error("No authentication token found");
+    redirect("/game");
   }
 
   const user = await fetchAuthQuery(api.auth.getCurrentUser, {});
   if (!user) {
-    console.error("No user is found")
-    redirect('/game');
+    console.error("No user is found");
+    redirect("/game");
   }
 
   // get join code
   const joinCode = (await params)?.code;
 
   if (joinCode === null || joinCode === undefined) {
-    console.log("joinCode", joinCode)
-    return <p>No Join Code Supplied</p>
+    console.log("joinCode", joinCode);
+    return <p>No Join Code Supplied</p>;
   }
   if (joinCode.length !== 6) {
     console.error("The join code was invalid");
-    redirect('/game')
+    redirect("/game");
   }
 
   const posthog = PostHogClient();
 
   // Ensure the current user is a player, otherwise join them
-  const isUserPlayer = await fetchAuthQuery(api.game.isUserPlayer, { joinCode });
+  const isUserPlayer = await fetchAuthQuery(api.game.isUserPlayer, {
+    joinCode,
+  });
   if (!isUserPlayer) {
     try {
       if (posthog) {
@@ -1128,23 +1225,23 @@ export default async function GamePage({ params }: { params?: Promise<{ code: st
           distinctId: user.id,
           event: "game_join",
           properties: {
-            joinCode
-          }
+            joinCode,
+          },
         });
       }
 
-      await fetchAuthMutation(api.game.joinGame, {joinCode})
+      await fetchAuthMutation(api.game.joinGame, { joinCode });
     } catch {
-      redirect('/game');
+      redirect("/game");
     }
   }
 
   // get game data
   const preloadedGame = await preloadAuthQuery(api.game.fetchGameByJoinCode, {
-    joinCode
+    joinCode,
   });
 
-  return <Game preloadedGame={preloadedGame} />
+  return <Game preloadedGame={preloadedGame} />;
 }
 ```
 
@@ -1180,20 +1277,22 @@ git commit -m "feat: swap user tray, player card, game layout and page to Better
 ### Task 8: Rewrite `proxy.ts` for Better Auth
 
 **Files:**
+
 - Modify: `proxy.ts`
 
 **Interfaces:**
+
 - Consumes: `maintenanceResponse` logic from Task 2 (kept verbatim); `getSessionCookie` from `better-auth/cookies`.
 - Produces: `/game*` gated by session-cookie presence (optimistic — authoritative checks stay in Convex functions), everything else public.
 
 - [ ] **Step 1: Replace the file**
 
 ```ts
-import { NextResponse, type NextRequest } from 'next/server';
-import { getSessionCookie } from 'better-auth/cookies';
+import { NextResponse, type NextRequest } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 import { env } from "@/app/env";
 
-const BYPASS_COOKIE = 'maintenance-bypass';
+const BYPASS_COOKIE = "maintenance-bypass";
 
 /**
  * Returns a response if the request should be intercepted by maintenance
@@ -1201,24 +1300,30 @@ const BYPASS_COOKIE = 'maintenance-bypass';
  * ?bypass=<MAINTENANCE_BYPASS_SECRET> sets a cookie that skips the gate.
  */
 export function maintenanceResponse(req: NextRequest): NextResponse | null {
-  if (env.MAINTENANCE_MODE !== 'true') return null;
+  if (env.MAINTENANCE_MODE !== "true") return null;
 
   const url = req.nextUrl;
   const secret = env.MAINTENANCE_BYPASS_SECRET;
 
-  if (secret && url.searchParams.get('bypass') === secret) {
+  if (secret && url.searchParams.get("bypass") === secret) {
     const clean = new URL(url.pathname, req.url);
     const response = NextResponse.redirect(clean);
-    response.cookies.set(BYPASS_COOKIE, secret, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
+    response.cookies.set(BYPASS_COOKIE, secret, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    });
     return response;
   }
 
-  const hasBypass = secret !== undefined && req.cookies.get(BYPASS_COOKIE)?.value === secret;
-  if (hasBypass || url.pathname === '/maintenance') return null;
+  const hasBypass =
+    secret !== undefined && req.cookies.get(BYPASS_COOKIE)?.value === secret;
+  if (hasBypass || url.pathname === "/maintenance") return null;
 
-  return NextResponse.rewrite(new URL('/maintenance', req.url), {
+  return NextResponse.rewrite(new URL("/maintenance", req.url), {
     status: 503,
-    headers: { 'Retry-After': '3600' },
+    headers: { "Retry-After": "3600" },
   });
 }
 
@@ -1228,10 +1333,10 @@ export default function proxy(req: NextRequest) {
 
   // Optimistic gate: cookie presence only. Authoritative auth checks live in
   // the Convex functions via ctx.auth.getUserIdentity().
-  if (req.nextUrl.pathname.startsWith('/game')) {
+  if (req.nextUrl.pathname.startsWith("/game")) {
     const sessionCookie = getSessionCookie(req);
     if (!sessionCookie) {
-      return NextResponse.redirect(new URL('/sign-in', req.url));
+      return NextResponse.redirect(new URL("/sign-in", req.url));
     }
   }
 
@@ -1269,9 +1374,11 @@ git commit -m "feat: replace Clerk middleware with Better Auth session gate in p
 ### Task 9: Switch Convex game functions from `tokenIdentifier` to `subject`
 
 **Files:**
+
 - Modify: `convex/game.ts`
 
 **Interfaces:**
+
 - Consumes: `authComponent` from `convex/auth.ts` (Task 3).
 - Produces: all stored/compared user ids are Better Auth user ids (`identity.subject`); `displayName` sourced from the Better Auth user record.
 
@@ -1281,9 +1388,9 @@ There are 12 straight swaps. Eight are this exact pattern (lines 19, 189, 447, 4
 
 ```ts
 // old
-const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
 // new
-const userId = (await ctx.auth.getUserIdentity())?.subject
+const userId = (await ctx.auth.getUserIdentity())?.subject;
 ```
 
 Four are field accesses on an already-fetched identity (lines 63, 134, 148-context line 157):
@@ -1314,24 +1421,39 @@ import { authComponent } from "./auth";
 In `createGame` (around lines 91–100), the insert block currently reads:
 
 ```ts
-    const gameId = await ctx.db.insert("games", { joinCode: generateOTP(), totalRounds: args.numberOfRounds, isOpen: true, createdBy: user.subject });
-    await ctx.db.insert("players", { userId: user.subject, gameId: gameId, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
+const gameId = await ctx.db.insert("games", {
+  joinCode: generateOTP(),
+  totalRounds: args.numberOfRounds,
+  isOpen: true,
+  createdBy: user.subject,
+});
+await ctx.db.insert("players", {
+  userId: user.subject,
+  gameId: gameId,
+  lastAlive: Date.now(),
+  displayName: user.name ?? `Unknown Player`,
+});
 ```
 
 The JWT no longer carries a `name` claim reliably — fetch the auth user instead. Above the `games` insert add:
 
 ```ts
-    const authUser = await authComponent.safeGetAuthUser(ctx);
-    const displayName = authUser?.name?.trim() || "Unknown Player";
+const authUser = await authComponent.safeGetAuthUser(ctx);
+const displayName = authUser?.name?.trim() || "Unknown Player";
 ```
 
 and change the players insert to use it:
 
 ```ts
-    await ctx.db.insert("players", { userId: user.subject, gameId: gameId, lastAlive: Date.now(), displayName })
+await ctx.db.insert("players", {
+  userId: user.subject,
+  gameId: gameId,
+  lastAlive: Date.now(),
+  displayName,
+});
 ```
 
-In `joinGame` (around lines 134–139) apply the same change: add the same two `authUser`/`displayName` lines before the players insert and replace `displayName: user.name ?? `Unknown Player`` with `displayName`.
+In `joinGame` (around lines 134–139) apply the same change: add the same two `authUser`/`displayName` lines before the players insert and replace `displayName: user.name ?? `Unknown Player``with`displayName`.
 
 - [ ] **Step 3: Verify**
 
@@ -1354,6 +1476,7 @@ git commit -m "feat: key game data on Better Auth user id (identity.subject)"
 ### Task 10: Remove Clerk dependency, env vars, and update copy
 
 **Files:**
+
 - Modify: `app/env.ts` (remove Clerk entries)
 - Modify: `package.json` (remove `@clerk/nextjs`)
 - Modify: `app/privacy/page.tsx:13,15,20,34,39`
@@ -1361,8 +1484,9 @@ git commit -m "feat: key game data on Better Auth user id (identity.subject)"
 - Modify: `README.md:14-17,31`
 
 **Interfaces:**
+
 - Consumes: nothing new.
-- Produces: a Clerk-free build. (The Clerk *dashboard* instance stays alive until post-cut-over; `CLERK_SECRET_KEY` remains available in the shell for the import script — it is no longer read by the app.)
+- Produces: a Clerk-free build. (The Clerk _dashboard_ instance stays alive until post-cut-over; `CLERK_SECRET_KEY` remains available in the shell for the import script — it is no longer read by the app.)
 
 - [ ] **Step 1: `app/env.ts` — delete Clerk entries**
 
@@ -1436,12 +1560,14 @@ git commit -m "chore: remove Clerk dependency, env vars, and update legal/README
 ### Task 11: Migration machinery — `userIdMap`, import action, remap migrations
 
 **Files:**
+
 - Modify: `convex/schema.ts` (add `userIdMap` table)
 - Create: `convex/clerkImport.ts`
 - Create: `convex/migrations.ts`
 - Create: `scripts/migrate-clerk-users.mjs`
 
 **Interfaces:**
+
 - Consumes: `createAuth` from `convex/auth.ts` (Task 3).
 - Produces: `internal.clerkImport.importUsers` action (args: `{ users: Array<{ clerkUserId, email, name?, createdAt? }> }`, returns count); migrations `migrations:remapPlayers`, `migrations:remapGames`, `migrations:remapRatings`; runnable Node script `scripts/migrate-clerk-users.mjs [--prod]`.
 
@@ -1523,7 +1649,9 @@ export const recordMappings = internalMutation({
         .withIndex("byClerkId", (q) => q.eq("clerkUserId", m.clerkUserId))
         .unique();
       if (existing) {
-        await ctx.db.patch(existing._id, { betterAuthUserId: m.betterAuthUserId });
+        await ctx.db.patch(existing._id, {
+          betterAuthUserId: m.betterAuthUserId,
+        });
       } else {
         await ctx.db.insert("userIdMap", m);
       }
@@ -1545,7 +1673,10 @@ import { MutationCtx } from "./_generated/server";
 export const migrations = new Migrations<DataModel>(components.migrations);
 export const run = migrations.runner();
 
-async function lookupNewUserId(ctx: MutationCtx, storedUserId: string): Promise<string | null> {
+async function lookupNewUserId(
+  ctx: MutationCtx,
+  storedUserId: string,
+): Promise<string | null> {
   const clerkUserId = storedUserId.split("|").pop()!;
   const mapping = await ctx.db
     .query("userIdMap")
@@ -1609,14 +1740,22 @@ for (let offset = 0; ; offset += 500) {
   const page = await res.json();
   for (const u of page) {
     const primaryEmail =
-      u.email_addresses?.find((e) => e.id === u.primary_email_address_id)?.email_address ??
-      u.email_addresses?.[0]?.email_address;
+      u.email_addresses?.find((e) => e.id === u.primary_email_address_id)
+        ?.email_address ?? u.email_addresses?.[0]?.email_address;
     if (!primaryEmail) {
       console.warn(`skipping ${u.id}: no email address`);
       continue;
     }
-    const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || undefined;
-    users.push({ clerkUserId: u.id, email: primaryEmail, name, createdAt: u.created_at });
+    const name =
+      [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+      u.username ||
+      undefined;
+    users.push({
+      clerkUserId: u.id,
+      email: primaryEmail,
+      name,
+      createdAt: u.created_at,
+    });
   }
   if (page.length < 500) break;
 }
@@ -1625,7 +1764,12 @@ console.log(`Fetched ${users.length} users from Clerk`);
 const BATCH = 50;
 for (let i = 0; i < users.length; i += BATCH) {
   const batch = users.slice(i, i + BATCH);
-  const args = ["convex", "run", "clerkImport:importUsers", JSON.stringify({ users: batch })];
+  const args = [
+    "convex",
+    "run",
+    "clerkImport:importUsers",
+    JSON.stringify({ users: batch }),
+  ];
   if (prod) args.push("--prod");
   execFileSync("npx", args, { stdio: "inherit" });
   console.log(`Imported ${Math.min(i + BATCH, users.length)}/${users.length}`);

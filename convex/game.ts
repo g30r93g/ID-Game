@@ -3,9 +3,9 @@ import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 
 function generateOTP(length = 6): string {
-  const characters = 'ACDEGHIKLMNPQRSTUVXYZ0123456789'; // some are missing to reduce ambiguity
+  const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
 
-  let otp = '';
+  let otp = "";
   for (let i = 0; i < length; i++) {
     const randomIndex = Math.floor(Math.random() * characters.length);
     otp += characters[randomIndex];
@@ -24,19 +24,19 @@ export const sendHeartbeat = mutation({
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
-      .withIndex('byUser', (q) => q.eq('userId', userId))
+      .withIndex("byUser", (q) => q.eq("userId", userId))
       .first();
 
     if (!player) {
-      throw new Error("No player found for authed user")
+      throw new Error("No player found for authed user");
     }
 
     // Get the current time
     const now = Date.now();
 
-    await ctx.db.patch(player._id, { lastAlive: now })
-  }
-})
+    await ctx.db.patch(player._id, { lastAlive: now });
+  },
+});
 
 export const isUserPlayer = query({
   args: { joinCode: v.string() },
@@ -64,8 +64,8 @@ export const isUserPlayer = query({
       .first();
 
     return !!userPlayer;
-  }
-})
+  },
+});
 
 export const fetchGameByJoinCode = query({
   args: { joinCode: v.string() },
@@ -81,23 +81,33 @@ export const fetchGameByJoinCode = query({
     }
 
     return game;
-  }
-})
+  },
+});
 
 export const createGame = mutation({
   args: { numberOfRounds: v.number() },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const user = await ctx.auth.getUserIdentity()
+    const user = await ctx.auth.getUserIdentity();
     if (!user) {
       throw new Error("User must be authenticated to create a game.");
     }
 
     // create game
-    const gameId = await ctx.db.insert("games", { joinCode: generateOTP(), totalRounds: args.numberOfRounds, isOpen: true, createdBy: user.tokenIdentifier });
+    const gameId = await ctx.db.insert("games", {
+      joinCode: generateOTP(),
+      totalRounds: args.numberOfRounds,
+      isOpen: true,
+      createdBy: user.tokenIdentifier,
+    });
 
     // add player who created game to game
-    await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: gameId, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
+    await ctx.db.insert("players", {
+      userId: user.tokenIdentifier,
+      gameId: gameId,
+      lastAlive: Date.now(),
+      displayName: user.name ?? `Unknown Player`,
+    });
 
     // return game
     return await ctx.db.get(gameId);
@@ -124,7 +134,7 @@ export const joinGame = mutation({
 
     // Ensure game is open to new players
     if (!game.isOpen) {
-      throw new Error("Game is not open to new players.")
+      throw new Error("Game is not open to new players.");
     }
 
     // Only add user if not already in game
@@ -136,10 +146,15 @@ export const joinGame = mutation({
 
     if (!userPlayer) {
       // Link player to game
-      await ctx.db.insert("players", { userId: user.tokenIdentifier, gameId: game._id, lastAlive: Date.now(), displayName: user.name ?? `Unknown Player` })
+      await ctx.db.insert("players", {
+        userId: user.tokenIdentifier,
+        gameId: game._id,
+        lastAlive: Date.now(),
+        displayName: user.name ?? `Unknown Player`,
+      });
     }
-  }
-})
+  },
+});
 
 export const leaveGame = mutation({
   args: { gameId: v.id("games") },
@@ -162,15 +177,15 @@ export const leaveGame = mutation({
 
     // Delete them from the list of players
     await ctx.db.delete(userPlayer._id);
-  }
-})
+  },
+});
 
 export const closeGameToNewPlayers = mutation({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.game, { isOpen: false });
-  }
-})
+  },
+});
 
 export const getPlayersForGame = query({
   args: { game: v.id("games") },
@@ -179,14 +194,14 @@ export const getPlayersForGame = query({
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", args.game))
       .collect();
-  }
-})
+  },
+});
 
 export const getPlayerForCurrentUserForGame = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
     // Get current user
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
       throw new Error("User must be authenticated.");
     }
@@ -197,8 +212,8 @@ export const getPlayerForCurrentUserForGame = query({
       .withIndex("byGame", (q) => q.eq("gameId", args.game))
       .filter((q) => q.eq(q.field("userId"), userId))
       .first();
-  }
-})
+  },
+});
 
 export const getGameRoundsForGame = query({
   args: { game: v.id("games") },
@@ -207,7 +222,7 @@ export const getGameRoundsForGame = query({
       .query("gameRounds")
       .withIndex("byGame", (q) => q.eq("gameId", args.game))
       .collect();
-  }
+  },
 });
 
 export const getCurrentGameRound = query({
@@ -225,7 +240,7 @@ export const getCurrentGameRound = query({
     return await ctx.db
       .query("gameRounds")
       .withIndex("byGameRound", (q) =>
-        q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber)
+        q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber),
       )
       .unique();
   },
@@ -246,15 +261,15 @@ export const getCurrentGameRoundHostPlayer = query({
     const currentRound = await ctx.db
       .query("gameRounds")
       .withIndex("byGameRound", (q) =>
-        q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber)
+        q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber),
       )
       .unique();
     if (!currentRound) return null;
 
     // get host for round
-    return await ctx.db.get(currentRound.hostPlayerId)
-  }
-})
+    return await ctx.db.get(currentRound.hostPlayerId);
+  },
+});
 
 export const startNewGameRound = mutation({
   args: { game: v.id("games"), player: v.optional(v.id("players")) },
@@ -264,11 +279,11 @@ export const startNewGameRound = mutation({
     if (!game) throw new Error("Game not found.");
 
     // define the variable to hold the player
-    let player: Id<'players'> | undefined;
+    let player: Id<"players"> | undefined;
 
     // determine the new round number
     const newRoundNumber = (game.currentRound ?? 0) + 1;
-    console.log("newRoundNumber", newRoundNumber)
+    console.log("newRoundNumber", newRoundNumber);
 
     // ensure new round number is not greater than the number of rounds set
     // if the game has zero rounds, it means it is an infinite game
@@ -297,7 +312,7 @@ export const startNewGameRound = mutation({
       if (creatorPlayer) {
         player = creatorPlayer._id;
       } else {
-        throw new Error("No players within game to select as host")
+        throw new Error("No players within game to select as host");
       }
     }
 
@@ -313,7 +328,10 @@ export const startNewGameRound = mutation({
 
       rounds.forEach((round) => {
         if (round.hostPlayerId) {
-          hostCounts.set(round.hostPlayerId, (hostCounts.get(round.hostPlayerId) || 0) + 1);
+          hostCounts.set(
+            round.hostPlayerId,
+            (hostCounts.get(round.hostPlayerId) || 0) + 1,
+          );
         }
       });
 
@@ -326,26 +344,33 @@ export const startNewGameRound = mutation({
       if (players.length === 0) throw new Error("No players available.");
 
       // Step 3: Find the least hosted players
-      const minHostingCount = Math.min(...players.map((p) => hostCounts.get(p._id) || 0));
-      const leastHostedPlayers = players.filter((p) => (hostCounts.get(p._id) || 0) === minHostingCount);
+      const minHostingCount = Math.min(
+        ...players.map((p) => hostCounts.get(p._id) || 0),
+      );
+      const leastHostedPlayers = players.filter(
+        (p) => (hostCounts.get(p._id) || 0) === minHostingCount,
+      );
 
       // Step 4: Randomly pick a host from the least-hosted players
       if (leastHostedPlayers.length > 0) {
-        player = leastHostedPlayers[Math.floor(Math.random() * leastHostedPlayers.length)]._id;
+        player =
+          leastHostedPlayers[
+            Math.floor(Math.random() * leastHostedPlayers.length)
+          ]._id;
       }
     }
 
     // ensure player is defined
     if (!player) {
       // this should never run
-      throw new Error("Next host player indeterminate")
+      throw new Error("Next host player indeterminate");
     }
 
     const newGameRound = await ctx.db.insert("gameRounds", {
       gameId: game._id,
       roundNumber: newRoundNumber,
       hostPlayerId: player,
-      phase: "create-scenarios"
+      phase: "create-scenarios",
     });
 
     // update the round number
@@ -357,14 +382,12 @@ export const startNewGameRound = mutation({
 
 export const scenarioCategories = query({
   handler: async (ctx) => {
-    const scenarios = await ctx.db
-      .query("scenarios")
-      .collect();
+    const scenarios = await ctx.db.query("scenarios").collect();
 
     // Extract unique categories
     return [...new Set(scenarios.map((s) => s.category))];
-  }
-})
+  },
+});
 
 export const gameRoundScenarios = query({
   args: { gameRound: v.id("gameRounds") },
@@ -380,12 +403,12 @@ export const gameRoundScenarios = query({
 
     // Fetch each scenario individually
     const scenarioDocs = await Promise.all(
-      scenarioIds.map((id) => ctx.db.get(id))
+      scenarioIds.map((id) => ctx.db.get(id)),
     );
 
     // Map scenario documents by ID for quick lookup
     const scenarioMap = new Map(
-      scenarioDocs.filter(Boolean).map((s) => [s!._id, s])
+      scenarioDocs.filter(Boolean).map((s) => [s!._id, s]),
     );
 
     // Attach scenario details to each gameRoundScenario entry
@@ -397,17 +420,25 @@ export const gameRoundScenarios = query({
 });
 
 export const selectScenariosForGameRound = mutation({
-  args: { game: v.id("games"), gameRound: v.id("gameRounds"), category: v.optional(v.string()) },
+  args: {
+    game: v.id("games"),
+    gameRound: v.id("gameRounds"),
+    category: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     // Fetch scenarios, leveraging index if a category is specified
     const query = args.category
-      ? ctx.db.query("scenarios").withIndex("byCategory", (q) => q.eq("category", args.category!))
+      ? ctx.db
+          .query("scenarios")
+          .withIndex("byCategory", (q) => q.eq("category", args.category!))
       : ctx.db.query("scenarios");
 
     const scenarios = await query.collect();
 
     if (scenarios.length < 10) {
-      throw new Error("Not enough scenarios available in the selected category.");
+      throw new Error(
+        "Not enough scenarios available in the selected category.",
+      );
     }
 
     // Shuffle and pick 10 scenarios
@@ -422,8 +453,8 @@ export const selectScenariosForGameRound = mutation({
           roundId: args.gameRound,
           scenarioId: scenario._id,
           selected: false,
-        })
-      )
+        }),
+      ),
     );
 
     return true;
@@ -439,44 +470,14 @@ export const transitionRoundPhase = mutation({
       v.literal("rank-players"),
       v.literal("guess-scenario"),
       v.literal("display-results"),
-      v.literal("finished")
-    )
+      v.literal("finished"),
+    ),
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
       throw new Error("User must be authenticated to create a game.");
-    }
-
-    // Get game round referenced
-    const gameRound = await ctx.db.get(args.gameRoundId);
-    if (!gameRound) {
-      throw new Error("Game round does not exist")
-    }
-
-    // Ensure current user is the round host
-    const gameRoundHostPlayer = await ctx.db.get(gameRound.hostPlayerId);
-    if (!gameRoundHostPlayer) {
-      throw new Error("Game round host does not exist")
-    }
-
-    if (userId !== gameRoundHostPlayer.userId) {
-      throw new Error("Only game round host can transition a game round")
-    }
-
-    // change phase
-    await ctx.db.patch(gameRound._id, { phase: args.toPhase });
-  }
-});
-
-export const selectGameRoundScenario = mutation({
-  args: { gameRoundId: v.id("gameRounds"), gameRoundScenarioId: v.id("gameRoundScenarios") },
-  handler: async (ctx, args) => {
-    // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
-    if (!userId) {
-      throw new Error("User must be authenticated to select a game round scenario.");
     }
 
     // Get game round referenced
@@ -492,12 +493,54 @@ export const selectGameRoundScenario = mutation({
     }
 
     if (userId !== gameRoundHostPlayer.userId) {
-      throw new Error("Only the game round host can select the round's scenario");
+      throw new Error("Only game round host can transition a game round");
+    }
+
+    // change phase
+    await ctx.db.patch(gameRound._id, { phase: args.toPhase });
+  },
+});
+
+export const selectGameRoundScenario = mutation({
+  args: {
+    gameRoundId: v.id("gameRounds"),
+    gameRoundScenarioId: v.id("gameRoundScenarios"),
+  },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    if (!userId) {
+      throw new Error(
+        "User must be authenticated to select a game round scenario.",
+      );
+    }
+
+    // Get game round referenced
+    const gameRound = await ctx.db.get(args.gameRoundId);
+    if (!gameRound) {
+      throw new Error("Game round does not exist");
+    }
+
+    // Ensure current user is the round host
+    const gameRoundHostPlayer = await ctx.db.get(gameRound.hostPlayerId);
+    if (!gameRoundHostPlayer) {
+      throw new Error("Game round host does not exist");
+    }
+
+    if (userId !== gameRoundHostPlayer.userId) {
+      throw new Error(
+        "Only the game round host can select the round's scenario",
+      );
     }
 
     // Ensure game round scenario exists
-    const selectedGameRoundScenario = await ctx.db.get(args.gameRoundScenarioId);
-    if (!selectedGameRoundScenario || selectedGameRoundScenario.roundId !== args.gameRoundId) {
+    const selectedGameRoundScenario = await ctx.db.get(
+      args.gameRoundScenarioId,
+    );
+    if (
+      !selectedGameRoundScenario ||
+      selectedGameRoundScenario.roundId !== args.gameRoundId
+    ) {
       throw new Error("Invalid game round scenario");
     }
 
@@ -505,7 +548,7 @@ export const selectGameRoundScenario = mutation({
     const selectedScenariosForRound = await ctx.db
       .query("gameRoundScenarios")
       .withIndex("byRound", (q) => q.eq("roundId", args.gameRoundId))
-      .filter((q) => q.field('selected'))
+      .filter((q) => q.field("selected"))
       .collect();
 
     if (selectedScenariosForRound.length > 0) {
@@ -518,12 +561,20 @@ export const selectGameRoundScenario = mutation({
 });
 
 export const submitPlayerRankingsForGameRound = mutation({
-  args: { gameId: v.id("games"), roundId: v.id("gameRounds"), rankings: v.array(v.object({ ranking: v.number(), playerId: v.id("players") })) },
+  args: {
+    gameId: v.id("games"),
+    roundId: v.id("gameRounds"),
+    rankings: v.array(
+      v.object({ ranking: v.number(), playerId: v.id("players") }),
+    ),
+  },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
-      throw new Error("User must be authenticated to select a game round scenario.");
+      throw new Error(
+        "User must be authenticated to select a game round scenario.",
+      );
     }
 
     // Get game round referenced
@@ -543,15 +594,17 @@ export const submitPlayerRankingsForGameRound = mutation({
     }
 
     // Submit ranking for each player
-    await Promise.all(args.rankings.map((r) => {
-      return ctx.db.insert("gameRoundPlayerRankings", {
-        ...r,
-        gameId: args.gameId,
-        roundId: args.roundId
-      })
-    }));
-  }
-})
+    await Promise.all(
+      args.rankings.map((r) => {
+        return ctx.db.insert("gameRoundPlayerRankings", {
+          ...r,
+          gameId: args.gameId,
+          roundId: args.roundId,
+        });
+      }),
+    );
+  },
+});
 
 export const getPlayerRankingsForRound = query({
   args: { roundId: v.id("gameRounds") },
@@ -563,25 +616,29 @@ export const getPlayerRankingsForRound = query({
       .collect();
 
     // Get player IDs from rankings
-    const players = (await Promise.all(
-      rankings.map((ranking) => ctx.db.get(ranking.playerId))
-    )).filter((x) => x !== null);
+    const players = (
+      await Promise.all(rankings.map((ranking) => ctx.db.get(ranking.playerId)))
+    ).filter((x) => x !== null);
 
     // Combine rankings with player display names
     return rankings.map((ranking) => ({
       ...ranking,
-      playerDisplayName: players.find((p) => p._id === ranking.playerId)?.displayName ?? "Unknown Player",
+      playerDisplayName:
+        players.find((p) => p._id === ranking.playerId)?.displayName ??
+        "Unknown Player",
     }));
-  }
+  },
 });
 
 export const markGuessesForRound = mutation({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
-      throw new Error("User must be authenticated to select a game round scenario.");
+      throw new Error(
+        "User must be authenticated to select a game round scenario.",
+      );
     }
 
     // Get game round referenced
@@ -600,7 +657,7 @@ export const markGuessesForRound = mutation({
       throw new Error("Only the game round host can determine who was correct");
     }
 
-  // Fetch all guesses for this round
+    // Fetch all guesses for this round
     const guesses = await ctx.db
       .query("gameRoundGuesses")
       .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
@@ -630,11 +687,11 @@ export const markGuessesForRound = mutation({
     // Update all guesses with the 'correct' field
     await Promise.all(
       updatedGuesses.map((guess) =>
-        ctx.db.patch(guess._id, { isCorrect: guess.isCorrect })
-      )
+        ctx.db.patch(guess._id, { isCorrect: guess.isCorrect }),
+      ),
     );
-  }
-})
+  },
+});
 
 export const getGuessesForRound = query({
   args: { roundId: v.id("gameRounds") },
@@ -645,30 +702,39 @@ export const getGuessesForRound = query({
       .collect();
 
     // Get player details
-    const players = (await Promise.all(
-      guesses.map((g) => ctx.db.get(g.playerId))
-    )).filter((x) => x !== null);
+    const players = (
+      await Promise.all(guesses.map((g) => ctx.db.get(g.playerId)))
+    ).filter((x) => x !== null);
 
     // Get gameRoundScenario documents
-    const gameRoundScenarios = (await Promise.all(
-      guesses.map((g) => g.scenarioId ? ctx.db.get(g.scenarioId) : null)
-    )).filter((x) => x !== null);
+    const gameRoundScenarios = (
+      await Promise.all(
+        guesses.map((g) => (g.scenarioId ? ctx.db.get(g.scenarioId) : null)),
+      )
+    ).filter((x) => x !== null);
 
     // Get actual scenario documents
-    const scenarios = (await Promise.all(
-      gameRoundScenarios.map((grs) => ctx.db.get(grs.scenarioId))
-    )).filter((x) => x !== null);
+    const scenarios = (
+      await Promise.all(
+        gameRoundScenarios.map((grs) => ctx.db.get(grs.scenarioId)),
+      )
+    ).filter((x) => x !== null);
 
     return guesses.map((guess) => ({
       ...guess,
-      playerDisplayName: players.find((p) => p._id === guess.playerId)?.displayName ?? "Unknown Player",
-      guessedScenarioDescription: scenarios.find((s) => s._id ===
-        gameRoundScenarios.find((grs) => grs._id === guess.scenarioId)?.scenarioId
-      )?.description ?? "Unknown Scenario"
+      playerDisplayName:
+        players.find((p) => p._id === guess.playerId)?.displayName ??
+        "Unknown Player",
+      guessedScenarioDescription:
+        scenarios.find(
+          (s) =>
+            s._id ===
+            gameRoundScenarios.find((grs) => grs._id === guess.scenarioId)
+              ?.scenarioId,
+        )?.description ?? "Unknown Scenario",
     }));
-  }
+  },
 });
-
 
 export const getGuessesStatusForRound = query({
   args: { roundId: v.id("gameRounds") },
@@ -685,7 +751,9 @@ export const getGuessesStatusForRound = query({
       .withIndex("byGame", (q) => q.eq("gameId", gameRound.gameId))
       .collect();
 
-    const nonHostPlayers = players.filter(p => p._id !== gameRound.hostPlayerId);
+    const nonHostPlayers = players.filter(
+      (p) => p._id !== gameRound.hostPlayerId,
+    );
 
     // Get all guesses for the round
     const guesses = await ctx.db
@@ -698,26 +766,35 @@ export const getGuessesStatusForRound = query({
       return {
         player: p._id,
         displayName: p.displayName,
-        hasGuessed: guesses.find((g) => g.playerId === p._id) ?? false
-      }
-    })
+        hasGuessed: guesses.find((g) => g.playerId === p._id) ?? false,
+      };
+    });
 
     // Check if all non-host players have guessed
-    const nonHostPlayerIds = new Set(nonHostPlayers.map(p => p._id));
-    const guessingCompleteByAllUsers = nonHostPlayerIds.size === 0 ||
-      [...nonHostPlayerIds].every(playerId => guesses.some(g => g.playerId === playerId));
+    const nonHostPlayerIds = new Set(nonHostPlayers.map((p) => p._id));
+    const guessingCompleteByAllUsers =
+      nonHostPlayerIds.size === 0 ||
+      [...nonHostPlayerIds].every((playerId) =>
+        guesses.some((g) => g.playerId === playerId),
+      );
 
     return { guessingCompleteByAllUsers, playerGuesses };
-  }
+  },
 });
 
 export const makeGuessForRound = mutation({
-  args: { game: v.id("games"), gameRound: v.id("gameRounds"), scenario: v.id("gameRoundScenarios") },
+  args: {
+    game: v.id("games"),
+    gameRound: v.id("gameRounds"),
+    scenario: v.id("gameRoundScenarios"),
+  },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
-      throw new Error("User must be authenticated to select a game round scenario.");
+      throw new Error(
+        "User must be authenticated to select a game round scenario.",
+      );
     }
 
     // Get game round referenced
@@ -745,7 +822,9 @@ export const makeGuessForRound = mutation({
       .first();
 
     if (!player) {
-      throw new Error("Player associated with user in this game could not be found")
+      throw new Error(
+        "Player associated with user in this game could not be found",
+      );
     }
 
     // Make the guess
@@ -753,10 +832,10 @@ export const makeGuessForRound = mutation({
       gameId: args.game,
       roundId: args.gameRound,
       scenarioId: args.scenario,
-      playerId: player._id
+      playerId: player._id,
     });
-  }
-})
+  },
+});
 
 export const getCorrectAnswer = query({
   args: { roundId: v.id("gameRounds") },
@@ -772,7 +851,6 @@ export const getCorrectAnswer = query({
       return null;
     }
 
-
     // get the scenario
     const scenario = await ctx.db.get(gameRoundScenario.scenarioId);
     if (!scenario) {
@@ -782,16 +860,18 @@ export const getCorrectAnswer = query({
 
     // return the scenario description
     return scenario.description;
-  }
-})
+  },
+});
 
 export const submitRating = mutation({
   args: { joinCode: v.string(), rating: v.number() },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier
+    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
     if (!userId) {
-      throw new Error("User must be authenticated to submit a rating for the game.");
+      throw new Error(
+        "User must be authenticated to submit a rating for the game.",
+      );
     }
 
     // Obtain the game from the join code
@@ -807,7 +887,7 @@ export const submitRating = mutation({
     return await ctx.db.insert("gameRating", {
       gameId: game._id,
       userId: userId,
-      rating: args.rating
-    })
-  }
-})
+      rating: args.rating,
+    });
+  },
+});

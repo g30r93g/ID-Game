@@ -1,20 +1,21 @@
-import {Button} from "@/components/ui/button";
-import {ArrowRight} from "lucide-react";
-import {Card, CardContent, CardHeader, CardTitle} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <div className={"h-screen flex flex-col items-center justify-center gap-y-6"}>
+    <div
+      className={"h-screen flex flex-col items-center justify-center gap-y-6"}
+    >
       <h1 className={"text-2xl font-mono"}>The ID Game</h1>
-      <h2 className={"text-xl"}>Call out friends, guess the answers, and survive the chaos. Are you ready?</h2>
+      <h2 className={"text-xl"}>
+        Call out friends, guess the answers, and survive the chaos. Are you
+        ready?
+      </h2>
       <div className={"flex flex-row items-center justify-center gap-x-6"}>
         <Link href={"/game"}>
-          <Button
-            variant={"default"}
-            className={"rounded-full"}
-            size={"xl"}
-          >
+          <Button variant={"default"} className={"rounded-full"} size={"xl"}>
             Play
             <ArrowRight />
           </Button>

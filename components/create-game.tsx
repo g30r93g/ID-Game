@@ -1,28 +1,40 @@
 "use client";
 
 import z from "zod";
-import {Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage} from "@/components/ui/form";
-import {useForm} from "react-hook-form";
-import {zodResolver} from "@hookform/resolvers/zod";
-import {LoadingButton} from "@/components/ui/loading-button";
-import {Plus} from "lucide-react";
-import {useMutation} from "convex/react";
-import {api} from "@/convex/_generated/api";
-import {useRouter} from "next/navigation";
-import {toast} from "sonner";
-import {NumberField} from "@/components/ui/number-field";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { Plus } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { NumberField } from "@/components/ui/number-field";
 import posthog from "posthog-js";
 
 const formSchema = z.object({
-  numberOfRounds: z.number().min(1).default(10)
+  numberOfRounds: z.number().min(1).default(10),
 });
 
 export default function CreateGame() {
-  const form = useForm<z.input<typeof formSchema>, unknown, z.output<typeof formSchema>>({
+  const form = useForm<
+    z.input<typeof formSchema>,
+    unknown,
+    z.output<typeof formSchema>
+  >({
     resolver: zodResolver(formSchema),
     defaultValues: {
       numberOfRounds: 10,
-    }
+    },
   });
   const { replace } = useRouter();
   const createGame = useMutation(api.game.createGame);
@@ -30,7 +42,7 @@ export default function CreateGame() {
   async function onSubmit({ numberOfRounds }: z.output<typeof formSchema>) {
     try {
       if (posthog) {
-        posthog.capture('new_game');
+        posthog.capture("new_game");
       }
 
       const game = await createGame({ numberOfRounds });
@@ -39,10 +51,10 @@ export default function CreateGame() {
         throw new Error("Game invalid");
       }
 
-      replace(`/game/${game.joinCode}`)
+      replace(`/game/${game.joinCode}`);
     } catch (error) {
       console.error(error);
-      toast("Error creating game", { description: (error as Error).message })
+      toast("Error creating game", { description: (error as Error).message });
     }
   }
 
@@ -82,5 +94,5 @@ export default function CreateGame() {
         </form>
       </Form>
     </div>
-  )
+  );
 }

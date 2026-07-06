@@ -1,28 +1,35 @@
 "use client";
 
-import {useState} from "react";
+import { useState } from "react";
 import {
   Sortable,
   SortableContent,
   SortableItem,
 } from "@/components/ui/sortable";
-import {ArrowRight} from "lucide-react";
-import {Card, CardHeader, CardTitle} from "@/components/ui/card";
-import {useMutation, useQuery} from "convex/react";
-import {api} from "@/convex/_generated/api";
-import {Id} from "@/convex/_generated/dataModel";
-import {LoadingButton} from "@/components/ui/loading-button";
+import { ArrowRight } from "lucide-react";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { LoadingButton } from "@/components/ui/loading-button";
 
 interface RankPlayersGamePhaseProps {
-  gameId: Id<'games'>;
-  roundId: Id<'gameRounds'>;
+  gameId: Id<"games">;
+  roundId: Id<"gameRounds">;
   scenario: string;
   advanceGame: () => void;
 }
 
-export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanceGame }: RankPlayersGamePhaseProps) {
+export default function RankPlayersGamePhase({
+  gameId,
+  roundId,
+  scenario,
+  advanceGame,
+}: RankPlayersGamePhaseProps) {
   const playersForGame = useQuery(api.game.getPlayersForGame, { game: gameId });
-  const mutatePlayerRankings = useMutation(api.game.submitPlayerRankingsForGameRound);
+  const mutatePlayerRankings = useMutation(
+    api.game.submitPlayerRankingsForGameRound,
+  );
 
   const [loading, setLoading] = useState<boolean>(false);
   const [players, setPlayers] = useState(playersForGame ?? []);
@@ -31,7 +38,9 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
     try {
       setLoading(true);
 
-      const rankings = players.map((p, idx) => { return { ranking: idx + 1, playerId: p._id } });
+      const rankings = players.map((p, idx) => {
+        return { ranking: idx + 1, playerId: p._id };
+      });
       await mutatePlayerRankings({ gameId, roundId, rankings });
 
       advanceGame();
@@ -44,11 +53,17 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
 
   return (
     <div className={"flex flex-col gap-8"}>
-      <div className={"rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-secondary/75"}>
+      <div
+        className={
+          "rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-secondary/75"
+        }
+      >
         {scenario}
       </div>
       <div className={"grid grid-cols-1 gap-2"}>
-        <span className={"pl-3 text-muted-foreground text-sm"}>Most likely</span>
+        <span className={"pl-3 text-muted-foreground text-sm"}>
+          Most likely
+        </span>
         <Sortable
           value={players}
           onValueChange={setPlayers}
@@ -57,7 +72,12 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
         >
           <SortableContent className="grid auto-rows-fr gap-2.5">
             {players.map((player) => (
-              <SortableItem key={player._id} value={player._id} asChild asHandle>
+              <SortableItem
+                key={player._id}
+                value={player._id}
+                asChild
+                asHandle
+              >
                 <Card>
                   <CardHeader>
                     <CardTitle>{player.displayName}</CardTitle>
@@ -67,12 +87,16 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
             ))}
           </SortableContent>
         </Sortable>
-        <span className={"pl-3 text-muted-foreground text-sm"}>Least likely</span>
+        <span className={"pl-3 text-muted-foreground text-sm"}>
+          Least likely
+        </span>
       </div>
       <LoadingButton
         loading={loading}
         disabled={loading}
-        onClick={() => { submitPlayerRankings() }}
+        onClick={() => {
+          submitPlayerRankings();
+        }}
       >
         {!loading && (
           <>
@@ -82,5 +106,5 @@ export default function RankPlayersGamePhase({ gameId, roundId, scenario, advanc
         )}
       </LoadingButton>
     </div>
-  )
+  );
 }

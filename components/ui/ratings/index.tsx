@@ -29,7 +29,7 @@ const Rating = React.forwardRef<HTMLDivElement, RatingProps>(
       size = "md",
       ...props
     },
-    ref
+    ref,
   ) => {
     const [hoverValue, setHoverValue] = React.useState<number | null>(null);
 
@@ -39,7 +39,7 @@ const Rating = React.forwardRef<HTMLDivElement, RatingProps>(
         className={cn(
           "flex gap-1",
           disabled && "opacity-50 cursor-not-allowed",
-          className
+          className,
         )}
         {...props}
       >
@@ -58,7 +58,7 @@ const Rating = React.forwardRef<HTMLDivElement, RatingProps>(
                     : value >= ratingValue
                 )
                   ? "fill-foreground text-foreground"
-                  : "fill-none text-muted-foreground"
+                  : "fill-none text-muted-foreground",
               )}
               onMouseEnter={() => !disabled && setHoverValue(ratingValue)}
               onMouseLeave={() => !disabled && setHoverValue(null)}
@@ -75,7 +75,7 @@ const Rating = React.forwardRef<HTMLDivElement, RatingProps>(
         })}
       </div>
     );
-  }
+  },
 );
 Rating.displayName = "Rating";
 

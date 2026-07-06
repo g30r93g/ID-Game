@@ -15,14 +15,14 @@ Replace Clerk with Better Auth so users sign in with **passkeys** (primary) and 
 
 ## Decisions (settled with user)
 
-| Decision | Choice |
-|---|---|
-| Account/history continuity | **Full** — preserve accounts and game history |
-| Auth DB | **Convex** via `@convex-dev/better-auth` (local-install component). No Neon. |
-| Sign-in methods | **Passkey primary + email OTP fallback.** No passwords, no Google OAuth. |
-| Email provider | **Resend** |
-| Maintenance flag | **Env var + redeploy** (`MAINTENANCE_MODE`), gated in `proxy.ts` |
-| Username requirement | Dropped — single display-name field at sign-up feeds `displayName` |
+| Decision                   | Choice                                                                       |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| Account/history continuity | **Full** — preserve accounts and game history                                |
+| Auth DB                    | **Convex** via `@convex-dev/better-auth` (local-install component). No Neon. |
+| Sign-in methods            | **Passkey primary + email OTP fallback.** No passwords, no Google OAuth.     |
+| Email provider             | **Resend**                                                                   |
+| Maintenance flag           | **Env var + redeploy** (`MAINTENANCE_MODE`), gated in `proxy.ts`             |
+| Username requirement       | Dropped — single display-name field at sign-up feeds `displayName`           |
 
 Dropping Google/passwords is safe for continuity because email OTP is the account-recovery path: any returning user proves inbox ownership at their existing address and lands in their existing account.
 
@@ -79,13 +79,13 @@ All Clerk sessions are invalidated by the switch; users sign in again via OTP.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| ~~`forceAllowId` unsupported by Convex component adapter~~ (confirmed unsupported during research) | Mapping-table approach adopted as the design |
-| OTP lands in spam → user locked out at first sign-in | Verified sending domain in Resend, sensible from-address; passkeys make it first-sign-in-only |
-| Passkey UX variance across devices/browsers | OTP always one click away — worst case equals today's email-code flow |
-| Component maturity vs Clerk | Officially recommended path, Convex-maintained; usage (sessions + 2 plugins) is mainstream |
-| Maintenance flip requires redeploy | Acceptable (~1 min) for a planned window; bypass cookie for testing |
+| Risk                                                                                               | Mitigation                                                                                    |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| ~~`forceAllowId` unsupported by Convex component adapter~~ (confirmed unsupported during research) | Mapping-table approach adopted as the design                                                  |
+| OTP lands in spam → user locked out at first sign-in                                               | Verified sending domain in Resend, sensible from-address; passkeys make it first-sign-in-only |
+| Passkey UX variance across devices/browsers                                                        | OTP always one click away — worst case equals today's email-code flow                         |
+| Component maturity vs Clerk                                                                        | Officially recommended path, Convex-maintained; usage (sessions + 2 plugins) is mainstream    |
+| Maintenance flip requires redeploy                                                                 | Acceptable (~1 min) for a planned window; bypass cookie for testing                           |
 
 ## Out of scope
 

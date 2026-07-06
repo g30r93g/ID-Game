@@ -1,23 +1,35 @@
 "use client";
 
-import {Preloaded, useMutation, usePreloadedQuery, useQuery} from "convex/react";
-import {api} from "@/convex/_generated/api";
+import {
+  Preloaded,
+  useMutation,
+  usePreloadedQuery,
+  useQuery,
+} from "convex/react";
+import { api } from "@/convex/_generated/api";
 import PickScenarioGamePhase from "@/components/game/pick-scenario";
 import RankPlayersGamePhase from "@/components/game/rank-players";
 import GuessScenarioGamePhase from "@/components/game/guess-scenario";
 import DisplayResultsGamePhase from "@/components/game/display-results";
 import LobbyGamePhase from "@/components/game/lobby";
-import {Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import CreateScenariosGamePhase from "@/components/game/create-scenarios";
-import {useCallback, useEffect, useState} from "react";
+import { useCallback, useEffect, useState } from "react";
 import WaitGamePhase from "@/components/game/wait";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
-import {useRouter} from "next/navigation";
-import {LoadingButton} from "@/components/ui/loading-button";
-import {LogOut} from "lucide-react";
-import {toast} from "sonner";
+import { useRouter } from "next/navigation";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { LogOut } from "lucide-react";
+import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
-import {usePostHog} from "posthog-js/react";
+import { usePostHog } from "posthog-js/react";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -25,11 +37,26 @@ interface GameProps {
 
 export function Game({ preloadedGame }: GameProps) {
   const game = usePreloadedQuery(preloadedGame);
-  const players = useQuery(api.game.getPlayersForGame, game ? { game: game._id } : "skip") ?? [];
-  const userPlayer = useQuery(api.game.getPlayerForCurrentUserForGame, game ? { game: game._id } : "skip");
-  const currentRound = useQuery(api.game.getCurrentGameRound, game ? { game: game._id } : "skip");
-  const currentRoundHost = useQuery(api.game.getCurrentGameRoundHostPlayer, game ? { game: game._id } : "skip");
-  const currentRoundScenarios = useQuery(api.game.gameRoundScenarios, currentRound ? { gameRound: currentRound._id  } : "skip") ?? [];
+  const players =
+    useQuery(api.game.getPlayersForGame, game ? { game: game._id } : "skip") ??
+    [];
+  const userPlayer = useQuery(
+    api.game.getPlayerForCurrentUserForGame,
+    game ? { game: game._id } : "skip",
+  );
+  const currentRound = useQuery(
+    api.game.getCurrentGameRound,
+    game ? { game: game._id } : "skip",
+  );
+  const currentRoundHost = useQuery(
+    api.game.getCurrentGameRoundHostPlayer,
+    game ? { game: game._id } : "skip",
+  );
+  const currentRoundScenarios =
+    useQuery(
+      api.game.gameRoundScenarios,
+      currentRound ? { gameRound: currentRound._id } : "skip",
+    ) ?? [];
 
   const closeGameToNewPlayers = useMutation(api.game.closeGameToNewPlayers);
   const startNewGameRound = useMutation(api.game.startNewGameRound);
@@ -39,10 +66,13 @@ export function Game({ preloadedGame }: GameProps) {
 
   const { replace } = useRouter();
   const posthog = usePostHog();
-  const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
+  const [isLeavingInProgress, setIsLeavingInProgress] =
+    useState<boolean>(false);
   // Header slot the non-host guess phase portals its "Submit Guess" button into,
   // so the action sits in line with the card header (see guess-scenario.tsx).
-  const [guessSubmitSlot, setGuessSubmitSlot] = useState<HTMLElement | null>(null);
+  const [guessSubmitSlot, setGuessSubmitSlot] = useState<HTMLElement | null>(
+    null,
+  );
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -56,7 +86,7 @@ export function Game({ preloadedGame }: GameProps) {
 
   useEffect(() => {
     if (players.length <= 1 && currentRound?.phase === "display-results") {
-      replace('/game')
+      replace("/game");
     }
     // Intentionally only re-run when the player list changes: this redirect is a
     // reaction to players leaving, not to phase transitions. Adding
@@ -64,17 +94,24 @@ export function Game({ preloadedGame }: GameProps) {
     // lone host reaching "display-results"), changing observable behavior.
     // `replace` from `useRouter` is stable, so omitting it is safe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players])
+  }, [players]);
 
   const userIsHost = () => {
     if (game?.isOpen) {
       // check that the person who created the game is the current user
-      console.log("game created by", game.createdBy, "player user id", userPlayer?.userId, "isHost?", game.createdBy === userPlayer?.userId);
+      console.log(
+        "game created by",
+        game.createdBy,
+        "player user id",
+        userPlayer?.userId,
+        "isHost?",
+        game.createdBy === userPlayer?.userId,
+      );
       return game.createdBy === userPlayer?.userId;
     }
 
     return currentRound?.hostPlayerId === userPlayer?._id;
-  }
+  };
 
   const isGameFinished = useCallback(() => {
     const currentRound = game?.currentRound ?? 0;
@@ -88,17 +125,20 @@ export function Game({ preloadedGame }: GameProps) {
       setIsLeavingInProgress(true);
 
       if (posthog) {
-        posthog.capture('game_leave', {phase: currentRound?.phase, isFinished: isGameFinished});
+        posthog.capture("game_leave", {
+          phase: currentRound?.phase,
+          isFinished: isGameFinished,
+        });
       }
 
       await leaveGameFn({ gameId: game!._id });
-      replace('/game')
+      replace("/game");
     } catch {
-      toast('Failed to leave game.')
+      toast("Failed to leave game.");
     } finally {
       setIsLeavingInProgress(false);
     }
-  }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace])
+  }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace]);
 
   const advanceGame = () => {
     if (!game) {
@@ -107,40 +147,57 @@ export function Game({ preloadedGame }: GameProps) {
 
     if (game.isOpen) {
       closeGameToNewPlayers({ game: game._id }).then(() => {
-        console.log("Starting new round. Game is now closed to new players")
+        console.log("Starting new round. Game is now closed to new players");
         startNewGameRound({ game: game._id });
-      })
+      });
       return;
     }
 
     if (!userIsHost()) {
-      throw new Error("User is not host. Cannot advance the game if user is not the host.");
+      throw new Error(
+        "User is not host. Cannot advance the game if user is not the host.",
+      );
     }
 
     if (posthog) {
-      posthog.capture('game_advance', { phase: currentRound?.phase });
+      posthog.capture("game_advance", { phase: currentRound?.phase });
     }
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "pick-scenario" })
+        transitionRoundPhase({
+          gameRoundId: currentRound._id,
+          toPhase: "pick-scenario",
+        });
         return;
       case "pick-scenario":
-        transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "rank-players" })
+        transitionRoundPhase({
+          gameRoundId: currentRound._id,
+          toPhase: "rank-players",
+        });
         return;
       case "rank-players":
-        transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "guess-scenario" })
+        transitionRoundPhase({
+          gameRoundId: currentRound._id,
+          toPhase: "guess-scenario",
+        });
         return;
       case "guess-scenario":
-        transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "display-results" })
+        transitionRoundPhase({
+          gameRoundId: currentRound._id,
+          toPhase: "display-results",
+        });
         return;
       case "display-results":
-        transitionRoundPhase({ gameRoundId: currentRound._id, toPhase: "finished" }).then(() => {
+        transitionRoundPhase({
+          gameRoundId: currentRound._id,
+          toPhase: "finished",
+        }).then(() => {
           startNewGameRound({ game: game._id });
-        })
+        });
         return;
     }
-  }
+  };
 
   const gamePhaseTitle = () => {
     if (game?.isOpen) {
@@ -159,87 +216,131 @@ export function Game({ preloadedGame }: GameProps) {
       case "display-results":
         return "Results";
     }
-  }
+  };
 
   const gamePhaseDescription = () => {
     if (game?.isOpen) {
-      return "Waiting for players to join"
+      return "Waiting for players to join";
     }
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        return userIsHost() ? "Select the category of your scenarios." : `${currentRoundHost?.displayName ?? 'Your host'} is selecting a scenario category.`
+        return userIsHost()
+          ? "Select the category of your scenarios."
+          : `${currentRoundHost?.displayName ?? "Your host"} is selecting a scenario category.`;
       case "pick-scenario":
-        return userIsHost() ? "Choose the scenario you're going to rank everyone on." : `${currentRoundHost?.displayName ?? 'Your host'} is picking the scenario.`
+        return userIsHost()
+          ? "Choose the scenario you're going to rank everyone on."
+          : `${currentRoundHost?.displayName ?? "Your host"} is picking the scenario.`;
       case "rank-players":
-        return userIsHost() ? "Rank the players from most to least likely by dragging their names." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
+        return userIsHost()
+          ? "Rank the players from most to least likely by dragging their names."
+          : `${currentRoundHost?.displayName ?? "Your host"} is ranking everyone based on their selected scenario.`;
       case "guess-scenario":
-        return userIsHost() ? "Wait for the players to guess the scenario you've picked" : `See how ${currentRoundHost?.displayName ?? 'the host'} ranked the scenario. Then guess which one they picked in the Scenarios tab.`
+        return userIsHost()
+          ? "Wait for the players to guess the scenario you've picked"
+          : `See how ${currentRoundHost?.displayName ?? "the host"} ranked the scenario. Then guess which one they picked in the Scenarios tab.`;
       case "display-results":
       case "finished":
         return undefined;
     }
-  }
+  };
 
   const gamePhaseContent = () => {
     if (game?.isOpen) {
-      return <LobbyGamePhase joinCode={game.joinCode} players={players.map((p) => {
-        return {
-          id: p._id,
-          name: p.displayName,
-          userId: p.userId
-        }
-      })} isHost={userIsHost()} advanceGame={advanceGame} />
+      return (
+        <LobbyGamePhase
+          joinCode={game.joinCode}
+          players={players.map((p) => {
+            return {
+              id: p._id,
+              name: p.displayName,
+              userId: p.userId,
+            };
+          })}
+          isHost={userIsHost()}
+          advanceGame={advanceGame}
+        />
+      );
     }
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        return userIsHost() ? <CreateScenariosGamePhase
-          gameId={game!._id}
-          gameRoundId={currentRound._id}
-          advanceGame={advanceGame}
-        /> : <WaitGamePhase />
+        return userIsHost() ? (
+          <CreateScenariosGamePhase
+            gameId={game!._id}
+            gameRoundId={currentRound._id}
+            advanceGame={advanceGame}
+          />
+        ) : (
+          <WaitGamePhase />
+        );
       case "pick-scenario":
-        return userIsHost() ? <PickScenarioGamePhase
-          gameRound={currentRound._id}
-          advanceGame={advanceGame}
-        /> : <WaitGamePhase />
+        return userIsHost() ? (
+          <PickScenarioGamePhase
+            gameRound={currentRound._id}
+            advanceGame={advanceGame}
+          />
+        ) : (
+          <WaitGamePhase />
+        );
       case "rank-players":
-        return userIsHost() ? <RankPlayersGamePhase
-          gameId={game!._id}
-          roundId={currentRound._id}
-          scenario={currentRoundScenarios.find((x) => x.selected)?.scenarioDetails?.description ?? ""}
-          advanceGame={advanceGame}
-        /> : <WaitGamePhase />
+        return userIsHost() ? (
+          <RankPlayersGamePhase
+            gameId={game!._id}
+            roundId={currentRound._id}
+            scenario={
+              currentRoundScenarios.find((x) => x.selected)?.scenarioDetails
+                ?.description ?? ""
+            }
+            advanceGame={advanceGame}
+          />
+        ) : (
+          <WaitGamePhase />
+        );
       case "guess-scenario":
-        return userIsHost() ?
+        return userIsHost() ? (
           <AwaitGuessesGamePhase
             gameRoundId={currentRound._id}
             isHost={userIsHost()}
             advanceGame={userIsHost() ? advanceGame : undefined}
           />
-          : <GuessScenarioGamePhase
+        ) : (
+          <GuessScenarioGamePhase
             gameId={game!._id}
             roundId={currentRound._id}
             submitSlot={guessSubmitSlot}
           />
+        );
       case "display-results":
-        return <DisplayResultsGamePhase
-          joinCode={game!.joinCode}
-          roundId={currentRound._id}
-          isHost={userIsHost()}
-          isGameFinished={isGameFinished}
-          advanceGame={advanceGame}
-        />
+        return (
+          <DisplayResultsGamePhase
+            joinCode={game!.joinCode}
+            roundId={currentRound._id}
+            isHost={userIsHost()}
+            isGameFinished={isGameFinished}
+            advanceGame={advanceGame}
+          />
+        );
     }
-  }
+  };
 
   return (
-    <div className={"flex flex-col w-full md:w-[75%] h-full max-h-svh gap-4 py-4"}>
+    <div
+      className={"flex flex-col w-full md:w-[75%] h-full max-h-svh gap-4 py-4"}
+    >
       <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
         {!isGameFinished() && !userIsHost() && (
-          <LoadingButton className={"bg-red-200 hover:bg-red-500 text-white w-fit"} variant={"destructive"} loading={isLeavingInProgress} disabled={isLeavingInProgress} onClick={() => { leaveGame() }}>
+          <LoadingButton
+            className={"bg-red-200 hover:bg-red-500 text-white w-fit"}
+            variant={"destructive"}
+            loading={isLeavingInProgress}
+            disabled={isLeavingInProgress}
+            onClick={() => {
+              leaveGame();
+            }}
+          >
             {!isLeavingInProgress && (
               <>
                 Leave Game
@@ -253,16 +354,18 @@ export function Game({ preloadedGame }: GameProps) {
         <CardHeader className={"shrink-0"}>
           <CardTitle>{gamePhaseTitle()}</CardTitle>
           <CardDescription>{gamePhaseDescription()}</CardDescription>
-          {!game?.isOpen && currentRound?.phase === "guess-scenario" && !userIsHost() && (
-            <CardAction>
-              <div ref={setGuessSubmitSlot} />
-            </CardAction>
-          )}
+          {!game?.isOpen &&
+            currentRound?.phase === "guess-scenario" &&
+            !userIsHost() && (
+              <CardAction>
+                <div ref={setGuessSubmitSlot} />
+              </CardAction>
+            )}
         </CardHeader>
         <CardContent className={"grow overflow-y-auto min-h-0"}>
           <div className={"flex flex-col h-full"}>{gamePhaseContent()}</div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

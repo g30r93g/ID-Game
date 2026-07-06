@@ -39,6 +39,7 @@ pnpm exec convex dev --once
 ```bash
 pnpm run dev   # then in a browser:
 ```
+
 1. Load `/` → landing renders.
 2. Sign in (Clerk) → reach `/game`.
 3. Create a game → lands on `/game/<CODE>` lobby with a join code.
@@ -53,10 +54,12 @@ Record what you actually observed. If the `scenarios` table is empty, smoke-test
 ### Task 0.1: Cut the working branch, delete dead branches, establish a clean baseline
 
 **Files:**
+
 - Create: `.nvmrc`
 - Modify: `package.json` (add `engines`)
 
 **Interfaces:**
+
 - Produces: a clean branch `chore/deps-upgrade-2026-07` based on current `main`, with `node_modules` reset to `main`'s committed lockfile state (Next 15.2.4). All later tasks build on this branch.
 
 - [ ] **Step 1: Confirm a clean tree and cut the branch**
@@ -125,9 +128,11 @@ This phase delivers exactly what was asked first: a finished Next 16 + Zod 4 upg
 ### Task 1.1: Bump the core framework + form-validation stack
 
 **Files:**
+
 - Modify: `package.json` (dependency versions)
 
 **Interfaces:**
+
 - Produces: updated `package.json` + `pnpm-lock.yaml` with next/react/zod/hookform on target versions. Later Phase 1 tasks fix the code these bumps break.
 
 - [ ] **Step 1: Update the dependency versions**
@@ -169,10 +174,12 @@ git commit -m "chore: bump next 16, react 19.2, zod 4, hookform 5"
 `@hookform/resolvers@5` now distinguishes a schema's **input** type from its **output** type. Both `create-game.tsx` and `rate.tsx` use `.default()`, which makes the field optional on input (`{x?: number}`) but required on output (`{x: number}`). The old single-generic `useForm<z.infer<...>>` conflates them → the `Resolver<{x?: number}>` vs `Resolver<{x: number}>` errors seen in `tsc`. Fix with the documented three-generic `z.input`/`z.output` form. `join-game.tsx` has no `.default()` and needs no change.
 
 **Files:**
+
 - Modify: `components/create-game.tsx:21-30`
 - Modify: `components/game/rate.tsx:25-33`
 
 **Interfaces:**
+
 - Consumes: `@hookform/resolvers@^5.4.0`, `zod@^4.4.3` from Task 1.1.
 
 - [ ] **Step 1: Reproduce the failure**
@@ -188,12 +195,16 @@ Expected: real errors in `components/create-game.tsx` and `components/game/rate.
 Replace the `useForm` call (lines 21-26):
 
 ```tsx
-  const form = useForm<z.input<typeof formSchema>, unknown, z.output<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      numberOfRounds: 10,
-    }
-  });
+const form = useForm<
+  z.input<typeof formSchema>,
+  unknown,
+  z.output<typeof formSchema>
+>({
+  resolver: zodResolver(formSchema),
+  defaultValues: {
+    numberOfRounds: 10,
+  },
+});
 ```
 
 Replace the `onSubmit` signature (line 30):
@@ -207,12 +218,16 @@ Replace the `onSubmit` signature (line 30):
 Replace the `useForm` call (lines 25-30):
 
 ```tsx
-  const form = useForm<z.input<typeof formSchema>, unknown, z.output<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      rating: 5,
-    },
-  });
+const form = useForm<
+  z.input<typeof formSchema>,
+  unknown,
+  z.output<typeof formSchema>
+>({
+  resolver: zodResolver(formSchema),
+  defaultValues: {
+    rating: 5,
+  },
+});
 ```
 
 Replace the `onSubmit` signature (line 33):
@@ -241,11 +256,13 @@ git commit -m "fix: type useForm with zod input/output for resolvers v5"
 Next 16 makes Turbopack the default for `dev` and `build` (the `--turbopack` flag is redundant), **removes `next lint`** (build no longer lints; use the ESLint CLI), and the env-loading `jiti` call must move to jiti v2's named export.
 
 **Files:**
+
 - Modify: `package.json` (`scripts`)
 - Modify: `next.config.ts:3-5`
 - Rewrite: `eslint.config.mjs`
 
 **Interfaces:**
+
 - Produces: a `lint` script backed by the ESLint CLI + a flat `eslint.config.mjs`; Phase 2 Task 2.3 later bumps ESLint itself to 10.
 
 - [ ] **Step 1: Update scripts in `package.json`**
@@ -311,6 +328,7 @@ git commit -m "chore: migrate config to next 16 (turbopack default, eslint cli, 
 ### Task 1.4: Full Phase-1 verification & tsconfig reconciliation
 
 **Files:**
+
 - Modify (if the build requires it): `tsconfig.json`
 
 - [ ] **Step 1: Run the production build**
@@ -454,7 +472,7 @@ Re-add any other default that changed and that the project depended on (e.g. kee
 
 ## Phase 3: Clerk 6 → 7 (Core 3) — DECISION REQUIRED, high effort
 
-> **⚠️ Read before starting.** This is not a version bump — it is an auth-UI rewrite. Clerk 7 (Core 3) is incompatible with `@clerk/elements`, which is **deprecated and has no Core-3 release** (it is locked to the Core-2 `@clerk/shared@^3` / `@clerk/clerk-react@^5` stack). Your `sign-in` and `sign-up` pages (261 + 243 lines) are built **entirely on Clerk Elements** (`<SignIn.Root>`, `<SignIn.Step>`, `<Clerk.Field>`, etc.). To reach Clerk 7 you must **rebuild both flows** off Elements — either onto Clerk's prebuilt `<SignIn>`/`<SignUp>` components (fast, less custom styling control) or onto custom flows using `@clerk/nextjs` v7 hooks (`useSignIn`/`useSignUp`, more work, preserves the bespoke UI). **Recommendation:** do this phase to fully silence Dependabot and get onto the supported Clerk line, but budget it as a small project and decide the rebuild target first. If deferring, Phase 1+2 already leave Clerk on the latest 6.x (`6.39.5`), which is stable and Next-16-compatible.**
+> **⚠️ Read before starting.** This is not a version bump — it is an auth-UI rewrite. Clerk 7 (Core 3) is incompatible with `@clerk/elements`, which is **deprecated and has no Core-3 release** (it is locked to the Core-2 `@clerk/shared@^3` / `@clerk/clerk-react@^5` stack). Your `sign-in` and `sign-up` pages (261 + 243 lines) are built **entirely on Clerk Elements** (`<SignIn.Root>`, `<SignIn.Step>`, `<Clerk.Field>`, etc.). To reach Clerk 7 you must **rebuild both flows** off Elements — either onto Clerk's prebuilt `<SignIn>`/`<SignUp>` components (fast, less custom styling control) or onto custom flows using `@clerk/nextjs` v7 hooks (`useSignIn`/`useSignUp`, more work, preserves the bespoke UI). **Recommendation:** do this phase to fully silence Dependabot and get onto the supported Clerk line, but budget it as a small project and decide the rebuild target first. If deferring, Phase 1+2 already leave Clerk on the latest 6.x (`6.39.5`), which is stable and Next-16-compatible.\*\*
 
 Prerequisites already satisfied by earlier phases: Convex ≥1.35 (Task 2.1 → 1.42.1) supports Clerk's `@clerk/react@^6`; Next ≥15.2.8 (Task 1.1 → 16.2.10).
 

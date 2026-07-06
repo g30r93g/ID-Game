@@ -1,42 +1,47 @@
-import {Game} from "@/components/game";
+import { Game } from "@/components/game";
 import { api } from "@/convex/_generated/api";
-import {fetchMutation, fetchQuery, preloadQuery} from "convex/nextjs";
-import {redirect} from "next/navigation";
-import {getAuthToken} from "@/lib/auth";
+import { fetchMutation, fetchQuery, preloadQuery } from "convex/nextjs";
+import { redirect } from "next/navigation";
+import { getAuthToken } from "@/lib/auth";
 import PostHogClient from "@/lib/posthog";
-import {currentUser} from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 
-export default async function GamePage({ params }: { params?: Promise<{ code: string }> }) {
+export default async function GamePage({
+  params,
+}: {
+  params?: Promise<{ code: string }>;
+}) {
   // Get current user's ID
-  const [token, user] = await Promise.all([
-    getAuthToken(),
-    currentUser(),
-  ]);
+  const [token, user] = await Promise.all([getAuthToken(), currentUser()]);
   if (!user) {
-    console.error("No user is found")
-    redirect('/game');
+    console.error("No user is found");
+    redirect("/game");
   }
   if (!token) {
-    console.error("No authentication token found")
-    redirect('/game');
+    console.error("No authentication token found");
+    redirect("/game");
   }
 
   // get join code
   const joinCode = (await params)?.code;
 
   if (joinCode === null || joinCode === undefined) {
-    console.log("joinCode", joinCode)
-    return <p>No Join Code Supplied</p>
+    console.log("joinCode", joinCode);
+    return <p>No Join Code Supplied</p>;
   }
   if (joinCode.length !== 6) {
     console.error("The join code was invalid");
-    redirect('/game')
+    redirect("/game");
   }
 
   const posthog = PostHogClient();
 
   // Ensure the current user is a player, otherwise join them
-  const isUserPlayer = await fetchQuery(api.game.isUserPlayer, { joinCode }, { token });
+  const isUserPlayer = await fetchQuery(
+    api.game.isUserPlayer,
+    { joinCode },
+    { token },
+  );
   if (!isUserPlayer) {
     try {
       if (posthog) {
@@ -44,21 +49,21 @@ export default async function GamePage({ params }: { params?: Promise<{ code: st
           distinctId: user.id,
           event: "game_join",
           properties: {
-            joinCode
-          }
+            joinCode,
+          },
         });
       }
 
-      await fetchMutation(api.game.joinGame, {joinCode}, {token})
+      await fetchMutation(api.game.joinGame, { joinCode }, { token });
     } catch {
-      redirect('/game');
+      redirect("/game");
     }
   }
 
   // get game data
   const preloadedGame = await preloadQuery(api.game.fetchGameByJoinCode, {
-    joinCode
+    joinCode,
   });
 
-  return <Game preloadedGame={preloadedGame} />
+  return <Game preloadedGame={preloadedGame} />;
 }

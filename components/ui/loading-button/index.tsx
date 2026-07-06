@@ -15,22 +15,31 @@ export interface ButtonProps
 const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
     { className, variant, size, asChild = false, loading, children, ...props },
-    ref
+    ref,
   ) => {
     if (asChild) {
       return (
         <Slot ref={ref} {...props}>
           {React.Children.map(children, (child) => {
-            if (React.isValidElement<{ className?: string; children?: React.ReactNode }>(child)) {
+            if (
+              React.isValidElement<{
+                className?: string;
+                children?: React.ReactNode;
+              }>(child)
+            ) {
               return React.cloneElement(child, {
-                className: cn(buttonVariants({ variant, size }), child.props.className, className),
+                className: cn(
+                  buttonVariants({ variant, size }),
+                  child.props.className,
+                  className,
+                ),
                 children: (
                   <>
                     {loading && (
                       <Loader2
                         className={cn(
                           "h-4 w-4 animate-spin",
-                          child.props.children && "mr-2"
+                          child.props.children && "mr-2",
                         )}
                       />
                     )}
@@ -59,7 +68,7 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {children}
       </Button>
     );
-  }
+  },
 );
 LoadingButton.displayName = "LoadingButton";
 

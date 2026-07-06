@@ -1,28 +1,42 @@
 "use client";
 
-import {Button} from "@/components/ui/button";
-import {ArrowRight, Check, Loader2, X} from "lucide-react";
-import {useMutation, useQuery} from "convex/react";
-import {api} from "@/convex/_generated/api";
-import {useCallback, useEffect, useState} from "react";
-import {Id} from "@/convex/_generated/dataModel";
-import {Card, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
-import {FaFlagCheckered} from "react-icons/fa6";
-import {LoadingButton} from "@/components/ui/loading-button";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Check, Loader2, X } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useCallback, useEffect, useState } from "react";
+import { Id } from "@/convex/_generated/dataModel";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { FaFlagCheckered } from "react-icons/fa6";
+import { LoadingButton } from "@/components/ui/loading-button";
 import Link from "next/link";
 
 interface DisplayResultsGamePhaseProps {
   joinCode: string;
-  roundId: Id<'gameRounds'>;
+  roundId: Id<"gameRounds">;
   isHost: boolean;
   isGameFinished: () => boolean;
   advanceGame: () => void;
 }
 
-export default function DisplayResultsGamePhase({ joinCode, roundId, isHost, isGameFinished, advanceGame }: DisplayResultsGamePhaseProps) {
+export default function DisplayResultsGamePhase({
+  joinCode,
+  roundId,
+  isHost,
+  isGameFinished,
+  advanceGame,
+}: DisplayResultsGamePhaseProps) {
   const markGuessesForRound = useMutation(api.game.markGuessesForRound);
-  const results = useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
-  const correctAnswer = useQuery(api.game.getCorrectAnswer, { roundId: roundId });
+  const results =
+    useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
+  const correctAnswer = useQuery(api.game.getCorrectAnswer, {
+    roundId: roundId,
+  });
 
   const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
 
@@ -30,27 +44,37 @@ export default function DisplayResultsGamePhase({ joinCode, roundId, isHost, isG
     await markGuessesForRound({ roundId: roundId });
   }, [markGuessesForRound, roundId]);
 
-
   useEffect(() => {
     if (isHost) {
       performGuessMarking();
     }
-  }, [isHost, performGuessMarking])
+  }, [isHost, performGuessMarking]);
 
   return (
     <div className={"flex flex-col gap-4"}>
       {correctAnswer && (
-        <div className={"rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-green-200/25 dark:bg-green-800/25"}>
+        <div
+          className={
+            "rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-green-200/25 dark:bg-green-800/25"
+          }
+        >
           {correctAnswer}
         </div>
       )}
       {results?.map((r) => (
-        <Card key={r._id} className={"p-4 items-center grid grid-cols-[1fr_auto] gap-2"}>
+        <Card
+          key={r._id}
+          className={"p-4 items-center grid grid-cols-[1fr_auto] gap-2"}
+        >
           <CardHeader>
             <CardTitle>{r.playerDisplayName}</CardTitle>
             <CardDescription>{r.guessedScenarioDescription}</CardDescription>
           </CardHeader>
-            {r.isCorrect ? <Check className={"text-green-500"} /> : <X className={"text-red-500"} />}
+          {r.isCorrect ? (
+            <Check className={"text-green-500"} />
+          ) : (
+            <X className={"text-red-500"} />
+          )}
         </Card>
       ))}
       {isGameFinished() && (
@@ -62,7 +86,14 @@ export default function DisplayResultsGamePhase({ joinCode, roundId, isHost, isG
         </Link>
       )}
       {isHost && results.length && !isGameFinished() && (
-        <LoadingButton loading={isAdvancingGame} disabled={isAdvancingGame} onClick={() => { setIsAdvancingGame(true); advanceGame() }}>
+        <LoadingButton
+          loading={isAdvancingGame}
+          disabled={isAdvancingGame}
+          onClick={() => {
+            setIsAdvancingGame(true);
+            advanceGame();
+          }}
+        >
           {!isAdvancingGame && (
             <>
               Next Round
@@ -78,5 +109,5 @@ export default function DisplayResultsGamePhase({ joinCode, roundId, isHost, isG
         </span>
       )}
     </div>
-  )
+  );
 }

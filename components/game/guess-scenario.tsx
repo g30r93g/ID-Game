@@ -21,16 +21,22 @@ interface GuessScenarioGamePhaseProps {
 }
 
 export default function GuessScenarioGamePhase({
-                                                 gameId,
-                                                 roundId,
-                                                 submitSlot,
-                                               }: GuessScenarioGamePhaseProps) {
-  const playerRankings = useQuery(api.game.getPlayerRankingsForRound, { roundId });
-  const scenarios = useQuery(api.game.gameRoundScenarios, { gameRound: roundId });
+  gameId,
+  roundId,
+  submitSlot,
+}: GuessScenarioGamePhaseProps) {
+  const playerRankings = useQuery(api.game.getPlayerRankingsForRound, {
+    roundId,
+  });
+  const scenarios = useQuery(api.game.gameRoundScenarios, {
+    gameRound: roundId,
+  });
   const makeGuess = useMutation(api.game.makeGuessForRound);
 
   const [view, setView] = useState<"scenarios" | "rankings">("rankings");
-  const [selectedScenario, setSelectedScenario] = useState<Id<"gameRoundScenarios"> | undefined>(undefined);
+  const [selectedScenario, setSelectedScenario] = useState<
+    Id<"gameRoundScenarios"> | undefined
+  >(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasGuessed, setHasGuessed] = useState<boolean>(false);
 
@@ -43,7 +49,11 @@ export default function GuessScenarioGamePhase({
 
     try {
       setIsLoading(true);
-      await makeGuess({ game: gameId, gameRound: roundId, scenario: selectedScenario });
+      await makeGuess({
+        game: gameId,
+        gameRound: roundId,
+        scenario: selectedScenario,
+      });
       setHasGuessed(true);
     } catch (e) {
       console.error(e);
@@ -79,21 +89,29 @@ export default function GuessScenarioGamePhase({
         className="shrink-0"
       >
         <TabsList className="w-full">
-          <TabsTrigger value="rankings" className="flex-1">Rankings</TabsTrigger>
-          <TabsTrigger value="scenarios" className="flex-1">Scenarios</TabsTrigger>
+          <TabsTrigger value="rankings" className="flex-1">
+            Rankings
+          </TabsTrigger>
+          <TabsTrigger value="scenarios" className="flex-1">
+            Scenarios
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
       <div className="grow min-h-0 overflow-y-auto flex flex-col gap-2 [-ms-overflow-style:'none'] [scrollbar-width:'none'] [&::-webkit-scrollbar]:hidden">
         {view === "rankings" && (
           <>
-            <span className="pl-3 text-sm text-muted-foreground">Most likely</span>
+            <span className="pl-3 text-sm text-muted-foreground">
+              Most likely
+            </span>
             {playerRankings?.map((ranking) => (
               <Card key={ranking._id} className="p-4">
                 <CardTitle>{ranking.playerDisplayName}</CardTitle>
               </Card>
             ))}
-            <span className="pl-3 text-sm text-muted-foreground">Least likely</span>
+            <span className="pl-3 text-sm text-muted-foreground">
+              Least likely
+            </span>
           </>
         )}
 
@@ -101,7 +119,9 @@ export default function GuessScenarioGamePhase({
           scenarios?.map((scenario) => (
             <Button
               key={scenario._id}
-              variant={selectedScenario === scenario._id ? "default" : "outline"}
+              variant={
+                selectedScenario === scenario._id ? "default" : "outline"
+              }
               className="py-2 whitespace-normal h-fit"
               onClick={() => setSelectedScenario(scenario._id)}
             >

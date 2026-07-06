@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import {ThemeProvider} from "next-themes";
-import {Toaster} from "@/components/ui/sonner";
-import {PostHogProvider} from "@/providers/Posthog";
-import {env} from "@/app/env";
+import { ThemeProvider } from "next-themes";
+import { Toaster } from "@/components/ui/sonner";
+import { PostHogProvider } from "@/providers/Posthog";
+import { env } from "@/app/env";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,8 +22,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({
-                                     children,
-                                   }: Readonly<{
+  children,
+}: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
@@ -34,13 +34,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-        >
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <main className={"container mx-auto px-4 md:px-0"}>
-            {env.NODE_ENV !== 'production' ? children : <PostHogProvider>{children}</PostHogProvider>}
+            {env.NODE_ENV !== "production" ? (
+              children
+            ) : (
+              <PostHogProvider>{children}</PostHogProvider>
+            )}
           </main>
           <Toaster />
         </ThemeProvider>

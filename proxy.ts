@@ -1,15 +1,18 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import {env} from "@/app/env";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { env } from "@/app/env";
 
-const isPrivateRoute = createRouteMatcher(['/game']);
+const isPrivateRoute = createRouteMatcher(["/game"]);
 
-export default clerkMiddleware(async (auth, req) => {
-  if (isPrivateRoute(req)) {
-    await auth.protect();
-  }
-}, {
-  debug: env.NODE_ENV === 'development',
-})
+export default clerkMiddleware(
+  async (auth, req) => {
+    if (isPrivateRoute(req)) {
+      await auth.protect();
+    }
+  },
+  {
+    debug: env.NODE_ENV === "development",
+  },
+);
 
 export const config = {
   // The following matcher runs middleware on all routes except static assets.

@@ -1,32 +1,39 @@
 "use client";
 
-import {useEffect, useState} from "react";
-import {Button} from "@/components/ui/button";
-import {ArrowRight} from "lucide-react";
-import {Id} from "@/convex/_generated/dataModel";
-import {useMutation, useQuery} from "convex/react";
-import {api} from "@/convex/_generated/api";
-import {ScrollArea} from "@/components/ui/scroll-area";
-import {usePostHog} from "posthog-js/react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
+import { Id } from "@/convex/_generated/dataModel";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePostHog } from "posthog-js/react";
 
 interface PickScenarioGamePhaseProps {
   gameRound: Id<"gameRounds">;
   advanceGame: () => void;
 }
 
-export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickScenarioGamePhaseProps) {
-  const roundScenarios = useQuery(api.game.gameRoundScenarios, { gameRound })
-  const performRoundScenarioSelection = useMutation(api.game.selectGameRoundScenario)
+export default function PickScenarioGamePhase({
+  gameRound,
+  advanceGame,
+}: PickScenarioGamePhaseProps) {
+  const roundScenarios = useQuery(api.game.gameRoundScenarios, { gameRound });
+  const performRoundScenarioSelection = useMutation(
+    api.game.selectGameRoundScenario,
+  );
 
   const posthog = usePostHog();
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [selectedScenario, setSelectedScenario] = useState<Id<"gameRoundScenarios"> | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedScenario, setSelectedScenario] = useState<
+    Id<"gameRoundScenarios"> | undefined
+  >(undefined);
 
   useEffect(() => {
     if (!selectedScenario) return;
     if (!posthog) return;
-    
-    posthog.capture('game_scenario_select', { scenario: selectedScenario });
+
+    posthog.capture("game_scenario_select", { scenario: selectedScenario });
   }, [selectedScenario, posthog]);
 
   async function handleScenarioSelection() {
@@ -37,9 +44,12 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
         throw new Error("No selected scenario selected");
       }
 
-      await performRoundScenarioSelection({ gameRoundId: gameRound, gameRoundScenarioId: selectedScenario });
+      await performRoundScenarioSelection({
+        gameRoundId: gameRound,
+        gameRoundScenarioId: selectedScenario,
+      });
 
-      advanceGame()
+      advanceGame();
     } catch (error) {
       console.error(error);
     } finally {
@@ -58,17 +68,26 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
             return (
               <Button
                 key={roundScenario._id}
-                variant={selectedScenario === roundScenario._id ? "default" : "outline"}
+                variant={
+                  selectedScenario === roundScenario._id ? "default" : "outline"
+                }
                 className={"py-2 whitespace-normal h-fit"}
-                onClick={() => { setSelectedScenario(roundScenario._id) }}
+                onClick={() => {
+                  setSelectedScenario(roundScenario._id);
+                }}
               >
                 {roundScenario.scenarioDetails?.description}
               </Button>
-            )
+            );
           })}
         </div>
       </ScrollArea>
-      <Button disabled={!selectedScenario} onClick={() => { handleScenarioSelection() }}>
+      <Button
+        disabled={!selectedScenario}
+        onClick={() => {
+          handleScenarioSelection();
+        }}
+      >
         {!isLoading && (
           <>
             Pick Scenario
@@ -77,5 +96,5 @@ export default function PickScenarioGamePhase({ gameRound, advanceGame }: PickSc
         )}
       </Button>
     </div>
-  )
+  );
 }

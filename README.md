@@ -4,24 +4,26 @@
 
 1. Install dependencies via `pnpm install`
 2. Add environment variables to `.env.local`
+
    ```env
    NODE_ENV=development
 
     # Convex
     CONVEX_DEPLOYMENT=<your-convex-deployment>
     NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
-    
+
     # Clerk
     CLERK_JWT_ISSUER_DOMAIN=<your-clerk-domain>
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
     CLERK_SECRET_KEY=<your-clerk-secret-key>
-    
+
     # Posthog
     NEXT_PUBLIC_POSTHOG_KEY=<your-posthog-key>
     NEXT_PUBLIC_POSTHOG_API_HOST=/ingest # DO NOT CHANGE
     NEXT_PUBLIC_POSTHOG_UI_HOST=<your-posthog-host-url>
-    ```
-4. Start app with `pnpm start`
+   ```
+
+3. Start app with `pnpm start`
 
 ## Architecture
 
@@ -55,12 +57,12 @@ straightforward state management and UI synchronisation, providing a responsive 
 1. Create a game room
 2. Wait for players to join
 3. Start Round
-    1. Server allocates 10 scenarios to choose from
-    2. Round host picks 1 scenario from the list
-    3. Round host orders players in most-to-least likely
-    4. Non-host players receives the allocated 10 scenarios
-    5. Each player guesses which scenario round host picked
-    6. Once all players have picked, results are shown
+   1. Server allocates 10 scenarios to choose from
+   2. Round host picks 1 scenario from the list
+   3. Round host orders players in most-to-least likely
+   4. Non-host players receives the allocated 10 scenarios
+   5. Each player guesses which scenario round host picked
+   6. Once all players have picked, results are shown
 4. Play again
 
 ## DB Schema

@@ -1,26 +1,32 @@
 "use client";
 
 import { Id } from "@/convex/_generated/dataModel";
-import {api} from "@/convex/_generated/api";
-import {useQuery} from "convex/react";
-import {Card, CardTitle} from "@/components/ui/card";
-import {Check, Loader2} from "lucide-react";
-import {clsx} from "clsx";
-import {useEffect, useRef} from "react";
-import {ScrollArea} from "@/components/ui/scroll-area";
+import { api } from "@/convex/_generated/api";
+import { useQuery } from "convex/react";
+import { Card, CardTitle } from "@/components/ui/card";
+import { Check, Loader2 } from "lucide-react";
+import { clsx } from "clsx";
+import { useEffect, useRef } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AwaitGuessesGamePhaseProps {
-  gameRoundId: Id<'gameRounds'>;
+  gameRoundId: Id<"gameRounds">;
   isHost: boolean;
   advanceGame?: () => void;
 }
 
-export default function AwaitGuessesGamePhase({ gameRoundId, isHost, advanceGame }: AwaitGuessesGamePhaseProps) {
+export default function AwaitGuessesGamePhase({
+  gameRoundId,
+  isHost,
+  advanceGame,
+}: AwaitGuessesGamePhaseProps) {
   if (isHost && !advanceGame) {
-    throw new Error("advanceGame must be defined if player is host")
+    throw new Error("advanceGame must be defined if player is host");
   }
 
-  const guessStatus = useQuery(api.game.getGuessesStatusForRound, { roundId: gameRoundId });
+  const guessStatus = useQuery(api.game.getGuessesStatusForRound, {
+    roundId: gameRoundId,
+  });
 
   // Keep the latest `advanceGame` in a ref so the scheduling effect below can
   // call it without re-running (and re-scheduling) whenever the parent passes a
@@ -57,16 +63,23 @@ export default function AwaitGuessesGamePhase({ gameRoundId, isHost, advanceGame
           {playerGuesses.map((playerGuess) => (
             <Card
               key={playerGuess.player}
-              className={clsx("p-4 flex flex-row items-center justify-between transition-opacity", {
-                "opacity-50": !!playerGuess.hasGuessed,
-              })}
+              className={clsx(
+                "p-4 flex flex-row items-center justify-between transition-opacity",
+                {
+                  "opacity-50": !!playerGuess.hasGuessed,
+                },
+              )}
             >
               <CardTitle>{playerGuess.displayName}</CardTitle>
-              {playerGuess.hasGuessed ? <Check className="text-green-500" /> : <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
+              {playerGuess.hasGuessed ? (
+                <Check className="text-green-500" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+              )}
             </Card>
           ))}
         </div>
       </ScrollArea>
     </>
-  )
+  );
 }

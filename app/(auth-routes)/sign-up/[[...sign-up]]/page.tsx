@@ -1,10 +1,10 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useSignUp } from '@clerk/nextjs'
-import { Button } from '@/components/ui/button'
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSignUp } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -12,125 +12,131 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Icons } from '@/components/ui/icons'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Icons } from "@/components/ui/icons";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
-type Step = 'start' | 'continue' | 'verifications'
+type Step = "start" | "continue" | "verifications";
 
-const RESEND_SECONDS = 30
+const RESEND_SECONDS = 30;
 
 export default function SignUpPage() {
-  const { signUp, errors, fetchStatus } = useSignUp()
-  const router = useRouter()
+  const { signUp, errors, fetchStatus } = useSignUp();
+  const router = useRouter();
 
-  const [step, setStep] = React.useState<Step>('start')
-  const [firstName, setFirstName] = React.useState('')
-  const [lastName, setLastName] = React.useState('')
-  const [email, setEmail] = React.useState('')
-  const [password, setPassword] = React.useState('')
-  const [username, setUsername] = React.useState('')
-  const [code, setCode] = React.useState('')
-  const [resendCountdown, setResendCountdown] = React.useState(0)
-  const [googleLoading, setGoogleLoading] = React.useState(false)
+  const [step, setStep] = React.useState<Step>("start");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [username, setUsername] = React.useState("");
+  const [code, setCode] = React.useState("");
+  const [resendCountdown, setResendCountdown] = React.useState(0);
+  const [googleLoading, setGoogleLoading] = React.useState(false);
 
-  const isBusy = fetchStatus === 'fetching'
+  const isBusy = fetchStatus === "fetching";
 
   React.useEffect(() => {
-    if (resendCountdown <= 0) return
+    if (resendCountdown <= 0) return;
     const timer = setInterval(() => {
-      setResendCountdown((seconds) => Math.max(0, seconds - 1))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [resendCountdown])
+      setResendCountdown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCountdown]);
 
   // The navigate callback param type, derived from the installed types without a
   // direct import (only @clerk/nextjs is resolvable from the app).
   type NavigateParams = Parameters<
-    NonNullable<NonNullable<Parameters<typeof signUp.finalize>[0]>['navigate']>
-  >[0]
+    NonNullable<NonNullable<Parameters<typeof signUp.finalize>[0]>["navigate"]>
+  >[0];
 
   const navigate = ({ session, decorateUrl }: NavigateParams) => {
-    if (session?.currentTask) return
-    const url = decorateUrl('/game')
-    if (url.startsWith('http')) {
-      window.location.href = url
+    if (session?.currentTask) return;
+    const url = decorateUrl("/game");
+    if (url.startsWith("http")) {
+      window.location.href = url;
     } else {
-      router.push(url)
+      router.push(url);
     }
-  }
+  };
 
   // Advance the flow based on the current sign-up status: collect any missing
   // fields (e.g. username if the instance requires it), verify email, or finalize.
   const advance = async () => {
-    if (signUp.status === 'complete') {
-      await signUp.finalize({ navigate })
-      return
+    if (signUp.status === "complete") {
+      await signUp.finalize({ navigate });
+      return;
     }
-    if (signUp.missingFields.includes('username')) {
-      setStep('continue')
-      return
+    if (signUp.missingFields.includes("username")) {
+      setStep("continue");
+      return;
     }
-    if (signUp.unverifiedFields.includes('email_address')) {
-      const { error } = await signUp.verifications.sendEmailCode()
+    if (signUp.unverifiedFields.includes("email_address")) {
+      const { error } = await signUp.verifications.sendEmailCode();
       if (!error) {
-        setCode('')
-        setResendCountdown(RESEND_SECONDS)
-        setStep('verifications')
+        setCode("");
+        setResendCountdown(RESEND_SECONDS);
+        setStep("verifications");
       }
     }
-  }
+  };
 
   const handleGoogle = async () => {
-    setGoogleLoading(true)
+    setGoogleLoading(true);
     const { error } = await signUp.sso({
-      strategy: 'oauth_google',
-      redirectUrl: '/game',
-      redirectCallbackUrl: '/sso-callback',
-    })
-    if (error) setGoogleLoading(false)
-  }
+      strategy: "oauth_google",
+      redirectUrl: "/game",
+      redirectCallbackUrl: "/sso-callback",
+    });
+    if (error) setGoogleLoading(false);
+  };
 
   const handleStart = async (event: React.FormEvent) => {
-    event.preventDefault()
+    event.preventDefault();
     const { error } = await signUp.password({
       emailAddress: email,
       password,
       firstName,
       lastName,
-    })
-    if (!error) await advance()
-  }
+    });
+    if (!error) await advance();
+  };
 
   const handleContinue = async (event: React.FormEvent) => {
-    event.preventDefault()
-    const { error } = await signUp.update({ username })
-    if (!error) await advance()
-  }
+    event.preventDefault();
+    const { error } = await signUp.update({ username });
+    if (!error) await advance();
+  };
 
   const verifyEmailCode = async (value: string) => {
-    const { error } = await signUp.verifications.verifyEmailCode({ code: value })
+    const { error } = await signUp.verifications.verifyEmailCode({
+      code: value,
+    });
     // Mirror handleStart/handleContinue: on success, hand off to advance() so a
     // still-outstanding requirement (e.g. a required username) moves the flow
     // forward instead of dead-ending. advance() finalizes when complete.
-    if (!error) await advance()
-  }
+    if (!error) await advance();
+  };
 
   const handleCodeSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    await verifyEmailCode(code)
-  }
+    event.preventDefault();
+    await verifyEmailCode(code);
+  };
 
   const resendEmailCode = async () => {
-    const { error } = await signUp.verifications.sendEmailCode()
-    if (!error) setResendCountdown(RESEND_SECONDS)
-  }
+    const { error } = await signUp.verifications.sendEmailCode();
+    if (!error) setResendCountdown(RESEND_SECONDS);
+  };
 
   return (
     <div className="grid w-full grow items-center px-4 sm:justify-center">
-      {step === 'start' && (
+      {step === "start" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleStart}>
             <CardHeader>
@@ -226,7 +232,9 @@ export default function SignUpPage() {
                 )}
               </div>
               {errors.global && errors.global.length > 0 && (
-                <p className="block text-sm text-destructive">{errors.global[0].message}</p>
+                <p className="block text-sm text-destructive">
+                  {errors.global[0].message}
+                </p>
               )}
             </CardContent>
             <CardFooter>
@@ -234,7 +242,11 @@ export default function SignUpPage() {
                 {/* Clerk bot sign-up protection (CAPTCHA). Required by default. */}
                 <div id="clerk-captcha" className="empty:hidden" />
                 <Button type="submit" disabled={isBusy}>
-                  {isBusy ? <Icons.spinner className="size-4 animate-spin" /> : 'Continue'}
+                  {isBusy ? (
+                    <Icons.spinner className="size-4 animate-spin" />
+                  ) : (
+                    "Continue"
+                  )}
                 </Button>
                 <Button variant="link" size="sm" asChild>
                   <Link href="/sign-in">Already have an account? Sign in</Link>
@@ -245,7 +257,7 @@ export default function SignUpPage() {
         </Card>
       )}
 
-      {step === 'continue' && (
+      {step === "continue" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleContinue}>
             <CardHeader>
@@ -272,7 +284,11 @@ export default function SignUpPage() {
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={isBusy}>
-                  {isBusy ? <Icons.spinner className="size-4 animate-spin" /> : 'Continue'}
+                  {isBusy ? (
+                    <Icons.spinner className="size-4 animate-spin" />
+                  ) : (
+                    "Continue"
+                  )}
                 </Button>
               </div>
             </CardFooter>
@@ -280,7 +296,7 @@ export default function SignUpPage() {
         </Card>
       )}
 
-      {step === 'verifications' && (
+      {step === "verifications" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleCodeSubmit}>
             <CardHeader>
@@ -296,8 +312,8 @@ export default function SignUpPage() {
                     maxLength={6}
                     value={code}
                     onChange={(value) => {
-                      setCode(value)
-                      if (value.length === 6) void verifyEmailCode(value)
+                      setCode(value);
+                      if (value.length === 6) void verifyEmailCode(value);
                     }}
                   >
                     <InputOTPGroup>
@@ -341,7 +357,11 @@ export default function SignUpPage() {
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={isBusy}>
-                  {isBusy ? <Icons.spinner className="size-4 animate-spin" /> : 'Continue'}
+                  {isBusy ? (
+                    <Icons.spinner className="size-4 animate-spin" />
+                  ) : (
+                    "Continue"
+                  )}
                 </Button>
               </div>
             </CardFooter>
@@ -349,5 +369,5 @@ export default function SignUpPage() {
         </Card>
       )}
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import {ComponentProps, useState} from "react";
+import { ComponentProps, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Minus, Plus } from "lucide-react";
@@ -19,7 +19,7 @@ export function NumberField({
   step = 1,
   onChange,
   ...props
-                            }: NumberFieldProps & ComponentProps<"input">) {
+}: NumberFieldProps & ComponentProps<"input">) {
   const [internalValue, setInternalValue] = useState<number>(value);
 
   const handleChange = (newValue: number) => {
