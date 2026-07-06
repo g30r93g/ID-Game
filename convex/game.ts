@@ -1,6 +1,6 @@
-import {mutation, query} from "./_generated/server";
-import {v} from "convex/values";
-import {Id} from "./_generated/dataModel";
+import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
+import { mutation, query } from "./_generated/server";
 
 function generateOTP(length = 6): string {
   const characters = 'ACDEGHIKLMNPQRSTUVXYZ0123456789'; // some are missing to reduce ambiguity
@@ -509,7 +509,7 @@ export const selectGameRoundScenario = mutation({
       .collect();
 
     if (selectedScenariosForRound.length > 0) {
-      throw new Error("A scenario has already beeen selected.");
+      throw new Error("A scenario has already been selected.");
     }
 
     // Change selected state for the chosen scenario
