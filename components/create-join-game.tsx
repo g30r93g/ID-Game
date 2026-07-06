@@ -7,62 +7,61 @@ import {Button} from "@/components/ui/button";
 import {ArrowLeft, Plus} from "lucide-react";
 import {useState} from "react";
 import CreateGame from "@/components/create-game";
+import {UserTray} from "@/components/user-tray";
 
 export default function CreateJoinGame({ joinCode }: { joinCode?: string }) {
   const [view, setView] = useState<"join" | "create">("join");
 
-  if (view === "join") {
-    return (
-      <Card className="w-full md:w-[50%]">
-        <CardHeader>
-          <CardTitle>
-            Join Game
-          </CardTitle>
-          <CardDescription>
-            Enter a join code or start a new game.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <JoinGame defaultJoinCode={joinCode} />
-          <Separator className={"my-3"}/>
-          <Button
-            className={"w-full"}
-            variant={"secondary"}
-            onClick={() => { setView("create") }}
-          >
-            Create New Game
-            <Plus/>
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (view === "create") {
-    return (
-      <div className="w-full md:w-[50%] flex flex-col gap-4">
+  return (
+    <div className="w-full md:w-[50%] flex flex-col gap-4">
+      {view === "create" && (
         <Button
           variant={"outline"}
           className={"w-fit"}
-          onClick={() => { setView("join")}}
+          onClick={() => { setView("join") }}
         >
-          <ArrowLeft />
+          <ArrowLeft/>
           Join Game
         </Button>
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>
-              Create New Game
-            </CardTitle>
-            <CardDescription>
-              Enter the number of rounds you&apos;d like to play.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CreateGame />
-          </CardContent>
+      )}
+
+      {/* The identity tray sits behind the card and emerges from its top edge. */}
+      <div className="relative flex flex-col">
+        <UserTray className="relative z-0 -mb-4 pb-6"/>
+
+        <Card className="relative z-10 w-full">
+          {view === "join" ? (
+            <>
+              <CardHeader>
+                <CardTitle>Join Game</CardTitle>
+                <CardDescription>Enter a join code or start a new game.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <JoinGame defaultJoinCode={joinCode}/>
+                <Separator className={"my-3"}/>
+                <Button
+                  className={"w-full"}
+                  variant={"secondary"}
+                  onClick={() => { setView("create") }}
+                >
+                  Create New Game
+                  <Plus/>
+                </Button>
+              </CardContent>
+            </>
+          ) : (
+            <>
+              <CardHeader>
+                <CardTitle>Create New Game</CardTitle>
+                <CardDescription>Enter the number of rounds you&apos;d like to play.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CreateGame/>
+              </CardContent>
+            </>
+          )}
         </Card>
       </div>
-    )
-  }
+    </div>
+  );
 }
