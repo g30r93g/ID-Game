@@ -111,10 +111,11 @@ export default function SignUpPage() {
   }
 
   const verifyEmailCode = async (value: string) => {
-    await signUp.verifications.verifyEmailCode({ code: value })
-    if (signUp.status === 'complete') {
-      await signUp.finalize({ navigate })
-    }
+    const { error } = await signUp.verifications.verifyEmailCode({ code: value })
+    // Mirror handleStart/handleContinue: on success, hand off to advance() so a
+    // still-outstanding requirement (e.g. a required username) moves the flow
+    // forward instead of dead-ending. advance() finalizes when complete.
+    if (!error) await advance()
   }
 
   const handleCodeSubmit = async (event: React.FormEvent) => {
