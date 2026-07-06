@@ -6,7 +6,7 @@ import {useQuery} from "convex/react";
 import {Card, CardTitle} from "@/components/ui/card";
 import {Check, Loader2} from "lucide-react";
 import {clsx} from "clsx";
-import {useEffect, useState} from "react";
+import {useEffect, useRef} from "react";
 import {ScrollArea} from "@/components/ui/scroll-area";
 
 interface AwaitGuessesGamePhaseProps {
@@ -21,22 +21,28 @@ export default function AwaitGuessesGamePhase({ gameRoundId, isHost, advanceGame
   }
 
   const guessStatus = useQuery(api.game.getGuessesStatusForRound, { roundId: gameRoundId });
-  const [shouldAdvance, setShouldAdvance] = useState<boolean>(false);
 
+  // Keep the latest `advanceGame` in a ref so the scheduling effect below can
+  // call it without re-running (and re-scheduling) whenever the parent passes a
+  // new function identity on every render.
+  const advanceGameRef = useRef(advanceGame);
   useEffect(() => {
-    if (guessStatus?.guessingCompleteByAllUsers && isHost) {
-      setShouldAdvance(true);
-    }
+    advanceGameRef.current = advanceGame;
+  }, [advanceGame]);
+
+  // When every player has guessed and we're the host, advance the game once,
+  // ~500ms later. Keyed only on the completion/host signals so it fires a single
+  // time per transition; the cleanup cancels the pending advance if the signal
+  // flips back before it runs.
+  useEffect(() => {
+    if (!(guessStatus?.guessingCompleteByAllUsers && isHost)) return;
+
+    const timeoutId = setTimeout(() => {
+      advanceGameRef.current?.();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
   }, [guessStatus?.guessingCompleteByAllUsers, isHost]);
-
-  useEffect(() => {
-    if (shouldAdvance && advanceGame) {
-      setTimeout(() => {
-        advanceGame();
-        setShouldAdvance(false); // Reset to prevent unwanted re-triggers
-      }, 500);
-    }
-  }, [shouldAdvance, advanceGame]);
 
   if (!guessStatus) {
     return <p className="text-center text-gray-500">Loading...</p>;

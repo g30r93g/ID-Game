@@ -41,6 +41,10 @@ import { composeEventHandlers, useComposedRefs } from "@/lib/composition";
 import { cn } from "@/lib/utils";
 import * as ReactDOM from "react-dom";
 
+// Stable no-op subscribe for `useSyncExternalStore`; the store value never
+// changes after mount, so it never needs to notify subscribers.
+const emptySubscribe = () => () => {};
+
 const orientationConfig = {
   vertical: {
     modifiers: [restrictToVerticalAxis, restrictToParentElement],
@@ -517,8 +521,11 @@ function SortableOverlay(props: SortableOverlayProps) {
   const { container: containerProp, children, ...overlayProps } = props;
   const context = useSortableContext(OVERLAY_NAME);
 
-  const [mounted, setMounted] = React.useState(false);
-  React.useLayoutEffect(() => setMounted(true), []);
+  const mounted = React.useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   const container =
     containerProp ?? (mounted ? globalThis.document?.body : null);

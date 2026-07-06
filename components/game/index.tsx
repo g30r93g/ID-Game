@@ -55,6 +55,12 @@ export function Game({ preloadedGame }: GameProps) {
     if (players.length <= 1 && currentRound?.phase === "display-results") {
       replace('/game')
     }
+    // Intentionally only re-run when the player list changes: this redirect is a
+    // reaction to players leaving, not to phase transitions. Adding
+    // `currentRound?.phase` would additionally fire on phase changes (e.g. a
+    // lone host reaching "display-results"), changing observable behavior.
+    // `replace` from `useRouter` is stable, so omitting it is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players])
 
   const userIsHost = () => {
@@ -72,7 +78,7 @@ export function Game({ preloadedGame }: GameProps) {
     const maxRounds = game?.totalRounds ?? 0;
 
     return currentRound >= maxRounds;
-  }, [game?.currentRound, game?.totalRounds, game]);
+  }, [game]);
 
   const leaveGame = useCallback(async () => {
     try {
@@ -89,7 +95,7 @@ export function Game({ preloadedGame }: GameProps) {
     } finally {
       setIsLeavingInProgress(false);
     }
-  }, [])
+  }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace])
 
   const advanceGame = () => {
     if (!game) {

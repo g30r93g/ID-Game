@@ -34,22 +34,12 @@ function VisuallyHiddenInput<T = InputValue>(
   );
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const prevValueRef = React.useRef<{
-    value: T | boolean | undefined;
-    previous: T | boolean | undefined;
-  }>({
-    value: isCheckInput ? checked : value,
-    previous: isCheckInput ? checked : value,
-  });
-
-  const prevValue = React.useMemo(() => {
-    const currentValue = isCheckInput ? checked : value;
-    if (prevValueRef.current.value !== currentValue) {
-      prevValueRef.current.previous = prevValueRef.current.value;
-      prevValueRef.current.value = currentValue;
-    }
-    return prevValueRef.current.previous;
-  }, [isCheckInput, value, checked]);
+  // Tracks the value from the previous committed render so the effect below can
+  // detect changes. Updated inside the effect (never during render) so React
+  // refs are only touched outside of render.
+  const prevValueRef = React.useRef<T | boolean | undefined>(
+    isCheckInput ? checked : value,
+  );
 
   const [controlSize, setControlSize] = React.useState<{
     width?: number;
@@ -57,18 +47,13 @@ function VisuallyHiddenInput<T = InputValue>(
   }>({});
 
   React.useLayoutEffect(() => {
-    if (!control) {
-      setControlSize({});
-      return;
-    }
-
-    setControlSize({
-      width: control.offsetWidth,
-      height: control.offsetHeight,
-    });
-
+    if (!control) return;
     if (typeof window === "undefined") return;
 
+    // The initial size is delivered by the ResizeObserver's first callback
+    // (which fires on observe), so no synchronous setState is needed here. Note
+    // that `controlSize` is ultimately overridden by the hardcoded 1px
+    // width/height in `composedStyle`, so this measurement is not rendered.
     const resizeObserver = new ResizeObserver((entries) => {
       if (!Array.isArray(entries) || !entries.length) return;
 
@@ -118,17 +103,21 @@ function VisuallyHiddenInput<T = InputValue>(
 
     const setter = descriptor?.set;
 
-    if (prevValue !== currentValue && setter) {
+    if (prevValueRef.current !== currentValue && setter) {
       const event = new Event(eventType, { bubbles });
       setter.call(input, serializedCurrentValue);
       input.dispatchEvent(event);
     }
-  }, [prevValue, value, checked, bubbles, isCheckInput]);
+
+    prevValueRef.current = currentValue;
+  }, [value, checked, bubbles, isCheckInput]);
 
   const composedStyle = React.useMemo<React.CSSProperties>(() => {
     return {
       ...style,
-      ...(controlSize.width !== undefined && controlSize.height !== undefined
+      ...(control &&
+      controlSize.width !== undefined &&
+      controlSize.height !== undefined
         ? controlSize
         : {}),
       border: 0,
@@ -142,7 +131,7 @@ function VisuallyHiddenInput<T = InputValue>(
       whiteSpace: "nowrap",
       width: "1px",
     };
-  }, [style, controlSize]);
+  }, [style, controlSize, control]);
 
   return (
     <input
