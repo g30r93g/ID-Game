@@ -22,7 +22,7 @@ export default function RatingCard({ joinCode }: { joinCode: string }) {
   const submitRating = useMutation(api.game.submitRating);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<z.input<typeof formSchema>, unknown, z.output<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       rating: 5,
@@ -30,7 +30,7 @@ export default function RatingCard({ joinCode }: { joinCode: string }) {
   });
   const { replace } = useRouter();
 
-  async function onSubmit({ rating }: z.infer<typeof formSchema>) {
+  async function onSubmit({ rating }: z.output<typeof formSchema>) {
     try {
       setIsLoading(true);
 

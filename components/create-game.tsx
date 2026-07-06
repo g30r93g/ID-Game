@@ -18,7 +18,7 @@ const formSchema = z.object({
 });
 
 export default function CreateGame() {
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<z.input<typeof formSchema>, unknown, z.output<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       numberOfRounds: 10,
@@ -27,7 +27,7 @@ export default function CreateGame() {
   const { replace } = useRouter();
   const createGame = useMutation(api.game.createGame);
 
-  async function onSubmit({ numberOfRounds }: z.infer<typeof formSchema>) {
+  async function onSubmit({ numberOfRounds }: z.output<typeof formSchema>) {
     try {
       if (posthog) {
         posthog.capture('new_game');

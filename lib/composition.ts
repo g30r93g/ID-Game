@@ -80,7 +80,11 @@ function composeRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> {
  * Accepts callback refs and RefObject(s).
  */
 function useComposedRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // The dependency list is the variadic `refs` array by design: the composed
+  // ref callback must be recreated whenever any incoming ref changes. This
+  // cannot be expressed as a static array literal, so both the array-literal and
+  // exhaustive-deps checks are opted out of here (vendored radix-ui pattern).
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/use-memo
   return React.useCallback(composeRefs(...refs), refs);
 }
 

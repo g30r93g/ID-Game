@@ -7,9 +7,12 @@
     /* These settings are not required by Convex and can be modified. */
     "allowJs": true,
     "strict": true,
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
+    /* TS 6 defaults `types` to [] (was: all @types). Convex functions use
+     * Node globals (e.g. process.env in auth.config.ts), so request them. */
+    "types": ["node"],
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
