@@ -7,7 +7,7 @@ import RankPlayersGamePhase from "@/components/game/rank-players";
 import GuessScenarioGamePhase from "@/components/game/guess-scenario";
 import DisplayResultsGamePhase from "@/components/game/display-results";
 import LobbyGamePhase from "@/components/game/lobby";
-import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
+import {Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import CreateScenariosGamePhase from "@/components/game/create-scenarios";
 import {useCallback, useEffect, useState} from "react";
 import WaitGamePhase from "@/components/game/wait";
@@ -40,6 +40,9 @@ export function Game({ preloadedGame }: GameProps) {
   const { replace } = useRouter();
   const posthog = usePostHog();
   const [isLeavingInProgress, setIsLeavingInProgress] = useState<boolean>(false);
+  // Header slot the non-host guess phase portals its "Submit Guess" button into,
+  // so the action sits in line with the card header (see guess-scenario.tsx).
+  const [guessSubmitSlot, setGuessSubmitSlot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -171,7 +174,7 @@ export function Game({ preloadedGame }: GameProps) {
       case "rank-players":
         return userIsHost() ? "Rank the players from most to least likely by dragging their names." : `${currentRoundHost?.displayName ?? 'Your host'} is ranking everyone based on their selected scenario.`
       case "guess-scenario":
-        return userIsHost() ? "Wait for the players to guess the scenario you've picked" : "Guess which scenario you think was picked."
+        return userIsHost() ? "Wait for the players to guess the scenario you've picked" : `See how ${currentRoundHost?.displayName ?? 'the host'} ranked the scenario. Then guess which one they picked in the Scenarios tab.`
       case "display-results":
       case "finished":
         return undefined;
@@ -218,6 +221,7 @@ export function Game({ preloadedGame }: GameProps) {
           : <GuessScenarioGamePhase
             gameId={game!._id}
             roundId={currentRound._id}
+            submitSlot={guessSubmitSlot}
           />
       case "display-results":
         return <DisplayResultsGamePhase
@@ -249,6 +253,11 @@ export function Game({ preloadedGame }: GameProps) {
         <CardHeader className={"shrink-0"}>
           <CardTitle>{gamePhaseTitle()}</CardTitle>
           <CardDescription>{gamePhaseDescription()}</CardDescription>
+          {!game?.isOpen && currentRound?.phase === "guess-scenario" && !userIsHost() && (
+            <CardAction>
+              <div ref={setGuessSubmitSlot} />
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent className={"grow overflow-y-auto min-h-0"}>
           <div className={"flex flex-col h-full"}>{gamePhaseContent()}</div>
