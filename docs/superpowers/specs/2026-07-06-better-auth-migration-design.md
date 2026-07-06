@@ -50,16 +50,16 @@ Dropping Google/passwords is safe for continuity because email OTP is the accoun
 
 **User tray (`components/create-join-game.tsx`):** swap Clerk `useUser`/`useClerk` for Better Auth client session (`user.name`, `user.email`, `signOut`). `components/game/lobby/player-card.tsx` host check swaps `auth.userId` for the Better Auth user id.
 
-**PostHog:** distinct id remains the user id — unchanged values thanks to ID preservation (below).
+**PostHog:** distinct id remains the user id. Because Clerk ids cannot be preserved (see Data migration), distinct ids change once at migration — accepted.
 
 ## Data migration
 
 Two scripts, both rehearsed against a dev Convex deployment before cut-over.
 
-1. **User import.** Adapt the Better Auth Clerk-migration-guide script to run as a Convex internal action: export users CSV from the Clerk dashboard, enrich via Clerk API (`CLERK_SECRET_KEY`), create Better Auth users with `forceAllowId: true` so **Better Auth user id = Clerk user id**. Emails marked verified. No password hashes (passwords dropped). No OAuth account records (Google dropped).
-2. **Game-data remap.** A `@convex-dev/migrations` migration over the three identity-bearing fields — `players.userId`, `games.createdBy`, `gameRating.userId` — stripping the `<issuer>|` prefix from stored `tokenIdentifier` values, leaving the bare Clerk user id, which equals the new Better Auth user id, which is what `identity.subject` returns.
+1. **User import.** A Convex internal action creates Better Auth users via the auth adapter: fetch all users from the Clerk API (`CLERK_SECRET_KEY`), create each with email (marked verified) and name, and record a `clerkUserId → betterAuthUserId` row in a new `userIdMap` table. No password hashes (passwords dropped). No OAuth account records (Google dropped).
+2. **Game-data remap.** A `@convex-dev/migrations` migration over the three identity-bearing fields — `players.userId`, `games.createdBy`, `gameRating.userId` — parsing the Clerk user id out of stored `tokenIdentifier` values (`<issuer>|<clerkId>`) and resolving it to the new Better Auth user id through `userIdMap`.
 
-**Validation gate (implementation step 1, not cut-over day):** spike in dev that `forceAllowId` is honoured by the Convex component's adapter. **Fallback** if not: write a `clerkId → newUserId` mapping table during import and have the remap migration resolve through it (PostHog distinct ids would then change; acceptable).
+**Resolved during planning research:** the original `forceAllowId` approach (Better Auth user id = Clerk user id) is **not possible** with the Convex component — the Better Auth user id is the Convex document `_id`, which cannot be chosen at insert. The mapping-table fallback is therefore the design. Consequence: PostHog distinct ids change at migration (accepted).
 
 All Clerk sessions are invalidated by the switch; users sign in again via OTP.
 
@@ -81,7 +81,7 @@ All Clerk sessions are invalidated by the switch; users sign in again via OTP.
 
 | Risk | Mitigation |
 |---|---|
-| `forceAllowId` unsupported by Convex component adapter | Dev spike first; mapping-table fallback |
+| ~~`forceAllowId` unsupported by Convex component adapter~~ (confirmed unsupported during research) | Mapping-table approach adopted as the design |
 | OTP lands in spam → user locked out at first sign-in | Verified sending domain in Resend, sensible from-address; passkeys make it first-sign-in-only |
 | Passkey UX variance across devices/browsers | OTP always one click away — worst case equals today's email-code flow |
 | Component maturity vs Clerk | Officially recommended path, Convex-maintained; usage (sessions + 2 plugins) is mainstream |
