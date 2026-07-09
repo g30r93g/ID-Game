@@ -46,7 +46,9 @@ export default function proxy(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/game")) {
     const sessionCookie = getSessionCookie(req);
     if (!sessionCookie) {
-      return NextResponse.redirect(new URL("/sign-in", req.url));
+      const signIn = new URL("/sign-in", req.url);
+      signIn.searchParams.set("next", req.nextUrl.pathname);
+      return NextResponse.redirect(signIn);
     }
   }
 

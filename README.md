@@ -22,7 +22,6 @@
 
     # Better Auth (Convex deployment env — set with `npx convex env set`)
     # BETTER_AUTH_SECRET, SITE_URL, RESEND_API_KEY, AUTH_EMAIL_FROM
-    NEXT_PUBLIC_SITE_URL=<app-url>
 
     # Posthog
     NEXT_PUBLIC_POSTHOG_KEY=<your-posthog-key>

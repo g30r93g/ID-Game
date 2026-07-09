@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +28,12 @@ const RESEND_SECONDS = 30;
 
 export default function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const nextPath =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : "/game";
 
   const [step, setStep] = React.useState<Step>("start");
   const [email, setEmail] = React.useState("");
@@ -60,7 +66,7 @@ export default function SignInPage() {
         void authClient.signIn.passkey({
           autoFill: true,
           fetchOptions: {
-            onSuccess: () => router.push("/game"),
+            onSuccess: () => router.push(nextPath),
           },
         });
       },
@@ -68,41 +74,47 @@ export default function SignInPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, nextPath]);
 
   const handlePasskey = async () => {
     setError(null);
     setBusy(true);
-    const { error } = await authClient.signIn.passkey();
-    setBusy(false);
-    if (error) {
-      setError(
-        error.message ??
-          "Passkey sign-in failed. Try emailing yourself a code instead.",
-      );
-      return;
+    try {
+      const { error } = await authClient.signIn.passkey();
+      if (error) {
+        setError(
+          error.message ??
+            "Passkey sign-in failed. Try emailing yourself a code instead.",
+        );
+        return;
+      }
+      router.push(nextPath);
+    } finally {
+      setBusy(false);
     }
-    router.push("/game");
   };
 
   const sendCode = async () => {
     setError(null);
     setBusy(true);
-    const { error } = await authClient.emailOtp.sendVerificationOtp({
-      email: email.trim().toLowerCase(),
-      type: "sign-in",
-    });
-    setBusy(false);
-    if (error) {
-      setError(
-        error.message ??
-          "Could not send the code. Check the email address and try again.",
-      );
-      return;
+    try {
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: email.trim().toLowerCase(),
+        type: "sign-in",
+      });
+      if (error) {
+        setError(
+          error.message ??
+            "Could not send the code. Check the email address and try again.",
+        );
+        return;
+      }
+      setCode("");
+      setResendCountdown(RESEND_SECONDS);
+      setStep("otp");
+    } finally {
+      setBusy(false);
     }
-    setCode("");
-    setResendCountdown(RESEND_SECONDS);
-    setStep("otp");
   };
 
   const handleStart = async (event: React.FormEvent) => {
@@ -113,24 +125,29 @@ export default function SignInPage() {
   const verifyCode = async (value: string) => {
     setError(null);
     setBusy(true);
-    const trimmedName = name.trim();
-    const { error } = await authClient.signIn.emailOtp({
-      email: email.trim().toLowerCase(),
-      otp: value,
-      // Only used when this OTP registers a brand-new account.
-      ...(trimmedName ? { name: trimmedName } : {}),
-    });
-    setBusy(false);
-    if (error) {
-      setError(error.message ?? "That code didn’t work. Try again or resend.");
-      return;
-    }
-    // Signed in — nudge towards a passkey if they don't have one yet.
-    const { data: passkeys } = await authClient.passkey.listUserPasskeys();
-    if (!passkeys || passkeys.length === 0) {
-      setStep("add-passkey");
-    } else {
-      router.push("/game");
+    try {
+      const trimmedName = name.trim();
+      const { error } = await authClient.signIn.emailOtp({
+        email: email.trim().toLowerCase(),
+        otp: value,
+        // Only used when this OTP registers a brand-new account.
+        ...(trimmedName ? { name: trimmedName } : {}),
+      });
+      if (error) {
+        setError(
+          error.message ?? "That code didn’t work. Try again or resend.",
+        );
+        return;
+      }
+      // Signed in — nudge towards a passkey if they don't have one yet.
+      const { data: passkeys } = await authClient.passkey.listUserPasskeys();
+      if (!passkeys || passkeys.length === 0) {
+        setStep("add-passkey");
+      } else {
+        router.push(nextPath);
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -142,15 +159,18 @@ export default function SignInPage() {
   const handleAddPasskey = async () => {
     setError(null);
     setBusy(true);
-    const result = await authClient.passkey.addPasskey();
-    setBusy(false);
-    if (result?.error) {
-      setError(
-        result.error.message ?? "Could not create a passkey on this device.",
-      );
-      return;
+    try {
+      const result = await authClient.passkey.addPasskey();
+      if (result?.error) {
+        setError(
+          result.error.message ?? "Could not create a passkey on this device.",
+        );
+        return;
+      }
+      router.push(nextPath);
+    } finally {
+      setBusy(false);
     }
-    router.push("/game");
   };
 
   return (
@@ -237,6 +257,7 @@ export default function SignInPage() {
                   <InputOTP
                     maxLength={6}
                     value={code}
+                    disabled={busy}
                     onChange={(value) => {
                       setCode(value);
                       if (value.length === 6) void verifyCode(value);
@@ -329,7 +350,7 @@ export default function SignInPage() {
                 type="button"
                 size="sm"
                 variant="link"
-                onClick={() => router.push("/game")}
+                onClick={() => router.push(nextPath)}
               >
                 Maybe later
               </Button>

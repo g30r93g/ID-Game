@@ -37,8 +37,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       emailOTP({
         otpLength: 6,
         expiresIn: 600,
-        // Recommended by Better Auth docs: don't await the send, to avoid
-        // timing side-channels on whether an account exists.
+        // The Resend component enqueues the send durably — this await is a fast enqueue, not a blocking SMTP round-trip, so it leaks no account-existence timing signal.
         sendVerificationOTP: async ({ email, otp }) => {
           await resend.sendEmail(requireActionCtx(ctx), {
             from:
