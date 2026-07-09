@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { authComponent } from "./auth";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 
@@ -16,7 +17,7 @@ function generateOTP(length = 6): string {
 export const sendHeartbeat = mutation({
   handler: async (ctx) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error("User must be authenticated to send a heartbeat.");
     }
@@ -60,7 +61,7 @@ export const isUserPlayer = query({
     const userPlayer = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
+      .filter((q) => q.eq(q.field("userId"), user.subject))
       .first();
 
     return !!userPlayer;
@@ -93,20 +94,23 @@ export const createGame = mutation({
       throw new Error("User must be authenticated to create a game.");
     }
 
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    const displayName = authUser?.name?.trim() || "Unknown Player";
+
     // create game
     const gameId = await ctx.db.insert("games", {
       joinCode: generateOTP(),
       totalRounds: args.numberOfRounds,
       isOpen: true,
-      createdBy: user.tokenIdentifier,
+      createdBy: user.subject,
     });
 
     // add player who created game to game
     await ctx.db.insert("players", {
-      userId: user.tokenIdentifier,
+      userId: user.subject,
       gameId: gameId,
       lastAlive: Date.now(),
-      displayName: user.name ?? `Unknown Player`,
+      displayName,
     });
 
     // return game
@@ -141,16 +145,19 @@ export const joinGame = mutation({
     const userPlayer = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
+      .filter((q) => q.eq(q.field("userId"), user.subject))
       .first();
 
     if (!userPlayer) {
+      const authUser = await authComponent.safeGetAuthUser(ctx);
+      const displayName = authUser?.name?.trim() || "Unknown Player";
+
       // Link player to game
       await ctx.db.insert("players", {
-        userId: user.tokenIdentifier,
+        userId: user.subject,
         gameId: game._id,
         lastAlive: Date.now(),
-        displayName: user.name ?? `Unknown Player`,
+        displayName,
       });
     }
   },
@@ -169,7 +176,7 @@ export const leaveGame = mutation({
     const userPlayer = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-      .filter((q) => q.eq(q.field("userId"), user.tokenIdentifier))
+      .filter((q) => q.eq(q.field("userId"), user.subject))
       .first();
     if (!userPlayer) {
       return;
@@ -201,7 +208,7 @@ export const getPlayerForCurrentUserForGame = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
     // Get current user
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error("User must be authenticated.");
     }
@@ -475,7 +482,7 @@ export const transitionRoundPhase = mutation({
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error("User must be authenticated to create a game.");
     }
@@ -508,7 +515,7 @@ export const selectGameRoundScenario = mutation({
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error(
         "User must be authenticated to select a game round scenario.",
@@ -570,7 +577,7 @@ export const submitPlayerRankingsForGameRound = mutation({
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error(
         "User must be authenticated to select a game round scenario.",
@@ -634,7 +641,7 @@ export const markGuessesForRound = mutation({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error(
         "User must be authenticated to select a game round scenario.",
@@ -790,7 +797,7 @@ export const makeGuessForRound = mutation({
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error(
         "User must be authenticated to select a game round scenario.",
@@ -867,7 +874,7 @@ export const submitRating = mutation({
   args: { joinCode: v.string(), rating: v.number() },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error(
         "User must be authenticated to submit a rating for the game.",
