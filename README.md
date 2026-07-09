@@ -20,10 +20,9 @@
     MAINTENANCE_MODE=false
     MAINTENANCE_BYPASS_SECRET=<random-string-16+-chars>
 
-    # Clerk
-    CLERK_JWT_ISSUER_DOMAIN=<your-clerk-domain>
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
-    CLERK_SECRET_KEY=<your-clerk-secret-key>
+    # Better Auth (Convex deployment env — set with `npx convex env set`)
+    # BETTER_AUTH_SECRET, SITE_URL, RESEND_API_KEY, AUTH_EMAIL_FROM
+    NEXT_PUBLIC_SITE_URL=<app-url>
 
     # Posthog
     NEXT_PUBLIC_POSTHOG_KEY=<your-posthog-key>
@@ -38,7 +37,7 @@
 ### Backend
 
 - [Convex](https://www.convex.dev): "Reactive" real-time database
-- [Clerk](https://clerk.com): User Identity and Access Management
+- [Better Auth](https://better-auth.com): User Identity and Access Management (passkeys + email codes via [Resend](https://resend.com))
 - [PostHog](): Analytics
 - [Vercel](): Server deployment
 
