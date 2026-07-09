@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Clerk with Better Auth (passkey primary + email OTP fallback via Resend) running on Convex via `@convex-dev/better-auth`, preserving all user accounts and game history, with an env-var maintenance mode covering the cut-over.
+**Goal:** Replace Clerk with Better Auth (passkey primary + email OTP fallback via Resend) running on Convex via `@convex-dev/better-auth`, as a **clean slate** — no accounts or game data migrated; old game tables are wiped at cut-over — with an env-var maintenance mode covering the window.
 
-**Architecture:** Better Auth runs on the Convex deployment (local-install component pattern — required for the passkey plugin); Next.js proxies auth requests through `app/api/auth/[...all]`. Convex functions keep using `ctx.auth.getUserIdentity()` but switch from `.tokenIdentifier` to `.subject`. Existing Clerk users are imported into Better Auth via a Convex action that records a `clerkUserId → betterAuthUserId` mapping; a `@convex-dev/migrations` pass remaps the three identity-bearing fields in game data. **Clerk user ids cannot be preserved** (Better Auth user id = Convex `_id`), hence the mapping table.
+**Architecture:** Better Auth runs on the Convex deployment (local-install component pattern — required for the passkey plugin); Next.js proxies auth requests through `app/api/auth/[...all]`. Convex functions keep using `ctx.auth.getUserIdentity()` but switch from `.tokenIdentifier` to `.subject`. **No user import and no id remapping** (decision revised 2026-07-06: accounts exist only as bot friction, so everyone re-registers). Game tables are cleared during the maintenance window; **`scenarios` is kept** — seed content, not user data.
 
-**Tech Stack:** Next.js 16.2 (App Router, `proxy.ts`), Convex ^1.42, `@convex-dev/better-auth@0.12.x` (local install), `better-auth@1.6.23`, `@better-auth/passkey@1.6.23`, `@convex-dev/resend`, `@convex-dev/migrations` (already installed), Resend, pnpm.
+**Tech Stack:** Next.js 16.2 (App Router, `proxy.ts`), Convex ^1.42, `@convex-dev/better-auth@0.12.x` (local install), `better-auth@1.6.23`, `@better-auth/passkey@1.6.23`, `@convex-dev/resend`, Resend, pnpm.
 
 **Spec:** `docs/superpowers/specs/2026-07-06-better-auth-migration-design.md`
 
@@ -18,7 +18,8 @@
 - The Better Auth CLI is the npm package **`auth`** (`npx auth generate`), not `@better-auth/cli`.
 - **This repo has no automated test infrastructure** (no jest/vitest/playwright). Do not add one. Per-task verification is: `pnpm lint`, `pnpm build`, `npx convex dev --once` (deploy + typecheck Convex functions), and the exact `curl`/browser checks given in each task.
 - The repo must build (`pnpm build`) at the end of every task — tasks are ordered so Clerk and Better Auth coexist until the final swap tasks.
-- Two PRs: Tasks 1–2 are PR 1 (`feat/maintenance-mode`, branched from `main`); Tasks 3–13 are PR 2 (`feat/better-auth`, branched from PR 1's branch or from `main` after PR 1 merges).
+- Two PRs: Tasks 1–2 are PR 1 (`feat/maintenance-mode`, branched from `main`); Tasks 3–12 are PR 2 (`feat/better-auth`, branched from PR 1's branch or from `main` after PR 1 merges).
+- **Clean slate:** do NOT build any Clerk-user import or data-remap machinery (no `userIdMap`, no import scripts, no `@convex-dev/migrations` usage). Old game data is deleted at cut-over (Task 12); the `scenarios` table must NEVER be cleared.
 - Convex-side env vars are set with `npx convex env set NAME value` (add `--prod` for production) — they live on the Convex deployment, NOT in Vercel.
 - Path alias `@/*` maps to the repo root (e.g. `@/app/env`, `@/lib/auth-client`).
 - Copy style: user-facing text is friendly and brief (see existing pages); UK English in prose ("we're working away…").
@@ -64,7 +65,7 @@ export default function MaintenancePage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Check back in a little while — your games will be waiting for you.
+            Check back in a little while and start a fresh game.
           </p>
         </CardContent>
       </Card>
@@ -259,17 +260,17 @@ Expected: `package.json` gains the four deps; `better-auth` is exactly `1.6.23`.
 
 ```ts
 import { defineApp } from "convex/server";
-import migrations from "@convex-dev/migrations/convex.config.js";
 import resend from "@convex-dev/resend/convex.config";
 import betterAuth from "./betterAuth/convex.config";
 
 const app = defineApp();
 app.use(betterAuth);
-app.use(migrations);
 app.use(resend);
 
 export default app;
 ```
+
+(`@convex-dev/migrations` remains in `package.json` as a pre-existing dependency, but its component is not registered — this migration doesn't use it.)
 
 - [ ] **Step 3: Component definition — `convex/betterAuth/convex.config.ts`**
 
@@ -425,7 +426,7 @@ npx convex env set AUTH_EMAIL_FROM "The ID Game <onboarding@resend.dev>"
 npx convex dev --once
 ```
 
-Expected: `npx convex dev --once` completes with "Convex functions ready" and no type errors — the betterAuth, migrations, and resend components deploy.
+Expected: `npx convex dev --once` completes with "Convex functions ready" and no type errors — the betterAuth and resend components deploy.
 
 - [ ] **Step 10: Commit**
 
@@ -461,7 +462,7 @@ export default {
 } satisfies AuthConfig;
 ```
 
-**Important:** deploying this to production instantly breaks Clerk-token auth — which is why the prod deploy only happens inside the maintenance window (Task 13). Deploying to the dev deployment now is fine.
+**Important:** deploying this to production instantly breaks Clerk-token auth — which is why the prod deploy only happens inside the maintenance window (Task 12). Deploying to the dev deployment now is fine.
 
 - [ ] **Step 2: Create `convex/http.ts`**
 
@@ -1486,7 +1487,7 @@ git commit -m "feat: key game data on Better Auth user id (identity.subject)"
 **Interfaces:**
 
 - Consumes: nothing new.
-- Produces: a Clerk-free build. (The Clerk _dashboard_ instance stays alive until post-cut-over; `CLERK_SECRET_KEY` remains available in the shell for the import script — it is no longer read by the app.)
+- Produces: a Clerk-free build. (The Clerk _dashboard_ instance stays alive until post-cut-over as a fallback; nothing in the repo reads Clerk any more.)
 
 - [ ] **Step 1: `app/env.ts` — delete Clerk entries**
 
@@ -1542,11 +1543,11 @@ Replace line 31 (`- [Clerk](https://clerk.com): User Identity and Access Managem
 - [ ] **Step 6: Verify no Clerk anywhere, full build**
 
 ```bash
-grep -rni "clerk" app components lib providers convex proxy.ts package.json --include="*.ts" --include="*.tsx" --include="*.json" | grep -v node_modules | grep -v clerkImport | grep -vi "userIdMap\|clerkUserId"
+grep -rni "clerk" app components lib providers convex proxy.ts package.json --include="*.ts" --include="*.tsx" --include="*.json" | grep -v node_modules
 pnpm lint && pnpm build
 ```
 
-Expected: grep shows nothing except (later) the migration files that legitimately reference Clerk ids; build is clean.
+Expected: grep shows nothing; build is clean.
 
 - [ ] **Step 7: Commit**
 
@@ -1557,263 +1558,27 @@ git commit -m "chore: remove Clerk dependency, env vars, and update legal/README
 
 ---
 
-### Task 11: Migration machinery — `userIdMap`, import action, remap migrations
-
-**Files:**
-
-- Modify: `convex/schema.ts` (add `userIdMap` table)
-- Create: `convex/clerkImport.ts`
-- Create: `convex/migrations.ts`
-- Create: `scripts/migrate-clerk-users.mjs`
-
-**Interfaces:**
-
-- Consumes: `createAuth` from `convex/auth.ts` (Task 3).
-- Produces: `internal.clerkImport.importUsers` action (args: `{ users: Array<{ clerkUserId, email, name?, createdAt? }> }`, returns count); migrations `migrations:remapPlayers`, `migrations:remapGames`, `migrations:remapRatings`; runnable Node script `scripts/migrate-clerk-users.mjs [--prod]`.
-
-- [ ] **Step 1: Add `userIdMap` to `convex/schema.ts`**
-
-Add after the `gameRating` table, before the closing `});`:
-
-```ts
-  userIdMap: defineTable({
-    clerkUserId: v.string(),
-    betterAuthUserId: v.string(),
-  }).index('byClerkId', ['clerkUserId']),
-```
-
-- [ ] **Step 2: Create `convex/clerkImport.ts`**
-
-```ts
-import { v } from "convex/values";
-import { internalAction, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { createAuth } from "./auth";
-
-const userArg = v.object({
-  clerkUserId: v.string(),
-  email: v.string(),
-  name: v.optional(v.string()),
-  createdAt: v.optional(v.number()),
-});
-
-/**
- * Imports Clerk users into Better Auth (email marked verified so OTP sign-in
- * reclaims the account) and records clerkUserId -> betterAuthUserId mappings
- * for the game-data remap migrations. Idempotent: existing emails are looked
- * up, not duplicated.
- */
-export const importUsers = internalAction({
-  args: { users: v.array(userArg) },
-  handler: async (ctx, args) => {
-    const auth = createAuth(ctx);
-    const authCtx = await auth.$context;
-    const mappings: { clerkUserId: string; betterAuthUserId: string }[] = [];
-
-    for (const u of args.users) {
-      const email = u.email.toLowerCase();
-      const existing = await authCtx.adapter.findOne<{ id: string }>({
-        model: "user",
-        where: [{ field: "email", value: email }],
-      });
-      const user =
-        existing ??
-        (await authCtx.adapter.create<{ id: string }>({
-          model: "user",
-          data: {
-            email,
-            emailVerified: true,
-            name: u.name ?? "",
-            createdAt: new Date(u.createdAt ?? Date.now()),
-            updatedAt: new Date(),
-          },
-        }));
-      mappings.push({ clerkUserId: u.clerkUserId, betterAuthUserId: user.id });
-    }
-
-    await ctx.runMutation(internal.clerkImport.recordMappings, { mappings });
-    return mappings.length;
-  },
-});
-
-export const recordMappings = internalMutation({
-  args: {
-    mappings: v.array(
-      v.object({ clerkUserId: v.string(), betterAuthUserId: v.string() }),
-    ),
-  },
-  handler: async (ctx, args) => {
-    for (const m of args.mappings) {
-      const existing = await ctx.db
-        .query("userIdMap")
-        .withIndex("byClerkId", (q) => q.eq("clerkUserId", m.clerkUserId))
-        .unique();
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          betterAuthUserId: m.betterAuthUserId,
-        });
-      } else {
-        await ctx.db.insert("userIdMap", m);
-      }
-    }
-  },
-});
-```
-
-- [ ] **Step 3: Create `convex/migrations.ts`**
-
-Stored identity values have the Clerk `tokenIdentifier` shape `<issuer-url>|<clerkUserId>`; already-remapped or post-migration values contain no `|`.
-
-```ts
-import { Migrations } from "@convex-dev/migrations";
-import { components } from "./_generated/api";
-import { DataModel } from "./_generated/dataModel";
-import { MutationCtx } from "./_generated/server";
-
-export const migrations = new Migrations<DataModel>(components.migrations);
-export const run = migrations.runner();
-
-async function lookupNewUserId(
-  ctx: MutationCtx,
-  storedUserId: string,
-): Promise<string | null> {
-  const clerkUserId = storedUserId.split("|").pop()!;
-  const mapping = await ctx.db
-    .query("userIdMap")
-    .withIndex("byClerkId", (q) => q.eq("clerkUserId", clerkUserId))
-    .unique();
-  return mapping?.betterAuthUserId ?? null;
-}
-
-export const remapPlayers = migrations.define({
-  table: "players",
-  migrateOne: async (ctx, doc) => {
-    if (!doc.userId.includes("|")) return; // already remapped
-    const newId = await lookupNewUserId(ctx, doc.userId);
-    if (newId) return { userId: newId };
-  },
-});
-
-export const remapGames = migrations.define({
-  table: "games",
-  migrateOne: async (ctx, doc) => {
-    if (!doc.createdBy.includes("|")) return;
-    const newId = await lookupNewUserId(ctx, doc.createdBy);
-    if (newId) return { createdBy: newId };
-  },
-});
-
-export const remapRatings = migrations.define({
-  table: "gameRating",
-  migrateOne: async (ctx, doc) => {
-    if (!doc.userId.includes("|")) return;
-    const newId = await lookupNewUserId(ctx, doc.userId);
-    if (newId) return { userId: newId };
-  },
-});
-```
-
-- [ ] **Step 4: Create `scripts/migrate-clerk-users.mjs`**
-
-```js
-// Fetches all users from the Clerk API and imports them into Better Auth on
-// the Convex deployment in batches, via the clerkImport:importUsers action.
-//
-// Usage: CLERK_SECRET_KEY=sk_... node scripts/migrate-clerk-users.mjs [--prod]
-
-import { execFileSync } from "node:child_process";
-
-const prod = process.argv.includes("--prod");
-const secret = process.env.CLERK_SECRET_KEY;
-if (!secret) {
-  console.error("CLERK_SECRET_KEY env var is required");
-  process.exit(1);
-}
-
-const users = [];
-for (let offset = 0; ; offset += 500) {
-  const res = await fetch(
-    `https://api.clerk.com/v1/users?offset=${offset}&limit=500&order_by=-created_at`,
-    { headers: { Authorization: `Bearer ${secret}` } },
-  );
-  if (!res.ok) throw new Error(`Clerk API ${res.status}: ${await res.text()}`);
-  const page = await res.json();
-  for (const u of page) {
-    const primaryEmail =
-      u.email_addresses?.find((e) => e.id === u.primary_email_address_id)
-        ?.email_address ?? u.email_addresses?.[0]?.email_address;
-    if (!primaryEmail) {
-      console.warn(`skipping ${u.id}: no email address`);
-      continue;
-    }
-    const name =
-      [u.first_name, u.last_name].filter(Boolean).join(" ") ||
-      u.username ||
-      undefined;
-    users.push({
-      clerkUserId: u.id,
-      email: primaryEmail,
-      name,
-      createdAt: u.created_at,
-    });
-  }
-  if (page.length < 500) break;
-}
-console.log(`Fetched ${users.length} users from Clerk`);
-
-const BATCH = 50;
-for (let i = 0; i < users.length; i += BATCH) {
-  const batch = users.slice(i, i + BATCH);
-  const args = [
-    "convex",
-    "run",
-    "clerkImport:importUsers",
-    JSON.stringify({ users: batch }),
-  ];
-  if (prod) args.push("--prod");
-  execFileSync("npx", args, { stdio: "inherit" });
-  console.log(`Imported ${Math.min(i + BATCH, users.length)}/${users.length}`);
-}
-console.log("Done. Now run the remap migrations (see cut-over runbook).");
-```
-
-- [ ] **Step 5: Verify against the dev deployment**
-
-```bash
-npx convex dev --once    # schema + new functions deploy cleanly
-CLERK_SECRET_KEY=<sk_test_or_live_key> node scripts/migrate-clerk-users.mjs
-```
-
-Expected: "Fetched N users from Clerk", batch imports succeed. Then:
-
-```bash
-npx convex run migrations:remapPlayers '{"dryRun": true}'
-npx convex run migrations:remapPlayers
-npx convex run migrations:remapGames
-npx convex run migrations:remapRatings
-npx convex data players --limit 5
-```
-
-Expected: migrations complete; sampled `players.userId` values are Convex-style ids (no `|`). Note any players whose Clerk account was deleted keep their old `|`-style id — harmless dead references.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add convex/schema.ts convex/clerkImport.ts convex/migrations.ts scripts/migrate-clerk-users.mjs
-git commit -m "feat: Clerk user import action, userIdMap, and game-data remap migrations"
-```
-
----
-
-### Task 12: Dev rehearsal (full end-to-end)
+### Task 11: Dev rehearsal (full end-to-end)
 
 **Files:** none (verification only; fixes discovered here get their own commits).
 
-This is the gate before cut-over. With `npx convex dev` + `pnpm dev` running against the **dev** deployment (already migrated in Task 11 Step 5):
+This is the gate before cut-over. With `npx convex dev` + `pnpm dev` running against the **dev** deployment:
 
-- [ ] **Step 1: Migrated-account continuity** — sign in via OTP with an email that existed in Clerk **and has game history**. Verify: same account (check `userIdMap` maps its Clerk id to this user), and `/game` history behaviour intact — open an old game by join code and confirm the player's `displayName` and host status survived the remap.
-- [ ] **Step 2: Passkey lifecycle** — add a passkey ("Add a passkey" step), sign out, sign back in via "Continue with passkey", and via conditional-UI autofill (click into the email field).
-- [ ] **Step 3: New-user flow** — sign in with a brand-new email + display name → OTP → account created → create a game → display name appears in lobby.
+- [ ] **Step 1: Rehearse the data wipe** — clear the dev game tables exactly as the cut-over will (keeps `scenarios`, never touches the betterAuth component tables):
+
+```bash
+: > /tmp/empty.jsonl
+for t in games players gameRounds gameRoundScenarios gameRoundPlayerRankings gameRoundGuesses gameRating; do
+  npx convex import --table "$t" --replace --format jsonLines /tmp/empty.jsonl -y
+done
+npx convex data games --limit 1        # expect: no rows
+npx convex data scenarios --limit 1    # expect: a row — scenarios MUST survive
+```
+
+(If `convex import --replace` rejects the empty file, clear each table via the Convex dashboard → Data → table → "Clear Table" instead — same table list, and report the CLI behaviour.)
+
+- [ ] **Step 2: New-user flow** — sign in with a fresh email + display name → OTP → account created → create a game → display name appears in lobby (not "Unknown Player").
+- [ ] **Step 3: Passkey lifecycle** — "Add a passkey" step after first OTP sign-in, sign out, sign back in via "Continue with passkey", and via conditional-UI autofill (click into the email field).
 - [ ] **Step 4: Two-player game** — second browser profile, second account, join via code, play a round through to `display-results`. Confirms `ctx.auth` works end-to-end in queries/mutations and real-time updates flow.
 - [ ] **Step 5: OTP failure paths** — wrong code (error shown, retry works), 4th wrong attempt (`TOO_MANY_ATTEMPTS` — resend gives a fresh code), resend countdown.
 - [ ] **Step 6: Maintenance interplay** — `MAINTENANCE_MODE=true pnpm dev`: every route 503s to the curtain incl. `/api/auth/*`; bypass cookie restores full sign-in + game flow.
@@ -1821,12 +1586,12 @@ This is the gate before cut-over. With `npx convex dev` + `pnpm dev` running aga
 
 ```bash
 git push -u origin feat/better-auth
-gh pr create --title "Migrate auth from Clerk to Better Auth (passkeys + email OTP)" --body "See docs/superpowers/specs/2026-07-06-better-auth-migration-design.md. Passkey-first sign-in with email OTP fallback via Resend; Better Auth runs on Convex (local-install component). Includes Clerk user import + game-data remap migrations. Deploy per the cut-over runbook (Task 13 in the plan) — deploying Convex prod outside the maintenance window breaks live auth."
+gh pr create --title "Migrate auth from Clerk to Better Auth (passkeys + email OTP)" --body "See docs/superpowers/specs/2026-07-06-better-auth-migration-design.md. Passkey-first sign-in with email OTP fallback via Resend; Better Auth runs on Convex (local-install component). Clean slate: no user/data migration — old game tables are wiped during the cut-over window (scenarios kept). Deploy per the cut-over runbook (Task 12 in the plan) — deploying Convex prod outside the maintenance window breaks live auth."
 ```
 
 ---
 
-### Task 13: Production cut-over runbook
+### Task 12: Production cut-over runbook
 
 **Files:** none (operational).
 
@@ -1836,16 +1601,25 @@ Execute in order, in one sitting. Prerequisites: PR 1 merged & deployed (dormant
 - [ ] **Step 2: Maintenance ON.** Set `MAINTENANCE_MODE=true` in Vercel → redeploy current production → verify the curtain is up (503) and the bypass cookie works.
 - [ ] **Step 3: Merge PR 2** to `main`. Vercel auto-deploys the new frontend (still behind the curtain).
 - [ ] **Step 4: Deploy Convex prod:** `npx convex deploy`. From this moment Clerk tokens are rejected — the curtain is covering this.
-- [ ] **Step 5: Import users:** `CLERK_SECRET_KEY=<live-key> node scripts/migrate-clerk-users.mjs --prod`. Expected: count matches the Clerk dashboard user count.
-- [ ] **Step 6: Remap game data:** `npx convex run --prod migrations:remapPlayers '{"dryRun": true}'` (sanity), then `npx convex run --prod migrations:remapPlayers`, `npx convex run --prod migrations:remapGames`, `npx convex run --prod migrations:remapRatings`. Spot-check: `npx convex data --prod players --limit 5` shows no `|` ids.
-- [ ] **Step 7: Smoke-test via bypass** (`https://<app>/?bypass=<secret>`): OTP sign-in with your own pre-existing account → history intact → add passkey → sign out → passkey sign-in → create + join a game.
-- [ ] **Step 8: Maintenance OFF.** `MAINTENANCE_MODE=false` in Vercel → redeploy → public smoke test.
-- [ ] **Step 9: Post-cut-over.** Watch PostHog + Convex logs for auth errors for a few days. Keep the Clerk instance (free tier) untouched for 2 weeks as a data-recovery fallback, then delete it and remove `CLERK_SECRET_KEY` from all environments. Optionally remove `scripts/migrate-clerk-users.mjs` and `convex/clerkImport.ts` in a cleanup PR once stable.
+- [ ] **Step 5: Wipe old game data** (clean slate — same commands rehearsed in Task 11 Step 1, now with `--prod`):
+
+```bash
+: > /tmp/empty.jsonl
+for t in games players gameRounds gameRoundScenarios gameRoundPlayerRankings gameRoundGuesses gameRating; do
+  npx convex import --prod --table "$t" --replace --format jsonLines /tmp/empty.jsonl -y
+done
+npx convex data --prod games --limit 1       # expect: no rows
+npx convex data --prod scenarios --limit 1   # expect: a row — scenarios kept
+```
+
+- [ ] **Step 6: Smoke-test via bypass** (`https://<app>/?bypass=<secret>`): OTP sign-up with your own email + display name → add passkey → sign out → passkey sign-in → create a game → join it from a second device/profile.
+- [ ] **Step 7: Maintenance OFF.** `MAINTENANCE_MODE=false` in Vercel → redeploy → public smoke test.
+- [ ] **Step 8: Post-cut-over.** Watch PostHog + Convex logs for auth errors for a few days. Keep the Clerk instance (free tier) untouched for 2 weeks as a fallback, then delete it and remove any lingering `CLERK_*` values from Vercel/local env files.
 
 ---
 
 ## Self-Review Notes
 
-- **Spec coverage:** maintenance mode (Tasks 1–2), component + plugins architecture (Tasks 3–4), Next wiring (Task 5), auth flows/UI incl. dropped username + passkey nudge (Task 6), component swaps + server bridge (Task 7), proxy gate (Task 8), `subject` switch + displayName sourcing (Task 9), Clerk removal + legal copy (Task 10), user import + mapping table + remap migrations (Task 11), rehearsal (Task 12), cut-over sequence + post steps (Task 13). PostHog distinct-id change is accepted per spec.
-- **Known uncertainty, called out inline:** the shape of the auth user object (`_id` vs `id`) in `getCurrentUser` (Task 3) — the step says exactly what to do in each case; and 503-on-rewrite support (Task 2) — verification asserts it.
+- **Spec coverage:** maintenance mode (Tasks 1–2), component + plugins architecture (Tasks 3–4), Next wiring (Task 5), auth flows/UI incl. dropped username + passkey nudge (Task 6), component swaps + server bridge (Task 7), proxy gate (Task 8), `subject` switch + displayName sourcing (Task 9), Clerk removal + legal copy (Task 10), rehearsal incl. wipe rehearsal (Task 11), cut-over sequence with data wipe + post steps (Task 12). Clean slate per revised spec: no import/remap machinery anywhere. PostHog distinct-id change is accepted per spec.
+- **Known uncertainty, called out inline:** the shape of the auth user object (`_id` vs `id`) in `getCurrentUser` (Task 3) — the step says exactly what to do in each case; 503-on-rewrite support (Task 2) — verification asserts it; `convex import --replace` with an empty file (Task 11 Step 1) — dashboard fallback given.
 - The `fetchAuthAction` export in Task 5 is unused but harmless (part of the destructured helper set).

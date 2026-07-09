@@ -5,7 +5,7 @@
 
 ## Goal
 
-Replace Clerk with Better Auth so users sign in with **passkeys** (primary) and **email OTP** (fallback/recovery). Preserve all existing accounts and game history. Ship a maintenance-mode kill switch to cover the cut-over window.
+Replace Clerk with Better Auth so users sign in with **passkeys** (primary) and **email OTP** (fallback/recovery). Clean slate: no accounts or game data are migrated — existing game tables are wiped at cut-over (except `scenarios` seed content). Ship a maintenance-mode kill switch to cover the cut-over window.
 
 ## Context & motivation
 
@@ -17,14 +17,14 @@ Replace Clerk with Better Auth so users sign in with **passkeys** (primary) and 
 
 | Decision                   | Choice                                                                       |
 | -------------------------- | ---------------------------------------------------------------------------- |
-| Account/history continuity | **Full** — preserve accounts and game history                                |
+| Account/history continuity | **None — clean slate** (revised 2026-07-06: accounts exist only as bot friction; game data has no analysis value worth the migration risk). Old game tables wiped at cut-over, `scenarios` kept. |
 | Auth DB                    | **Convex** via `@convex-dev/better-auth` (local-install component). No Neon. |
 | Sign-in methods            | **Passkey primary + email OTP fallback.** No passwords, no Google OAuth.     |
 | Email provider             | **Resend**                                                                   |
 | Maintenance flag           | **Env var + redeploy** (`MAINTENANCE_MODE`), gated in `proxy.ts`             |
 | Username requirement       | Dropped — single display-name field at sign-up feeds `displayName`           |
 
-Dropping Google/passwords is safe for continuity because email OTP is the account-recovery path: any returning user proves inbox ownership at their existing address and lands in their existing account.
+Email OTP is kept not for migration continuity but as the passkey fallback for incapable devices, the sign-up bot gate (inbox verification), and ongoing account recovery (lost/new device). Returning users simply re-register: email + OTP, ~20 seconds.
 
 ## Target architecture
 
@@ -46,22 +46,15 @@ Dropping Google/passwords is safe for continuity because email OTP is the accoun
 
 **Sign-up (new user):** same page — email + display name → OTP verifies inbox (the bot gate) → account created → immediately prompted to add a passkey (skippable).
 
-**Migrated user, first return:** email → OTP → same account, same history → prompted to add a passkey.
-
 **User tray (`components/create-join-game.tsx`):** swap Clerk `useUser`/`useClerk` for Better Auth client session (`user.name`, `user.email`, `signOut`). `components/game/lobby/player-card.tsx` host check swaps `auth.userId` for the Better Auth user id.
 
-**PostHog:** distinct id remains the user id. Because Clerk ids cannot be preserved (see Data migration), distinct ids change once at migration — accepted.
+**PostHog:** distinct id remains the user id. All users get new ids at cut-over (clean slate) — accepted.
 
 ## Data migration
 
-Two scripts, both rehearsed against a dev Convex deployment before cut-over.
+**None — clean slate** (decision revised 2026-07-06; supersedes the earlier "preserve accounts + history" choice). No Clerk user export/import, no id remapping, no `userIdMap` table. During the maintenance window the game tables (`games`, `players`, `gameRounds`, `gameRoundScenarios`, `gameRoundPlayerRankings`, `gameRoundGuesses`, `gameRating`) are cleared; **`scenarios` is kept** — it is seed content, not user data. All users re-register via OTP (or passkey) on first visit.
 
-1. **User import.** A Convex internal action creates Better Auth users via the auth adapter: fetch all users from the Clerk API (`CLERK_SECRET_KEY`), create each with email (marked verified) and name, and record a `clerkUserId → betterAuthUserId` row in a new `userIdMap` table. No password hashes (passwords dropped). No OAuth account records (Google dropped).
-2. **Game-data remap.** A `@convex-dev/migrations` migration over the three identity-bearing fields — `players.userId`, `games.createdBy`, `gameRating.userId` — parsing the Clerk user id out of stored `tokenIdentifier` values (`<issuer>|<clerkId>`) and resolving it to the new Better Auth user id through `userIdMap`.
-
-**Resolved during planning research:** the original `forceAllowId` approach (Better Auth user id = Clerk user id) is **not possible** with the Convex component — the Better Auth user id is the Convex document `_id`, which cannot be chosen at insert. The mapping-table fallback is therefore the design. Consequence: PostHog distinct ids change at migration (accepted).
-
-All Clerk sessions are invalidated by the switch; users sign in again via OTP.
+Historical note from planning research: preserving Clerk user ids would have been impossible anyway — with the Convex component, the Better Auth user id is the Convex document `_id`, which cannot be chosen at insert. Clean slate removes that entire problem class.
 
 ## Maintenance mode
 
@@ -73,16 +66,15 @@ All Clerk sessions are invalidated by the switch; users sign in again via OTP.
 
 ## Cut-over sequence
 
-1. **Pre-work:** maintenance-mode PR merged (dormant). Auth migration built on a branch; full rehearsal (import + remap + flows incl. passkey register/sign-in and OTP) against dev Convex.
-2. **Cut-over day:** maintenance ON → export Clerk users → run user import + remap migration against prod Convex → deploy Convex + Vercel → smoke-test via bypass → maintenance OFF.
-3. **Post:** keep Clerk instance alive ~2 weeks as data-recovery fallback, then delete. Privacy/ToS copy (`app/privacy/page.tsx`, `app/tos/page.tsx`) updated in the same release — both currently name Clerk.
+1. **Pre-work:** maintenance-mode PR merged (dormant). Auth migration built on a branch; full rehearsal (auth flows incl. passkey register/sign-in and OTP) against dev Convex.
+2. **Cut-over day:** maintenance ON → merge + deploy Vercel → deploy Convex → clear game tables (keep `scenarios`) → smoke-test via bypass → maintenance OFF.
+3. **Post:** keep Clerk instance alive ~2 weeks as a fallback, then delete. Privacy/ToS copy (`app/privacy/page.tsx`, `app/tos/page.tsx`) updated in the same release — both currently name Clerk.
 
 ## Risks
 
 | Risk                                                                                               | Mitigation                                                                                    |
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| ~~`forceAllowId` unsupported by Convex component adapter~~ (confirmed unsupported during research) | Mapping-table approach adopted as the design                                                  |
-| OTP lands in spam → user locked out at first sign-in                                               | Verified sending domain in Resend, sensible from-address; passkeys make it first-sign-in-only |
+| OTP lands in spam → user can't sign up / recover                                                   | Verified sending domain in Resend, sensible from-address; passkeys make it first-sign-in-only |
 | Passkey UX variance across devices/browsers                                                        | OTP always one click away — worst case equals today's email-code flow                         |
 | Component maturity vs Clerk                                                                        | Officially recommended path, Convex-maintained; usage (sessions + 2 plugins) is mainstream    |
 | Maintenance flip requires redeploy                                                                 | Acceptable (~1 min) for a planned window; bypass cookie for testing                           |
@@ -95,4 +87,4 @@ All Clerk sessions are invalidated by the switch; users sign in again via OTP.
 
 ## Effort estimate
 
-3–4 focused days: component setup ½d, auth UI rebuild ~1d, proxy/providers/server-bridge ½d, migrations + rehearsal ½–1d, maintenance mode ¼d, cut-over + buffer ½d.
+2–3 focused days: component setup ½d, auth UI rebuild ~1d, proxy/providers/server-bridge ½d, rehearsal ¼d, maintenance mode ¼d, cut-over + buffer ¼–½d. (Down from 3–4: clean slate removed the user import and data-remap work.)
