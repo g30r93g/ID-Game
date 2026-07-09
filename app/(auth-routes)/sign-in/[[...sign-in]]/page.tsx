@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,25 +20,22 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { Fingerprint } from "lucide-react";
 
-type Step = "start" | "choose-strategy" | "verifications";
-type Strategy = "password" | "email_code";
+type Step = "start" | "otp" | "add-passkey";
 
 const RESEND_SECONDS = 30;
 
 export default function SignInPage() {
-  const { signIn, errors, fetchStatus } = useSignIn();
   const router = useRouter();
 
   const [step, setStep] = React.useState<Step>("start");
-  const [strategy, setStrategy] = React.useState<Strategy>("email_code");
   const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
+  const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
   const [resendCountdown, setResendCountdown] = React.useState(0);
-  const [googleLoading, setGoogleLoading] = React.useState(false);
-
-  const isBusy = fetchStatus === "fetching";
 
   React.useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -49,91 +45,112 @@ export default function SignInPage() {
     return () => clearInterval(timer);
   }, [resendCountdown]);
 
-  // The navigate callback param type, derived from the installed types without a
-  // direct import (only @clerk/nextjs is resolvable from the app).
-  type NavigateParams = Parameters<
-    NonNullable<NonNullable<Parameters<typeof signIn.finalize>[0]>["navigate"]>
-  >[0];
+  // Conditional-UI passkey autofill: offer stored passkeys from the email
+  // field's autocomplete dropdown on supporting browsers.
+  React.useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !window.PublicKeyCredential?.isConditionalMediationAvailable
+    )
+      return;
+    let cancelled = false;
+    void PublicKeyCredential.isConditionalMediationAvailable().then(
+      (available) => {
+        if (!available || cancelled) return;
+        void authClient.signIn.passkey({
+          autoFill: true,
+          fetchOptions: {
+            onSuccess: () => router.push("/game"),
+          },
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
-  const navigate = ({ session, decorateUrl }: NavigateParams) => {
-    // Pending session tasks (e.g. MFA setup, org selection) are handled by Clerk.
-    if (session?.currentTask) return;
-    const url = decorateUrl("/game");
-    if (url.startsWith("http")) {
-      window.location.href = url;
-    } else {
-      router.push(url);
+  const handlePasskey = async () => {
+    setError(null);
+    setBusy(true);
+    const { error } = await authClient.signIn.passkey();
+    setBusy(false);
+    if (error) {
+      setError(
+        error.message ??
+          "Passkey sign-in failed. Try emailing yourself a code instead.",
+      );
+      return;
     }
+    router.push("/game");
   };
 
-  const finalizeIfComplete = async () => {
-    if (signIn.status === "complete") {
-      await signIn.finalize({ navigate });
-    }
-  };
-
-  const handleGoogle = async () => {
-    setGoogleLoading(true);
-    const { error } = await signIn.sso({
-      strategy: "oauth_google",
-      redirectUrl: "/game",
-      redirectCallbackUrl: "/sso-callback",
+  const sendCode = async () => {
+    setError(null);
+    setBusy(true);
+    const { error } = await authClient.emailOtp.sendVerificationOtp({
+      email: email.trim().toLowerCase(),
+      type: "sign-in",
     });
-    // On success the browser is redirected to Google, so we only reach here on error.
-    if (error) setGoogleLoading(false);
+    setBusy(false);
+    if (error) {
+      setError(
+        error.message ??
+          "Could not send the code. Check the email address and try again.",
+      );
+      return;
+    }
+    setCode("");
+    setResendCountdown(RESEND_SECONDS);
+    setStep("otp");
   };
 
   const handleStart = async (event: React.FormEvent) => {
     event.preventDefault();
-    const { error } = await signIn.create({
-      identifier: email,
-      signUpIfMissing: true,
+    await sendCode();
+  };
+
+  const verifyCode = async (value: string) => {
+    setError(null);
+    setBusy(true);
+    const trimmedName = name.trim();
+    const { error } = await authClient.signIn.emailOtp({
+      email: email.trim().toLowerCase(),
+      otp: value,
+      // Only used when this OTP registers a brand-new account.
+      ...(trimmedName ? { name: trimmedName } : {}),
     });
-    if (!error) setStep("choose-strategy");
-  };
-
-  const chooseEmailCode = async () => {
-    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (!error) {
-      setStrategy("email_code");
-      setCode("");
-      setResendCountdown(RESEND_SECONDS);
-      setStep("verifications");
+    setBusy(false);
+    if (error) {
+      setError(error.message ?? "That code didn’t work. Try again or resend.");
+      return;
     }
-  };
-
-  const choosePassword = () => {
-    setStrategy("password");
-    setPassword("");
-    setStep("verifications");
-  };
-
-  const resendEmailCode = async () => {
-    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (!error) setResendCountdown(RESEND_SECONDS);
-  };
-
-  const handlePasswordSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    await signIn.password({ identifier: email, password });
-    await finalizeIfComplete();
-  };
-
-  const verifyEmailCode = async (value: string) => {
-    await signIn.emailCode.verifyCode({ code: value });
-    await finalizeIfComplete();
+    // Signed in — nudge towards a passkey if they don't have one yet.
+    const { data: passkeys } = await authClient.passkey.listUserPasskeys();
+    if (!passkeys || passkeys.length === 0) {
+      setStep("add-passkey");
+    } else {
+      router.push("/game");
+    }
   };
 
   const handleCodeSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    await verifyEmailCode(code);
+    await verifyCode(code);
   };
 
-  const goBackToStart = async () => {
-    await signIn.reset();
-    setStep("start");
-    setPassword("");
-    setCode("");
+  const handleAddPasskey = async () => {
+    setError(null);
+    setBusy(true);
+    const result = await authClient.passkey.addPasskey();
+    setBusy(false);
+    if (result?.error) {
+      setError(
+        result.error.message ?? "Could not create a passkey on this device.",
+      );
+      return;
+    }
+    router.push("/game");
   };
 
   return (
@@ -143,26 +160,18 @@ export default function SignInPage() {
           <form onSubmit={handleStart}>
             <CardHeader>
               <CardTitle>Sign in</CardTitle>
-              <CardDescription>
-                Let&apos;s get you playing again
-              </CardDescription>
+              <CardDescription>Let&apos;s get you playing</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-y-4">
               <Button
                 size="sm"
                 variant="outline"
                 type="button"
-                disabled={isBusy || googleLoading}
-                onClick={handleGoogle}
+                disabled={busy}
+                onClick={handlePasskey}
               >
-                {googleLoading ? (
-                  <Icons.spinner className="size-4 animate-spin" />
-                ) : (
-                  <>
-                    <Icons.google className="mr-2 size-4" />
-                    Google
-                  </>
-                )}
+                <Fingerprint className="mr-2 size-4" />
+                Continue with passkey
               </Button>
               <p className="flex items-center gap-x-3 text-sm text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
                 or
@@ -172,132 +181,39 @@ export default function SignInPage() {
                 <Input
                   id="identifier"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="username webauthn"
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                 />
-                {errors.fields.identifier && (
-                  <p className="block text-sm text-destructive">
-                    {errors.fields.identifier.message}
-                  </p>
-                )}
               </div>
-              {errors.global && errors.global.length > 0 && (
-                <p className="block text-sm text-destructive">
-                  {errors.global[0].message}
-                </p>
-              )}
-              {/* Clerk bot protection (required when signUpIfMissing triggers a transfer). */}
-              <div id="clerk-captcha" className="empty:hidden" />
-            </CardContent>
-            <CardFooter>
-              <div className="grid w-full gap-y-4">
-                <Button type="submit" disabled={isBusy}>
-                  {isBusy ? (
-                    <Icons.spinner className="size-4 animate-spin" />
-                  ) : (
-                    "Continue"
-                  )}
-                </Button>
-                <Button variant="link" size="sm" asChild>
-                  <Link href="/sign-up">
-                    Don&apos;t have an account? Sign up
-                  </Link>
-                </Button>
-              </div>
-            </CardFooter>
-          </form>
-        </Card>
-      )}
-
-      {step === "choose-strategy" && (
-        <Card className="w-full sm:w-96">
-          <CardHeader>
-            <CardTitle>Use another method</CardTitle>
-            <CardDescription>
-              Facing issues? You can use any of these methods to sign in.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-y-4">
-            <Button
-              type="button"
-              variant="link"
-              disabled={isBusy}
-              onClick={chooseEmailCode}
-            >
-              Email code
-            </Button>
-            <Button
-              type="button"
-              variant="link"
-              disabled={isBusy}
-              onClick={choosePassword}
-            >
-              Password
-            </Button>
-          </CardContent>
-          <CardFooter>
-            <div className="grid w-full gap-y-4">
-              <Button type="button" disabled={isBusy} onClick={goBackToStart}>
-                Go back
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
-      )}
-
-      {step === "verifications" && strategy === "password" && (
-        <Card className="w-full sm:w-96">
-          <form onSubmit={handlePasswordSubmit}>
-            <CardHeader>
-              <CardTitle>Enter your password</CardTitle>
-              <CardDescription>
-                Enter the password linked to your account
-              </CardDescription>
-              <p className="text-sm text-muted-foreground">
-                Welcome back {email}
-              </p>
-            </CardHeader>
-            <CardContent className="grid gap-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="name">
+                  Display name{" "}
+                  <span className="text-muted-foreground font-normal">
+                    (first time playing?)
+                  </span>
+                </Label>
                 <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  id="name"
+                  type="text"
+                  autoComplete="name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
                 />
-                {errors.fields.password && (
-                  <p className="block text-sm text-destructive">
-                    {errors.fields.password.message}
-                  </p>
-                )}
               </div>
-              {errors.global && errors.global.length > 0 && (
-                <p className="block text-sm text-destructive">
-                  {errors.global[0].message}
-                </p>
+              {error && (
+                <p className="block text-sm text-destructive">{error}</p>
               )}
             </CardContent>
             <CardFooter>
               <div className="grid w-full gap-y-4">
-                <Button type="submit" disabled={isBusy}>
-                  {isBusy ? (
+                <Button type="submit" disabled={busy}>
+                  {busy ? (
                     <Icons.spinner className="size-4 animate-spin" />
                   ) : (
-                    "Continue"
+                    "Email me a code"
                   )}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="link"
-                  onClick={() => setStep("choose-strategy")}
-                >
-                  Use another method
                 </Button>
               </div>
             </CardFooter>
@@ -305,17 +221,15 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "verifications" && strategy === "email_code" && (
+      {step === "otp" && (
         <Card className="w-full sm:w-96">
           <form onSubmit={handleCodeSubmit}>
             <CardHeader>
               <CardTitle>Check your email</CardTitle>
               <CardDescription>
-                Enter the verification code sent to your email
+                Enter the sign-in code sent to your email
               </CardDescription>
-              <p className="text-sm text-muted-foreground">
-                Welcome back {email}
-              </p>
+              <p className="text-sm text-muted-foreground">{email}</p>
             </CardHeader>
             <CardContent className="grid gap-y-4">
               <div className="grid items-center justify-center gap-y-2">
@@ -325,7 +239,7 @@ export default function SignInPage() {
                     value={code}
                     onChange={(value) => {
                       setCode(value);
-                      if (value.length === 6) void verifyEmailCode(value);
+                      if (value.length === 6) void verifyCode(value);
                     }}
                   >
                     <InputOTPGroup>
@@ -338,14 +252,9 @@ export default function SignInPage() {
                     </InputOTPGroup>
                   </InputOTP>
                 </div>
-                {errors.fields.code && (
+                {error && (
                   <p className="block text-center text-sm text-destructive">
-                    {errors.fields.code.message}
-                  </p>
-                )}
-                {errors.global && errors.global.length > 0 && (
-                  <p className="block text-center text-sm text-destructive">
-                    {errors.global[0].message}
+                    {error}
                   </p>
                 )}
                 {resendCountdown > 0 ? (
@@ -358,8 +267,8 @@ export default function SignInPage() {
                     variant="link"
                     size="sm"
                     type="button"
-                    disabled={isBusy}
-                    onClick={resendEmailCode}
+                    disabled={busy}
+                    onClick={sendCode}
                   >
                     Didn&apos;t receive a code? Resend
                   </Button>
@@ -368,8 +277,8 @@ export default function SignInPage() {
             </CardContent>
             <CardFooter>
               <div className="grid w-full gap-y-4">
-                <Button type="submit" disabled={isBusy}>
-                  {isBusy ? (
+                <Button type="submit" disabled={busy}>
+                  {busy ? (
                     <Icons.spinner className="size-4 animate-spin" />
                   ) : (
                     "Continue"
@@ -379,13 +288,53 @@ export default function SignInPage() {
                   type="button"
                   size="sm"
                   variant="link"
-                  onClick={() => setStep("choose-strategy")}
+                  onClick={() => {
+                    setStep("start");
+                    setError(null);
+                  }}
                 >
-                  Use another method
+                  Use a different email
                 </Button>
               </div>
             </CardFooter>
           </form>
+        </Card>
+      )}
+
+      {step === "add-passkey" && (
+        <Card className="w-full sm:w-96">
+          <CardHeader>
+            <CardTitle>Add a passkey</CardTitle>
+            <CardDescription>
+              Sign in next time with your fingerprint, face, or device PIN — no
+              codes needed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-y-4">
+            {error && <p className="block text-sm text-destructive">{error}</p>}
+          </CardContent>
+          <CardFooter>
+            <div className="grid w-full gap-y-4">
+              <Button type="button" disabled={busy} onClick={handleAddPasskey}>
+                {busy ? (
+                  <Icons.spinner className="size-4 animate-spin" />
+                ) : (
+                  <>
+                    <Fingerprint className="mr-2 size-4" />
+                    Create passkey
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="link"
+                onClick={() => router.push("/game")}
+              >
+                Maybe later
+              </Button>
+            </div>
+          </CardFooter>
         </Card>
       )}
     </div>
