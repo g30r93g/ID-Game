@@ -11,13 +11,6 @@ import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 
-// Falls back to a placeholder so plugin construction (e.g. passkey's
-// `new URL(siteUrl)`) doesn't throw when this module is evaluated without
-// environment variable access — which happens during Convex's local module
-// analysis step (schema generation, `createApi` in betterAuth/adapter.ts).
-// At actual runtime, the real deployed SITE_URL is always set.
-const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
-
 export const resend = new Resend(components.resend, { testMode: false });
 
 export const authComponent = createClient<DataModel, typeof authSchema>(
@@ -30,6 +23,13 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 );
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
+  // The localhost fallback exists ONLY for env-less static analysis /
+  // schema introspection (Convex module analysis eagerly evaluates
+  // `createApi(schema, createAuthOptions)` in betterAuth/adapter.ts, and
+  // `npx auth generate` constructs the auth instance, both without env
+  // vars). Real usage goes through `createAuth`, which fails fast if
+  // SITE_URL is missing.
+  const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
   return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
@@ -61,6 +61,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
 };
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
+  if (!process.env.SITE_URL) {
+    throw new Error(
+      "SITE_URL is not set on this Convex deployment — run: npx convex env set SITE_URL <app-url>",
+    );
+  }
   return betterAuth(createAuthOptions(ctx));
 };
 
