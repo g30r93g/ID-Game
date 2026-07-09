@@ -1,20 +1,18 @@
-import { env } from "@/app/env";
-import { ConvexClerkClientProvider } from "@/providers/ConvexClerkClientProvider";
-import { ClerkProvider } from "@clerk/nextjs";
+import { getToken } from "@/lib/auth-server";
+import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
 
-export default function GameLayout({
+export default async function GameLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const token = await getToken();
+
   return (
     <div className={"min-h-svh max-h-svh flex items-center justify-center"}>
-      <ClerkProvider
-        publishableKey={env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-        dynamic
-      >
-        <ConvexClerkClientProvider>{children}</ConvexClerkClientProvider>
-      </ClerkProvider>
+      <ConvexClientProvider initialToken={token}>
+        {children}
+      </ConvexClientProvider>
     </div>
   );
 }

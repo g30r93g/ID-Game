@@ -1,25 +1,25 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { useClerk, useUser } from "@clerk/nextjs";
+import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
  * A frosted-glass identity bar shown above the game card: greeting + avatar on
- * the left, sign out on the right. The container styling mirrors Clerk's own
- * floating header (semi-transparent fill, hairline ring, layered soft shadow);
- * the contents are shadcn primitives. Pass `className` to control how it layers
- * against the card below it (e.g. a negative bottom margin so it emerges from
- * behind the card's top edge).
+ * the left, sign out on the right. The container styling is a floating header
+ * (semi-transparent fill, hairline ring, layered soft shadow); the contents
+ * are shadcn primitives. Pass `className` to control how it layers against the
+ * card below it (e.g. a negative bottom margin so it emerges from behind the
+ * card's top edge).
  */
 export function UserTray({ className }: { className?: string }) {
-  const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
+  const { data: session, isPending } = authClient.useSession();
+  const user = session?.user;
 
-  const firstName = user?.firstName?.trim();
-  const email = user?.primaryEmailAddress?.emailAddress;
+  const firstName = user?.name?.trim().split(/\s+/)[0];
+  const email = user?.email;
   const initial = (firstName?.[0] ?? email?.[0] ?? "?").toUpperCase();
   const greeting = firstName ? `Hey ${firstName} 👋` : "Welcome 👋";
 
@@ -32,22 +32,30 @@ export function UserTray({ className }: { className?: string }) {
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <Avatar className="size-7">
-          {user?.imageUrl ? (
-            <AvatarImage src={user.imageUrl} alt={firstName ?? "You"} />
+          {user?.image ? (
+            <AvatarImage src={user.image} alt={firstName ?? "You"} />
           ) : null}
           <AvatarFallback className="text-xs font-medium">
-            {isLoaded ? initial : ""}
+            {isPending ? "" : initial}
           </AvatarFallback>
         </Avatar>
         <span className="truncate text-sm font-medium">
-          {isLoaded ? greeting : " "}
+          {isPending ? " " : greeting}
         </span>
       </div>
       <Button
         variant="ghost"
         size="sm"
         className="shrink-0 text-muted-foreground"
-        onClick={() => signOut({ redirectUrl: "/sign-in" })}
+        onClick={() => {
+          void authClient.signOut({
+            fetchOptions: {
+              onSuccess: () => {
+                window.location.href = "/sign-in";
+              },
+            },
+          });
+        }}
       >
         <LogOut />
         Sign out
