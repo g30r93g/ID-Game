@@ -11,6 +11,10 @@
     # Convex
     CONVEX_DEPLOYMENT=<your-convex-deployment>
     NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
+    NEXT_PUBLIC_CONVEX_SITE_URL=<your-convex-site-url>
+
+    # App
+    NEXT_PUBLIC_SITE_URL=<your-app-url>
 
     # Maintenance mode (optional)
     MAINTENANCE_MODE=false
