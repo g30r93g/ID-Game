@@ -1,8 +1,6 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 import { env } from "@/app/env";
-
-const isPrivateRoute = createRouteMatcher(["/game"]);
 
 const BYPASS_COOKIE = "maintenance-bypass";
 
@@ -39,19 +37,21 @@ export function maintenanceResponse(req: NextRequest): NextResponse | null {
   });
 }
 
-export default clerkMiddleware(
-  async (auth, req) => {
-    const maintenance = maintenanceResponse(req);
-    if (maintenance) return maintenance;
+export default function proxy(req: NextRequest) {
+  const maintenance = maintenanceResponse(req);
+  if (maintenance) return maintenance;
 
-    if (isPrivateRoute(req)) {
-      await auth.protect();
+  // Optimistic gate: cookie presence only. Authoritative auth checks live in
+  // the Convex functions via ctx.auth.getUserIdentity().
+  if (req.nextUrl.pathname.startsWith("/game")) {
+    const sessionCookie = getSessionCookie(req);
+    if (!sessionCookie) {
+      return NextResponse.redirect(new URL("/sign-in", req.url));
     }
-  },
-  {
-    debug: env.NODE_ENV === "development",
-  },
-);
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
   // The following matcher runs middleware on all routes except static assets.
