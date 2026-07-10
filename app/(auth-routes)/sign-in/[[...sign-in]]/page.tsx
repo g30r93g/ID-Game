@@ -41,6 +41,8 @@ export default function SignInPage() {
   const [mode, setMode] = React.useState<Mode>(
     searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in",
   );
+  // Sign-in tab is passkey-first; the email/OTP fields stay hidden until asked for.
+  const [showEmailFlow, setShowEmailFlow] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -183,15 +185,17 @@ export default function SignInPage() {
       {step === "start" && (
         <Card className="w-full sm:w-96">
           <Tabs
+            className="contents"
             value={mode}
             onValueChange={(value) => {
               setMode(value as Mode);
+              setShowEmailFlow(false);
               setError(null);
             }}
           >
-            <form onSubmit={handleStart}>
-              <CardHeader className="gap-y-3">
-                <TabsList className="grid w-full grid-cols-2">
+            <form className="contents" onSubmit={handleStart}>
+              <CardHeader>
+                <TabsList className="mb-2 grid w-full grid-cols-2">
                   <TabsTrigger value="sign-in" disabled={busy}>
                     Sign in
                   </TabsTrigger>
@@ -209,34 +213,25 @@ export default function SignInPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-y-4">
-                {mode === "sign-in" && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      type="button"
-                      disabled={busy}
-                      onClick={handlePasskey}
-                    >
-                      <Fingerprint className="mr-2 size-4" />
-                      Continue with passkey
-                    </Button>
-                    <p className="flex items-center gap-x-3 text-sm text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-                      or
-                    </p>
-                  </>
+                {mode === "sign-in" && !showEmailFlow && (
+                  <p className="text-sm text-muted-foreground">
+                    Sign in with your face, fingerprint, or device PIN.
+                  </p>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="identifier">Email address</Label>
-                  <Input
-                    id="identifier"
-                    type="email"
-                    autoComplete="username webauthn"
-                    required
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </div>
+                {(mode === "sign-up" || showEmailFlow) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="identifier">Email address</Label>
+                    <Input
+                      id="identifier"
+                      type="email"
+                      autoComplete="username webauthn"
+                      autoFocus={mode === "sign-in"}
+                      required
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                    />
+                  </div>
+                )}
                 {mode === "sign-up" && (
                   <div className="space-y-2">
                     <Label htmlFor="name">Display name</Label>
@@ -255,14 +250,61 @@ export default function SignInPage() {
                 )}
               </CardContent>
               <CardFooter>
-                <div className="grid w-full gap-y-4">
-                  <Button type="submit" disabled={busy}>
-                    {busy ? (
-                      <Icons.spinner className="size-4 animate-spin" />
-                    ) : (
-                      "Email me a code"
-                    )}
-                  </Button>
+                <div className="grid w-full gap-y-3">
+                  {mode === "sign-in" && !showEmailFlow && (
+                    <>
+                      <Button
+                        type="button"
+                        disabled={busy}
+                        onClick={handlePasskey}
+                      >
+                        {busy ? (
+                          <Icons.spinner className="size-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Fingerprint className="mr-2 size-4" />
+                            Continue with passkey
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => {
+                          setShowEmailFlow(true);
+                          setError(null);
+                        }}
+                      >
+                        Email me a code
+                      </Button>
+                    </>
+                  )}
+                  {(mode === "sign-up" || showEmailFlow) && (
+                    <Button type="submit" disabled={busy}>
+                      {busy ? (
+                        <Icons.spinner className="size-4 animate-spin" />
+                      ) : mode === "sign-up" ? (
+                        "Email me a code"
+                      ) : (
+                        "Send code"
+                      )}
+                    </Button>
+                  )}
+                  {mode === "sign-in" && showEmailFlow && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="link"
+                      disabled={busy}
+                      onClick={() => {
+                        setShowEmailFlow(false);
+                        setError(null);
+                      }}
+                    >
+                      Use a passkey instead
+                    </Button>
+                  )}
                 </div>
               </CardFooter>
             </form>
@@ -272,7 +314,7 @@ export default function SignInPage() {
 
       {step === "otp" && (
         <Card className="w-full sm:w-96">
-          <form onSubmit={handleCodeSubmit}>
+          <form className="contents" onSubmit={handleCodeSubmit}>
             <CardHeader>
               <CardTitle>Check your email</CardTitle>
               <CardDescription>
