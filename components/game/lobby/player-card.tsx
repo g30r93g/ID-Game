@@ -2,7 +2,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import * as Editable from "@/components/ui/editable";
 import { Button } from "@/components/ui/button";
 import { Edit } from "lucide-react";
-import { useAuth } from "@clerk/nextjs";
+import { authClient } from "@/lib/auth-client";
 
 interface PlayerCardProps {
   playerId: string;
@@ -15,13 +15,13 @@ export default function PlayerCard({
   playerUserId,
   playerName,
 }: PlayerCardProps) {
-  const auth = useAuth();
+  const { data: session } = authClient.useSession();
 
   // const updatePlayerDisplayName = useCallback(async (value: string) => {
   // }, [])
 
   const currentUserIsHostPlayer = () => {
-    const userId = auth.userId;
+    const userId = session?.user.id;
 
     if (!userId) return false;
 

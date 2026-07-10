@@ -42,10 +42,7 @@ export default function TermsOfServicePage() {
         provided.
       </p>
       <ul className={"list-disc ml-8"}>
-        <li>
-          Authentication is handled by Clerk, and access to your account is
-          subject to Clerk’s authentication policies.
-        </li>
+        <li>Authentication uses passkeys and emailed sign-in codes; keep access to your email account secure.</li>
         <li>
           Data storage and processing are managed using Convex, and you
           acknowledge that your data is stored securely in a database managed by

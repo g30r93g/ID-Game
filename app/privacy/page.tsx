@@ -25,8 +25,7 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong>Personal Information:</strong> When you sign up, we may
           collect your name, email address, and other necessary details.
-          Authentication is managed by Clerk, which may collect additional
-          personal data as per their policies.
+          Authentication is managed by Better Auth running on our Convex backend; sign-in codes are delivered by Resend.
         </li>
         <li>
           <strong>Usage Data:</strong> We collect data about how you use the
@@ -37,8 +36,7 @@ export default function PrivacyPolicyPage() {
           <strong>Cookies and Tracking: </strong> We may use cookies and similar
           technologies to enable and enhance your experience whilst using the
           Game. We also track page views and user interactions such as button
-          clicks with PostHog. Clerk may also use cookies to manage
-          authentication sessions.
+          clicks with PostHog. We also use cookies to manage authentication sessions.
         </li>
       </ul>
       <h2 className="text-xl font-mono font-semibold mt-6">
@@ -46,7 +44,7 @@ export default function PrivacyPolicyPage() {
       </h2>
       <ul className={"list-disc ml-8"}>
         <li>To enable, provide and improve the Service.</li>
-        <li>To authenticate users and manage sessions through Clerk.</li>
+        <li>To authenticate users and manage sessions.</li>
         <li>For future improvements to the Service.</li>
         <li>To store and retrieve data securely using Convex.</li>
         <li>To ensure compliance with legal requirements.</li>
@@ -65,14 +63,13 @@ export default function PrivacyPolicyPage() {
         precaution to ensure your data is not accessed by unauthorised parties.
       </p>
       <p>
-        Clerk and Convex provide measures within their softwares to address data
+        Convex and Resend provide measures within their software to address data
         security.
       </p>
       <h2 className="text-xl font-mono font-semibold mt-6">6. Your Rights</h2>
       <p>
         Depending on your jurisdiction, you may have rights to access, update,
-        or delete your personal data. Requests related to authentication data
-        should be directed to Clerk, while requests related to stored
+        or delete your personal data. Requests related to authentication data can be made directly to us, while requests related to stored
         application data should be directed to us at{" "}
         <Link
           href={"mailto:support@id-game.com?subject=Personal Data"}

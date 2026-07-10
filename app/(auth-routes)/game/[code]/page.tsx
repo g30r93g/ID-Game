@@ -1,24 +1,28 @@
 import { Game } from "@/components/game";
 import { api } from "@/convex/_generated/api";
-import { fetchMutation, fetchQuery, preloadQuery } from "convex/nextjs";
 import { redirect } from "next/navigation";
-import { getAuthToken } from "@/lib/auth";
+import {
+  fetchAuthMutation,
+  fetchAuthQuery,
+  getToken,
+  preloadAuthQuery,
+} from "@/lib/auth-server";
 import PostHogClient from "@/lib/posthog";
-import { currentUser } from "@clerk/nextjs/server";
 
 export default async function GamePage({
   params,
 }: {
   params?: Promise<{ code: string }>;
 }) {
-  // Get current user's ID
-  const [token, user] = await Promise.all([getAuthToken(), currentUser()]);
-  if (!user) {
-    console.error("No user is found");
-    redirect("/game");
-  }
+  const token = await getToken();
   if (!token) {
     console.error("No authentication token found");
+    redirect("/game");
+  }
+
+  const user = await fetchAuthQuery(api.auth.getCurrentUser, {});
+  if (!user) {
+    console.error("No user is found");
     redirect("/game");
   }
 
@@ -37,11 +41,9 @@ export default async function GamePage({
   const posthog = PostHogClient();
 
   // Ensure the current user is a player, otherwise join them
-  const isUserPlayer = await fetchQuery(
-    api.game.isUserPlayer,
-    { joinCode },
-    { token },
-  );
+  const isUserPlayer = await fetchAuthQuery(api.game.isUserPlayer, {
+    joinCode,
+  });
   if (!isUserPlayer) {
     try {
       if (posthog) {
@@ -54,14 +56,14 @@ export default async function GamePage({
         });
       }
 
-      await fetchMutation(api.game.joinGame, { joinCode }, { token });
+      await fetchAuthMutation(api.game.joinGame, { joinCode });
     } catch {
       redirect("/game");
     }
   }
 
   // get game data
-  const preloadedGame = await preloadQuery(api.game.fetchGameByJoinCode, {
+  const preloadedGame = await preloadAuthQuery(api.game.fetchGameByJoinCode, {
     joinCode,
   });
 

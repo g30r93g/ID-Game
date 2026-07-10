@@ -1582,6 +1582,8 @@ npx convex data scenarios --limit 1    # expect: a row — scenarios MUST surviv
 - [ ] **Step 4: Two-player game** — second browser profile, second account, join via code, play a round through to `display-results`. Confirms `ctx.auth` works end-to-end in queries/mutations and real-time updates flow.
 - [ ] **Step 5: OTP failure paths** — wrong code (error shown, retry works), 4th wrong attempt (`TOO_MANY_ATTEMPTS` — resend gives a fresh code), resend countdown.
 - [ ] **Step 6: Maintenance interplay** — `MAINTENANCE_MODE=true pnpm dev`: every route 503s to the curtain incl. `/api/auth/*`; bypass cookie restores full sign-in + game flow.
+- [ ] **Step 6a: Invite-link flow (signed out)** — while signed out, open `/game/<code>` directly: expect redirect to `/sign-in?next=/game/<code>`, and after OTP or passkey sign-in you land back in that game, not on `/game`.
+- [ ] **Step 6b: Passkey contention** — click "Continue with passkey" while the conditional-UI autofill request may be pending (fresh page load, immediate click) — confirm no stuck busy state or double WebAuthn prompt on your browsers.
 - [ ] **Step 7: Build gate** — `pnpm lint && pnpm build && npx convex dev --once` all clean. Push the branch and open PR 2:
 
 ```bash
@@ -1600,7 +1602,7 @@ Execute in order, in one sitting. Prerequisites: PR 1 merged & deployed (dormant
 - [ ] **Step 1: Prod env vars.** Convex prod: `npx convex env set --prod BETTER_AUTH_SECRET $(openssl rand -base64 32)`, `npx convex env set --prod SITE_URL https://<production-app-url>`, `npx convex env set --prod RESEND_API_KEY <prod-key>`, `npx convex env set --prod AUTH_EMAIL_FROM "The ID Game <auth@your-verified-domain>"`. Vercel: confirm `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`, `MAINTENANCE_BYPASS_SECRET` are set.
 - [ ] **Step 2: Maintenance ON.** Set `MAINTENANCE_MODE=true` in Vercel → redeploy current production → verify the curtain is up (503) and the bypass cookie works.
 - [ ] **Step 3: Merge PR 2** to `main`. Vercel auto-deploys the new frontend (still behind the curtain).
-- [ ] **Step 4: Deploy Convex prod:** `npx convex deploy`. From this moment Clerk tokens are rejected — the curtain is covering this.
+- [ ] **Step 4: Deploy Convex prod:** `npx convex deploy`. From this moment Clerk tokens are rejected — the curtain is covering this. Note: the deploy FAILS with a "SITE_URL is not set" error if Step 1 was skipped — expected fail-fast behaviour (route registration initialises Better Auth at module load); set the env vars and re-run.
 - [ ] **Step 5: Wipe old game data** (clean slate — same commands rehearsed in Task 11 Step 1, now with `--prod`):
 
 ```bash

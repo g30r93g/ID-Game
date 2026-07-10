@@ -13,6 +13,12 @@
     /* TS 6 defaults `types` to [] (was: all @types). Convex functions use
      * Node globals (e.g. process.env in auth.config.ts), so request them. */
     "types": ["node"],
+    /* better-auth's own .d.ts files reference optional peer types we don't
+     * install (bun:sqlite, @cloudflare/workers-types) and have an unrelated
+     * internal generic-indexing error in its organization plugin types
+     * (a plugin we don't use). Matches root tsconfig.json, which already
+     * sets this. */
+    "skipLibCheck": true,
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
