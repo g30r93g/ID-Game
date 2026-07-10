@@ -21,7 +21,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Fingerprint } from "lucide-react";
+import { Fingerprint, Mail } from "lucide-react";
 
 type Step = "start" | "otp" | "add-passkey";
 type Mode = "sign-in" | "sign-up";
@@ -276,6 +276,7 @@ export default function SignInPage() {
                           setError(null);
                         }}
                       >
+                        <Mail className="mr-2 size-4" />
                         Email me a code
                       </Button>
                     </>
@@ -285,7 +286,10 @@ export default function SignInPage() {
                       {busy ? (
                         <Icons.spinner className="size-4 animate-spin" />
                       ) : mode === "sign-up" ? (
-                        "Email me a code"
+                        <>
+                          <Mail className="mr-2 size-4" />
+                          Email me a code
+                        </>
                       ) : (
                         "Send code"
                       )}
