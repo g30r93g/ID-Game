@@ -17,12 +17,21 @@ export default defineSchema({
     currentRound: v.optional(v.number()),
     isOpen: v.boolean(),
     createdBy: v.string(),
-  }).index("byJoinCode", ["joinCode"]),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("byJoinCode", ["joinCode"])
+    .index("byIsOpen", ["isOpen"])
+    .index("byStartedAt", ["startedAt"])
+    .index("byCompletedAt", ["completedAt"]),
 
   scenarios: defineTable({
     description: v.string(),
     category: v.string(),
-  }).index("byCategory", ["category"]),
+    timesSelected: v.optional(v.number()),
+  })
+    .index("byCategory", ["category"])
+    .index("byTimesSelected", ["timesSelected"]),
 
   gameRounds: defineTable({
     gameId: v.id("games"),
