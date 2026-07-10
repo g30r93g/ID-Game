@@ -333,6 +333,7 @@ export default function SignInPage() {
                     maxLength={6}
                     value={code}
                     disabled={busy}
+                    autoComplete="one-time-code"
                     onChange={(value) => {
                       setCode(value);
                       if (value.length === 6) void verifyCode(value);
