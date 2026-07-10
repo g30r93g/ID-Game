@@ -380,8 +380,11 @@ export const startNewGameRound = mutation({
       phase: "create-scenarios",
     });
 
-    // update the round number
-    await ctx.db.patch(game._id, { currentRound: newRoundNumber });
+    // update the round number; stamp the game's start time on round 1
+    await ctx.db.patch(game._id, {
+      currentRound: newRoundNumber,
+      ...(newRoundNumber === 1 ? { startedAt: Date.now() } : {}),
+    });
 
     return newGameRound;
   },
