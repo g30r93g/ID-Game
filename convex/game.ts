@@ -578,6 +578,14 @@ export const selectGameRoundScenario = mutation({
 
     // Change selected state for the chosen scenario
     await ctx.db.patch(args.gameRoundScenarioId, { selected: true });
+
+    // Increment the popularity counter on the underlying scenario
+    const scenario = await ctx.db.get(selectedGameRoundScenario.scenarioId);
+    if (scenario) {
+      await ctx.db.patch(scenario._id, {
+        timesSelected: (scenario.timesSelected ?? 0) + 1,
+      });
+    }
   },
 });
 

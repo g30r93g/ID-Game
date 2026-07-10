@@ -81,3 +81,50 @@ test("transitionRoundPhase does NOT set completedAt on a non-final round", async
   const game = await t.run((ctx) => ctx.db.get(gameId));
   expect(game?.completedAt).toBeUndefined();
 });
+
+test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
+  const t = convexTest(schema, modules);
+  const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "SEL123",
+      totalRounds: 1,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "host",
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId,
+      phase: "pick-scenario",
+    });
+    const scenarioId = await ctx.db.insert("scenarios", {
+      description: "Most likely to be late",
+      category: "General",
+      timesSelected: 0,
+    });
+    const gameRoundScenarioId = await ctx.db.insert("gameRoundScenarios", {
+      gameId,
+      roundId,
+      scenarioId,
+      selected: false,
+    });
+    return { gameRoundScenarioId, roundId, scenarioId };
+  });
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.selectGameRoundScenario, {
+      gameRoundId: roundId,
+      gameRoundScenarioId,
+    });
+
+  const scenario = await t.run((ctx) => ctx.db.get(scenarioId));
+  expect(scenario?.timesSelected).toBe(1);
+});
