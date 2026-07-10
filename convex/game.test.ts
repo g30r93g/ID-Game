@@ -28,3 +28,56 @@ test("startNewGameRound sets startedAt on round 1", async () => {
   const game = await t.run((ctx) => ctx.db.get(gameId));
   expect(typeof game?.startedAt).toBe("number");
 });
+
+async function seedGameWithRound(
+  t: ReturnType<typeof convexTest>,
+  opts: { totalRounds: number; roundNumber: number },
+) {
+  return t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "FIN123",
+      totalRounds: opts.totalRounds,
+      currentRound: opts.roundNumber,
+      isOpen: false,
+      createdBy: "host",
+      startedAt: 1000,
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: opts.roundNumber,
+      hostPlayerId,
+      phase: "display-results",
+    });
+    return { gameId, roundId };
+  });
+}
+
+test("transitionRoundPhase sets completedAt on the final round finishing", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, { totalRounds: 3, roundNumber: 3 });
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, { gameRoundId: roundId, toPhase: "finished" });
+
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(typeof game?.completedAt).toBe("number");
+});
+
+test("transitionRoundPhase does NOT set completedAt on a non-final round", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, { totalRounds: 3, roundNumber: 2 });
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, { gameRoundId: roundId, toPhase: "finished" });
+
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.completedAt).toBeUndefined();
+});

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { shouldSetCompletedAt } from "../lib/admin/metrics";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -508,6 +509,16 @@ export const transitionRoundPhase = mutation({
 
     // change phase
     await ctx.db.patch(gameRound._id, { phase: args.toPhase });
+
+    // stamp game completion when the final round finishes
+    const game = await ctx.db.get(gameRound.gameId);
+    if (
+      game &&
+      game.completedAt === undefined &&
+      shouldSetCompletedAt(args.toPhase, gameRound.roundNumber, game.totalRounds)
+    ) {
+      await ctx.db.patch(game._id, { completedAt: Date.now() });
+    }
   },
 });
 
