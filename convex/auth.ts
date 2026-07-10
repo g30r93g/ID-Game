@@ -41,6 +41,22 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
+    // Better Auth's default rate limiting uses in-memory storage, which is
+    // meaningless across Convex's ephemeral isolates — store windows in the
+    // database instead. The OTP send endpoint triggers real Resend emails
+    // from an unauthenticated route, so it gets a tight per-IP rule.
+    rateLimit: {
+      enabled: true,
+      storage: "database",
+      // Global window also bounds expired-row pruning; keep it >= the longest
+      // custom rule below so those windows aren't pruned early.
+      window: 60,
+      max: 100,
+      customRules: {
+        "/email-otp/send-verification-otp": { window: 60, max: 6 },
+        "/sign-in/email-otp": { window: 60, max: 10 },
+      },
+    },
     plugins: [
       emailOTP({
         otpLength: 6,

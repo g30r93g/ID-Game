@@ -17,6 +17,9 @@ const schema = defineSchema({
   // index the component logs a missing-index warning and falls back to a
   // full table scan.
   passkey: tables.passkey.index("credentialID", ["credentialID"]),
+  // The rate limiter prunes expired windows by lastRequest (the generated
+  // schema already indexes key for the per-request lookups).
+  rateLimit: tables.rateLimit.index("lastRequest", ["lastRequest"]),
 });
 
 export default schema;
