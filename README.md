@@ -12,6 +12,10 @@
     CONVEX_DEPLOYMENT=<your-convex-deployment>
     NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
 
+    # Maintenance mode (optional)
+    MAINTENANCE_MODE=false
+    MAINTENANCE_BYPASS_SECRET=<random-string-16+-chars>
+
     # Clerk
     CLERK_JWT_ISSUER_DOMAIN=<your-clerk-domain>
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
