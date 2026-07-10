@@ -20,9 +20,11 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Fingerprint } from "lucide-react";
 
 type Step = "start" | "otp" | "add-passkey";
+type Mode = "sign-in" | "sign-up";
 
 const RESEND_SECONDS = 30;
 
@@ -36,6 +38,9 @@ export default function SignInPage() {
       : "/game";
 
   const [step, setStep] = React.useState<Step>("start");
+  const [mode, setMode] = React.useState<Mode>(
+    searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in",
+  );
   const [email, setEmail] = React.useState("");
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -130,8 +135,8 @@ export default function SignInPage() {
       const { error } = await authClient.signIn.emailOtp({
         email: email.trim().toLowerCase(),
         otp: value,
-        // Only used when this OTP registers a brand-new account.
-        ...(trimmedName ? { name: trimmedName } : {}),
+        // Only used when this OTP registers a brand-new account (sign-up tab).
+        ...(mode === "sign-up" && trimmedName ? { name: trimmedName } : {}),
       });
       if (error) {
         setError(
@@ -177,67 +182,91 @@ export default function SignInPage() {
     <div className="grid w-full grow items-center px-4 sm:justify-center">
       {step === "start" && (
         <Card className="w-full sm:w-96">
-          <form onSubmit={handleStart}>
-            <CardHeader>
-              <CardTitle>Sign in</CardTitle>
-              <CardDescription>Let&apos;s get you playing</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-y-4">
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                disabled={busy}
-                onClick={handlePasskey}
-              >
-                <Fingerprint className="mr-2 size-4" />
-                Continue with passkey
-              </Button>
-              <p className="flex items-center gap-x-3 text-sm text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-                or
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="identifier">Email address</Label>
-                <Input
-                  id="identifier"
-                  type="email"
-                  autoComplete="username webauthn"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="name">
-                  Display name{" "}
-                  <span className="text-muted-foreground font-normal">
-                    (first time playing?)
-                  </span>
-                </Label>
-                <Input
-                  id="name"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </div>
-              {error && (
-                <p className="block text-sm text-destructive">{error}</p>
-              )}
-            </CardContent>
-            <CardFooter>
-              <div className="grid w-full gap-y-4">
-                <Button type="submit" disabled={busy}>
-                  {busy ? (
-                    <Icons.spinner className="size-4 animate-spin" />
-                  ) : (
-                    "Email me a code"
-                  )}
-                </Button>
-              </div>
-            </CardFooter>
-          </form>
+          <Tabs
+            value={mode}
+            onValueChange={(value) => {
+              setMode(value as Mode);
+              setError(null);
+            }}
+          >
+            <form onSubmit={handleStart}>
+              <CardHeader className="gap-y-3">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="sign-in" disabled={busy}>
+                    Sign in
+                  </TabsTrigger>
+                  <TabsTrigger value="sign-up" disabled={busy}>
+                    Sign up
+                  </TabsTrigger>
+                </TabsList>
+                <CardTitle>
+                  {mode === "sign-in" ? "Welcome back" : "Create your account"}
+                </CardTitle>
+                <CardDescription>
+                  {mode === "sign-in"
+                    ? "Let's get you playing again"
+                    : "Let's get you playing"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-y-4">
+                {mode === "sign-in" && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      disabled={busy}
+                      onClick={handlePasskey}
+                    >
+                      <Fingerprint className="mr-2 size-4" />
+                      Continue with passkey
+                    </Button>
+                    <p className="flex items-center gap-x-3 text-sm text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+                      or
+                    </p>
+                  </>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="identifier">Email address</Label>
+                  <Input
+                    id="identifier"
+                    type="email"
+                    autoComplete="username webauthn"
+                    required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </div>
+                {mode === "sign-up" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Display name</Label>
+                    <Input
+                      id="name"
+                      type="text"
+                      autoComplete="name"
+                      required
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                    />
+                  </div>
+                )}
+                {error && (
+                  <p className="block text-sm text-destructive">{error}</p>
+                )}
+              </CardContent>
+              <CardFooter>
+                <div className="grid w-full gap-y-4">
+                  <Button type="submit" disabled={busy}>
+                    {busy ? (
+                      <Icons.spinner className="size-4 animate-spin" />
+                    ) : (
+                      "Email me a code"
+                    )}
+                  </Button>
+                </div>
+              </CardFooter>
+            </form>
+          </Tabs>
         </Card>
       )}
 
