@@ -76,17 +76,26 @@ export const listUsers = query({
   handler: async (ctx, { limit, offset }) => {
     await requireAdmin(ctx);
     const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+    // The Convex Better Auth adapter's findMany throws on any nonzero offset,
+    // and better-auth's listUsers route swallows that into an empty result.
+    // So we fetch a bounded window (capped at 1000 users - a known limitation
+    // of this admin view) with offset 0, then sort/page in memory instead of
+    // passing the requested offset through to the adapter.
     const listed = await auth.api.listUsers({
       headers,
-      query: { limit, offset, sortBy: "createdAt", sortDirection: "desc" },
+      query: { limit: 1000 },
     });
+    const sorted = [...listed.users].sort(
+      (a, b) => Number(b.createdAt) - Number(a.createdAt),
+    );
+    const page = sorted.slice(offset, offset + limit);
     return {
       total: listed.total,
-      users: listed.users.map((u) => ({
+      users: page.map((u) => ({
         id: u.id,
-        name: u.name,
+        name: u.name ?? "",
         email: u.email,
-        createdAt: u.createdAt.getTime(),
+        createdAt: Number(u.createdAt),
       })),
     };
   },
