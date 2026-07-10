@@ -1,7 +1,9 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "./_generated/server";
-import { authComponent, createAuthOptions } from "./auth";
+import { internalMutation, mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import { authComponent, createAuthOptions, createAuth } from "./auth";
 import { requireAdmin } from "./adminAuth";
+import { activePlayerCount } from "../lib/admin/metrics";
 
 /**
  * One-off bootstrap: promote a user to admin by email. Uses the Better Auth
@@ -42,5 +44,50 @@ export const createScenario = mutation({
       category,
       timesSelected: 0,
     });
+  },
+});
+
+/**
+ * Counts distinct users with a `players` row created in the last 14 days.
+ * Pure enough to unit test: reads our own `players` table only (no
+ * Better Auth component dependency), delegating the dedupe/window logic to
+ * the pure `activePlayerCount` helper.
+ */
+export async function activePlayers14dCore(ctx: QueryCtx, now: number) {
+  const players = await ctx.db.query("players").collect();
+  return activePlayerCount(players, now);
+}
+
+export const userStats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+    const listed = await auth.api.listUsers({ headers, query: { limit: 1 } });
+    return {
+      totalUsers: listed.total,
+      activePlayers14d: await activePlayers14dCore(ctx, Date.now()),
+    };
+  },
+});
+
+export const listUsers = query({
+  args: { limit: v.number(), offset: v.number() },
+  handler: async (ctx, { limit, offset }) => {
+    await requireAdmin(ctx);
+    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+    const listed = await auth.api.listUsers({
+      headers,
+      query: { limit, offset, sortBy: "createdAt", sortDirection: "desc" },
+    });
+    return {
+      total: listed.total,
+      users: listed.users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        createdAt: u.createdAt.getTime(),
+      })),
+    };
   },
 });
