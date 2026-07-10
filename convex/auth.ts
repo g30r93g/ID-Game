@@ -30,6 +30,14 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   // vars). Real usage goes through `createAuth`, which fails fast if
   // SITE_URL is missing.
   const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
+  // WebAuthn rpID: use the registrable domain (id-game.com) rather than the
+  // full hostname (www.id-game.com) so passkeys stay valid across subdomains
+  // and a future canonical-domain change. Assumes a single-label public
+  // suffix (.com); localhost and other dotless hosts pass through unchanged.
+  const hostname = new URL(siteUrl).hostname;
+  const rpID = hostname.includes(".")
+    ? hostname.split(".").slice(-2).join(".")
+    : hostname;
   return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
@@ -50,7 +58,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         },
       }),
       passkey({
-        rpID: new URL(siteUrl).hostname,
+        rpID,
         rpName: "The ID Game",
         origin: siteUrl,
       }),
