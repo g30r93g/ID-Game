@@ -85,6 +85,12 @@ export const tables = {
     createdAt: v.number(),
     expiresAt: v.optional(v.union(v.null(), v.number())),
   }),
+  rateLimit: defineTable({
+    key: v.string(),
+    count: v.number(),
+    lastRequest: v.number(),
+  })
+    .index("key", ["key"]),
 };
 
 const schema = defineSchema(tables);
