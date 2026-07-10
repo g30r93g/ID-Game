@@ -106,6 +106,7 @@ export const getCurrentUser = query({
       name: user.name ?? null,
       email: user.email,
       image: user.image ?? null,
+      role: (user as { role?: string }).role ?? "user",
     };
   },
 });
