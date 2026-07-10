@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { authComponent, createAuthOptions } from "./auth";
+import { requireAdmin } from "./adminAuth";
 
 /**
  * One-off bootstrap: promote a user to admin by email. Uses the Better Auth
@@ -25,5 +26,21 @@ export const grantAdmin = internalMutation({
       update: { role: "admin" },
     });
     return { ok: true };
+  },
+});
+
+export const createScenario = mutation({
+  args: { description: v.string(), category: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const description = args.description.trim();
+    const category = args.category.trim();
+    if (!description) throw new Error("Scenario text is required.");
+    if (!category) throw new Error("Category is required.");
+    return await ctx.db.insert("scenarios", {
+      description,
+      category,
+      timesSelected: 0,
+    });
   },
 });
