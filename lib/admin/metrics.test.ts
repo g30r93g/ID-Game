@@ -61,10 +61,12 @@ describe("activePlayerCount", () => {
 });
 
 describe("shouldSetCompletedAt", () => {
+  it("true on final round showing results", () => expect(shouldSetCompletedAt("display-results", 3, 3)).toBe(true));
   it("true on final round finishing", () => expect(shouldSetCompletedAt("finished", 3, 3)).toBe(true));
+  it("false on display-results of a non-final round", () => expect(shouldSetCompletedAt("display-results", 2, 3)).toBe(false));
   it("false on a non-final round", () => expect(shouldSetCompletedAt("finished", 2, 3)).toBe(false));
-  it("false for a non-finished phase", () => expect(shouldSetCompletedAt("rank-players", 3, 3)).toBe(false));
-  it("false for infinite games", () => expect(shouldSetCompletedAt("finished", 1, 0)).toBe(false));
+  it("false for a non-terminal phase", () => expect(shouldSetCompletedAt("rank-players", 3, 3)).toBe(false));
+  it("false for infinite games", () => expect(shouldSetCompletedAt("display-results", 1, 0)).toBe(false));
 });
 
 describe("scenarioSortToQuery", () => {

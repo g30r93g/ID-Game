@@ -82,6 +82,46 @@ test("transitionRoundPhase does NOT set completedAt on a non-final round", async
   expect(game?.completedAt).toBeUndefined();
 });
 
+test("transitionRoundPhase sets completedAt when the final round shows results", async () => {
+  const t = convexTest(schema, modules);
+  // Normal play ends the final round at display-results (then the rate flow),
+  // never reaching "finished" — so this transition is where completion is
+  // recorded server-side.
+  const { gameId, roundId } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "RES123",
+      totalRounds: 3,
+      currentRound: 3,
+      isOpen: false,
+      createdBy: "host",
+      startedAt: 1000,
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 3,
+      hostPlayerId,
+      phase: "guess-scenario",
+    });
+    return { gameId, roundId };
+  });
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "display-results",
+    });
+
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(typeof game?.completedAt).toBe("number");
+});
+
 test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
   const t = convexTest(schema, modules);
   const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {

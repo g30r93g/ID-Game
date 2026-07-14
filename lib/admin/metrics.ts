@@ -53,7 +53,13 @@ export function shouldSetCompletedAt(
   roundNumber: number,
   totalRounds: number,
 ): boolean {
-  return toPhase === "finished" && totalRounds > 0 && roundNumber === totalRounds;
+  // A game is complete once its FINAL round reaches results. Normal play exits
+  // the last round via the "Finish Game" → rate flow and never transitions to
+  // the "finished" phase, so "display-results" of the final round is the real
+  // terminal moment; "finished" is kept for completeness (idempotent upstream).
+  const isTerminalPhase =
+    toPhase === "display-results" || toPhase === "finished";
+  return isTerminalPhase && totalRounds > 0 && roundNumber === totalRounds;
 }
 
 export type ScenarioSort = "popular-desc" | "popular-asc" | "newest" | "oldest";
