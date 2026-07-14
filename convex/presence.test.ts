@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import { pickHost } from "./game";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -158,4 +159,41 @@ test("getMyActiveGames returns only unfinished games the user still belongs to",
   expect(result.map((g) => g.joinCode)).toEqual(["ACT001"]);
   expect(result[0].currentRound).toBe(2);
   expect(result[0].connectedPlayerCount).toBe(1);
+});
+
+test("pickHost returns the least-hosted candidate", async () => {
+  const t = convexTest(schema, modules);
+  const chosen = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "HOST01",
+      totalRounds: 5,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "p1",
+    });
+    const p1 = await ctx.db.insert("players", {
+      userId: "p1",
+      gameId,
+      displayName: "P1",
+      lastAlive: 0,
+    });
+    const p2 = await ctx.db.insert("players", {
+      userId: "p2",
+      gameId,
+      displayName: "P2",
+      lastAlive: 0,
+    });
+    // p1 has hosted round 1 already; p2 has hosted nothing.
+    await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId: p1,
+      phase: "display-results",
+    });
+    const p1Doc = (await ctx.db.get(p1))!;
+    const p2Doc = (await ctx.db.get(p2))!;
+    return { chosen: await pickHost(ctx, gameId, [p1Doc, p2Doc]), p2 };
+  });
+
+  expect(chosen.chosen).toBe(chosen.p2);
 });

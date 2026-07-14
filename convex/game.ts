@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { authComponent } from "./auth";
-import { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
 
@@ -14,6 +14,37 @@ function generateOTP(length = 6): string {
     otp += characters[randomIndex];
   }
   return otp;
+}
+
+// Pick the least-hosted player from `candidates`, breaking ties at random.
+// Host counts are tallied from all of the game's rounds so hosting stays even.
+export async function pickHost(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  candidates: Doc<"players">[],
+): Promise<Id<"players">> {
+  if (candidates.length === 0) throw new Error("No players available.");
+
+  const hostCounts = new Map<string, number>();
+  const rounds = await ctx.db
+    .query("gameRounds")
+    .withIndex("byGame", (q) => q.eq("gameId", gameId))
+    .collect();
+  rounds.forEach((round) => {
+    hostCounts.set(
+      round.hostPlayerId,
+      (hostCounts.get(round.hostPlayerId) || 0) + 1,
+    );
+  });
+
+  const minHostingCount = Math.min(
+    ...candidates.map((p) => hostCounts.get(p._id) || 0),
+  );
+  const leastHosted = candidates.filter(
+    (p) => (hostCounts.get(p._id) || 0) === minHostingCount,
+  );
+
+  return leastHosted[Math.floor(Math.random() * leastHosted.length)]._id;
 }
 
 export const sendHeartbeat = mutation({
@@ -385,48 +416,13 @@ export const startNewGameRound = mutation({
       }
     }
 
-    // if the player is still undefined, we randomly select one
+    // if the player is still undefined, we pick the least-hosted player
     if (!player) {
-      // Step 1: Get host counts directly from DB
-      const hostCounts = new Map<string, number>();
-
-      const rounds = await ctx.db
-        .query("gameRounds")
-        .withIndex("byGame", (q) => q.eq("gameId", args.game))
-        .collect();
-
-      rounds.forEach((round) => {
-        if (round.hostPlayerId) {
-          hostCounts.set(
-            round.hostPlayerId,
-            (hostCounts.get(round.hostPlayerId) || 0) + 1,
-          );
-        }
-      });
-
-      // Step 2: Get the players in this game
       const players = await ctx.db
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", args.game))
         .collect();
-
-      if (players.length === 0) throw new Error("No players available.");
-
-      // Step 3: Find the least hosted players
-      const minHostingCount = Math.min(
-        ...players.map((p) => hostCounts.get(p._id) || 0),
-      );
-      const leastHostedPlayers = players.filter(
-        (p) => (hostCounts.get(p._id) || 0) === minHostingCount,
-      );
-
-      // Step 4: Randomly pick a host from the least-hosted players
-      if (leastHostedPlayers.length > 0) {
-        player =
-          leastHostedPlayers[
-            Math.floor(Math.random() * leastHostedPlayers.length)
-          ]._id;
-      }
+      player = await pickHost(ctx, args.game, players);
     }
 
     // ensure player is defined
