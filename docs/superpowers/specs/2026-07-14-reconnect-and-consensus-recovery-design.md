@@ -136,7 +136,8 @@ One mutation performs *vote → maybe-resolve*:
      least-hosted connected `active` player via the shared `pickHost` helper (below). The new
      host's client then drives `advanceGame` as normal — no cron needed.
    - **`remove-player`:** patch the target `players` row to `active: false`. Round-completion
-     gating counts only active+connected players, so the round unblocks.
+     gating counts only **active** players (`active !== false`), so the round unblocks once the
+     vote lands.
    - Delete the resolved target's `presenceVotes` rows after executing.
 
 ### `pickHost` helper
@@ -149,10 +150,12 @@ active players excluding the stale host. Round 1's "creator is host" rule stays 
 
 ### Gating updates
 
-Any "have all players done X" check for the current round must count only **active + connected**
-players. The concrete case today is the `guess-scenario` completion check that the host's client
-auto-advance depends on (`await-guesses.tsx`); update its underlying query so a removed or
-disconnected non-host no longer blocks completion. Audit `game.ts` for other "expected == actual
+Any "have all players done X" check for the current round must count only **active** players
+(`active !== false`). It deliberately does **not** exclude merely-disconnected-but-active players —
+that is what forces the consensus vote rather than silently auto-skipping a dropped player. The
+concrete case today is the `guess-scenario` completion check that the host's client auto-advance
+depends on (`await-guesses.tsx`); update its underlying query (`getGuessesStatusForRound`) so a
+*removed* non-host no longer blocks completion. Audit `game.ts` for other "expected == actual
 player count" gates and apply the same rule.
 
 ### UI
@@ -207,7 +210,7 @@ player count" gates and apply the same rule.
 
 - `convex/schema.ts` — add `presenceVotes` table, add `players.active`.
 - `convex/game.ts` — heartbeat `gameId` fix, extract `pickHost`, add `getMyActiveGames`, add
-  `castPresenceVote`, update completion gating to count active+connected players.
+  `castPresenceVote`, update completion gating to count only active players.
 - `lib/presence.ts` — **new**: constants + `isConnected`.
 - `components/create-join-game.tsx` — active games ("Jump back in") section.
 - `components/game/index.tsx` — heartbeat call passes `gameId`; mount presence prompt/roster.
