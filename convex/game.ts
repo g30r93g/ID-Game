@@ -3,6 +3,7 @@ import { authComponent } from "./auth";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
+import { isConnected } from "../lib/presence";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -217,6 +218,51 @@ export const getPlayersForGame = query({
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", args.game))
       .collect();
+  },
+});
+
+export const getMyActiveGames = query({
+  handler: async (ctx) => {
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated.");
+    }
+
+    const now = Date.now();
+
+    const myPlayerRows = await ctx.db
+      .query("players")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .collect();
+
+    const results = [];
+    for (const myPlayer of myPlayerRows) {
+      // Skip games this user was removed from.
+      if (myPlayer.active === false) continue;
+
+      const game = await ctx.db.get(myPlayer.gameId);
+      // Skip missing or finished games.
+      if (!game || game.completedAt !== undefined) continue;
+
+      const players = await ctx.db
+        .query("players")
+        .withIndex("byGame", (q) => q.eq("gameId", game._id))
+        .collect();
+      const connectedPlayerCount = players.filter(
+        (p) => p.active !== false && isConnected(p.lastAlive, now),
+      ).length;
+
+      results.push({
+        gameId: game._id,
+        joinCode: game.joinCode,
+        isOpen: game.isOpen,
+        currentRound: game.currentRound ?? 0,
+        totalRounds: game.totalRounds,
+        connectedPlayerCount,
+      });
+    }
+
+    return results;
   },
 });
 

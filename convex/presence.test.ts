@@ -101,3 +101,61 @@ test("sendHeartbeat updates only the specified game's player row and reactivates
   expect(rows.p2!.active).toBe(true);
   expect(rows.p1!.lastAlive).toBe(0);
 });
+
+test("getMyActiveGames returns only unfinished games the user still belongs to", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    // active game the user is in
+    const active = await ctx.db.insert("games", {
+      joinCode: "ACT001",
+      totalRounds: 5,
+      currentRound: 2,
+      isOpen: false,
+      createdBy: "me",
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: active,
+      displayName: "Me",
+      lastAlive: Date.now(),
+    });
+    // finished game (completedAt set) — must be excluded
+    const finished = await ctx.db.insert("games", {
+      joinCode: "FIN002",
+      totalRounds: 5,
+      currentRound: 5,
+      isOpen: false,
+      createdBy: "me",
+      completedAt: Date.now(),
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: finished,
+      displayName: "Me",
+      lastAlive: Date.now(),
+    });
+    // game the user was removed from (active:false) — must be excluded
+    const removed = await ctx.db.insert("games", {
+      joinCode: "RMV003",
+      totalRounds: 5,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "other",
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: removed,
+      displayName: "Me",
+      lastAlive: 0,
+      active: false,
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "me" })
+    .query(api.game.getMyActiveGames, {});
+
+  expect(result.map((g) => g.joinCode)).toEqual(["ACT001"]);
+  expect(result[0].currentRound).toBe(2);
+  expect(result[0].connectedPlayerCount).toBe(1);
+});
