@@ -338,6 +338,32 @@ export const deleteCategory = mutation({
   },
 });
 
+/** Bulk-insert reviewed scenarios (e.g. AI-generated candidates). */
+export const createScenarios = mutation({
+  args: {
+    scenarios: v.array(
+      v.object({ description: v.string(), category: v.string() }),
+    ),
+  },
+  handler: async (ctx, { scenarios }) => {
+    await requireAdmin(ctx);
+    let created = 0;
+    for (const s of scenarios) {
+      const description = s.description.trim();
+      const category = s.category.trim();
+      if (!description || !category) continue;
+      await ctx.db.insert("scenarios", {
+        description,
+        category,
+        timesSelected: 0,
+      });
+      await ensureCategory(ctx, category);
+      created++;
+    }
+    return { created };
+  },
+});
+
 /**
  * One-off: seed scenarioCategories from the distinct categories already present
  * on scenarios. Run once at rollout:

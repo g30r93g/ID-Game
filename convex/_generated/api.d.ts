@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as game from "../game.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
+import type * as scenarioAI from "../scenarioAI.js";
 
 import type {
   ApiFromModules,
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   game: typeof game;
   http: typeof http;
   migrations: typeof migrations;
+  scenarioAI: typeof scenarioAI;
 }>;
 
 /**
