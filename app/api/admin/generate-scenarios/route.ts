@@ -34,13 +34,21 @@ export async function POST(req: Request) {
   }
   const { instructions, category, count } = parsed.data;
 
+  // Per-category style brief (set/edited in the admin "Manage categories" UI).
+  const { brief } = await fetchAuthQuery(api.admin.getCategoryBrief, {
+    name: category,
+  });
+
   const system =
     `You write short "Most likely to..." prompts for an adult (18+) party game called The ID Game, played by consenting adults who are calling out their friends. ` +
     `Each item is a single sentence that completes the phrase "Most likely to...". They can be cheeky, risqué, crude, and lewd — this is an adult game — but must NEVER involve minors, non-consent, illegal acts, real named individuals, or hateful/harassing content toward protected groups. ` +
-    `Target category: "${category}".`;
+    `Target category: "${category}". ` +
+    (brief.trim()
+      ? `Style brief for this category (follow it closely): ${brief.trim()}`
+      : `No specific brief is set for this category — infer an appropriate style from the category name.`);
   const prompt =
     `Generate exactly ${count} distinct, punchy scenarios for the "${category}" category. ` +
-    `Admin guidance: ${instructions.trim() || "(none)"}.`;
+    `Extra steer for this batch: ${instructions.trim() || "(none)"}.`;
 
   try {
     const { object } = await generateObject({

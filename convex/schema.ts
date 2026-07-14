@@ -38,6 +38,9 @@ export default defineSchema({
   // dialog). `name` is unique (enforced in the mutations, looked up by index).
   scenarioCategories: defineTable({
     name: v.string(),
+    // Optional style brief that steers AI generation for this category
+    // (tone, spice level, length, example lines). Editable in the admin UI.
+    brief: v.optional(v.string()),
   }).index("byName", ["name"]),
 
   gameRounds: defineTable({

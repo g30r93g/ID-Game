@@ -304,13 +304,54 @@ export const listCategoriesWithCounts = query({
     for (const s of scenarios) {
       counts.set(s.category, (counts.get(s.category) ?? 0) + 1);
     }
+    const briefByName = new Map(managed.map((c) => [c.name, c.brief ?? ""]));
     const names = new Set<string>([
       ...managed.map((c) => c.name),
       ...counts.keys(),
     ]);
-    return [...names]
-      .sort()
-      .map((name) => ({ name, count: counts.get(name) ?? 0 }));
+    return [...names].sort().map((name) => ({
+      name,
+      count: counts.get(name) ?? 0,
+      brief: briefByName.get(name) ?? "",
+    }));
+  },
+});
+
+/** The style brief for a single category (used by the generation route). */
+export const getCategoryBrief = query({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    await requireAdmin(ctx);
+    const row = await categoryByName(ctx, name.trim());
+    return { brief: row?.brief ?? "" };
+  },
+});
+
+/** Upsert the style brief on a category (creates the category if missing). */
+export async function setCategoryBriefCore(
+  ctx: MutationCtx,
+  rawName: string,
+  rawBrief: string,
+) {
+  const name = rawName.trim();
+  if (!name) throw new Error("Category name is required.");
+  const brief = rawBrief.trim();
+  const row = await categoryByName(ctx, name);
+  if (row) {
+    await ctx.db.patch(row._id, { brief: brief || undefined });
+  } else {
+    await ctx.db.insert("scenarioCategories", {
+      name,
+      ...(brief ? { brief } : {}),
+    });
+  }
+}
+
+export const setCategoryBrief = mutation({
+  args: { name: v.string(), brief: v.string() },
+  handler: async (ctx, { name, brief }) => {
+    await requireAdmin(ctx);
+    await setCategoryBriefCore(ctx, name, brief);
   },
 });
 

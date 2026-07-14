@@ -8,6 +8,7 @@ import {
   gameStatsCore,
   listScenariosPage,
   renameCategoryCore,
+  setCategoryBriefCore,
 } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
 
@@ -118,4 +119,20 @@ test("deleteCategoryCore blocks deletion while in use", async () => {
   await t.run((ctx) => deleteCategoryCore(ctx, "Empty"));
   const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
   expect(cats.map((c) => c.name)).toEqual(["Used"]);
+});
+
+test("setCategoryBriefCore upserts a trimmed brief", async () => {
+  const t = convexTest(schema, modules);
+  // upsert onto a non-existent category creates it with the brief
+  await t.run((ctx) =>
+    setCategoryBriefCore(ctx, "Nightlife", "  filthy club one-liners  "),
+  );
+  let rows = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
+  expect(rows).toHaveLength(1);
+  expect(rows[0].name).toBe("Nightlife");
+  expect(rows[0].brief).toBe("filthy club one-liners");
+  // updating an existing category patches the brief; empty clears it
+  await t.run((ctx) => setCategoryBriefCore(ctx, "Nightlife", "   "));
+  rows = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
+  expect(rows[0].brief).toBeUndefined();
 });
