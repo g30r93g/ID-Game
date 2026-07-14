@@ -29,6 +29,7 @@ import { LoadingButton } from "@/components/ui/loading-button";
 import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
+import PlayersDialog from "@/components/game/players-dialog";
 import { usePostHog } from "posthog-js/react";
 import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 
@@ -346,6 +347,11 @@ export function Game({ preloadedGame }: GameProps) {
       )}
       <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
+        <PlayersDialog
+          players={players}
+          hostPlayerId={currentRound?.hostPlayerId}
+          viewerPlayerId={userPlayer?._id}
+        />
         {!isGameFinished() && !userIsHost() && (
           <LoadingButton
             className={"bg-red-200 hover:bg-red-500 text-white w-fit"}
