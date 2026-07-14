@@ -197,3 +197,63 @@ test("pickHost returns the least-hosted candidate", async () => {
 
   expect(chosen.chosen).toBe(chosen.p2);
 });
+
+test("getGuessesStatusForRound ignores removed (inactive) non-host players", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "GST001",
+      totalRounds: 1,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "host",
+    });
+    const host = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: Date.now(),
+    });
+    const a = await ctx.db.insert("players", {
+      userId: "a",
+      gameId,
+      displayName: "A",
+      lastAlive: Date.now(),
+    });
+    // B was removed by consensus.
+    await ctx.db.insert("players", {
+      userId: "b",
+      gameId,
+      displayName: "B",
+      lastAlive: 0,
+      active: false,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId: host,
+      phase: "guess-scenario",
+    });
+    const grs = await ctx.db.insert("gameRoundScenarios", {
+      gameId,
+      roundId,
+      scenarioId: await ctx.db.insert("scenarios", {
+        description: "x",
+        category: "General",
+      }),
+      selected: true,
+    });
+    // Only A guesses; B is inactive and must not block completion.
+    await ctx.db.insert("gameRoundGuesses", {
+      gameId,
+      roundId,
+      scenarioId: grs,
+      playerId: a,
+    });
+    return { roundId };
+  });
+
+  const status = await t.query(api.game.getGuessesStatusForRound, { roundId });
+  expect(status.guessingCompleteByAllUsers).toBe(true);
+  expect(status.playerGuesses.map((p) => p.displayName)).toEqual(["A"]);
+});

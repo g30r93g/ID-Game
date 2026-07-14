@@ -838,7 +838,7 @@ export const getGuessesStatusForRound = query({
       .collect();
 
     const nonHostPlayers = players.filter(
-      (p) => p._id !== gameRound.hostPlayerId,
+      (p) => p._id !== gameRound.hostPlayerId && p.active !== false,
     );
 
     // Get all guesses for the round
