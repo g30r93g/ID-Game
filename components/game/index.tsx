@@ -30,6 +30,7 @@ import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
 import { usePostHog } from "posthog-js/react";
+import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -332,6 +333,14 @@ export function Game({ preloadedGame }: GameProps) {
     <div
       className={"flex flex-col w-full md:w-[75%] h-full max-h-svh gap-4 py-4"}
     >
+      {game && !game.isOpen && currentRound && (
+        <DisconnectPrompt
+          joinCode={game.joinCode}
+          players={players}
+          hostPlayerId={currentRound.hostPlayerId}
+          viewerPlayerId={userPlayer?._id}
+        />
+      )}
       <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
         {!isGameFinished() && !userIsHost() && (
