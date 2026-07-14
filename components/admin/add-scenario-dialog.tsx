@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { Loader2, Sparkles, X } from "lucide-react";
@@ -45,7 +45,6 @@ export function AddScenarioDialog() {
   const [open, setOpen] = useState(false);
   const create = useMutation(api.admin.createScenario);
   const createBulk = useMutation(api.admin.createScenarios);
-  const generate = useAction(api.scenarioAI.generateScenarios);
   const categories = useQuery(api.admin.scenarioCategoriesForAdmin, {}) ?? [];
 
   const form = useForm<z.infer<typeof schema>>({
@@ -77,9 +76,24 @@ export function AddScenarioDialog() {
     }
     setGenerating(true);
     try {
-      const result = await generate({ instructions, category, count });
-      setCandidates(result.map((r) => ({ description: r.description, include: true })));
-      if (result.length === 0) toast.message("Grok returned no scenarios");
+      const res = await fetch("/api/admin/generate-scenarios", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instructions, category, count }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error || `Request failed (${res.status})`);
+      }
+      const { scenarios } = (await res.json()) as {
+        scenarios: { description: string }[];
+      };
+      setCandidates(
+        scenarios.map((r) => ({ description: r.description, include: true })),
+      );
+      if (scenarios.length === 0) toast.message("Grok returned no scenarios");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
