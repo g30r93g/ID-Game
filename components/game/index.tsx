@@ -257,6 +257,8 @@ export function Game({ preloadedGame }: GameProps) {
               id: p._id,
               name: p.displayName,
               userId: p.userId,
+              lastAlive: p.lastAlive,
+              active: p.active,
             };
           })}
           isHost={userIsHost()}
