@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
 import { pickHost } from "./game";
+import { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -272,7 +273,7 @@ async function seedRoundGame(
       isOpen: false,
       createdBy: players[0].userId,
     });
-    const ids: Record<string, string> = {};
+    const ids: Record<string, Id<"players">> = {};
     for (const p of players) {
       ids[p.userId] = await ctx.db.insert("players", {
         userId: p.userId,
@@ -285,7 +286,7 @@ async function seedRoundGame(
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
       roundNumber: 1,
-      hostPlayerId: ids[host.userId] as any,
+      hostPlayerId: ids[host.userId],
       phase,
     });
     return { gameId, roundId, ids };
@@ -303,7 +304,7 @@ test("castPresenceVote reassigns the host when the host is stale and majority ag
     .withIdentity({ subject: "alice" })
     .mutation(api.game.castPresenceVote, {
       joinCode: "CPV001",
-      targetPlayerId: ids["host"] as any,
+      targetPlayerId: ids["host"],
     });
 
   expect(res).toEqual({ resolved: true, action: "reassign-host" });
@@ -322,7 +323,7 @@ test("castPresenceVote refuses to act on a connected target", async () => {
     .withIdentity({ subject: "alice" })
     .mutation(api.game.castPresenceVote, {
       joinCode: "CPV001",
-      targetPlayerId: ids["host"] as any,
+      targetPlayerId: ids["host"],
     });
 
   expect(res.resolved).toBe(false);
@@ -343,7 +344,7 @@ test("castPresenceVote needs a majority to remove a non-host", async () => {
     .withIdentity({ subject: "alice" })
     .mutation(api.game.castPresenceVote, {
       joinCode: "CPV001",
-      targetPlayerId: ids["bob"] as any,
+      targetPlayerId: ids["bob"],
     });
   expect(first.resolved).toBe(false);
 
@@ -351,10 +352,10 @@ test("castPresenceVote needs a majority to remove a non-host", async () => {
     .withIdentity({ subject: "host" })
     .mutation(api.game.castPresenceVote, {
       joinCode: "CPV001",
-      targetPlayerId: ids["bob"] as any,
+      targetPlayerId: ids["bob"],
     });
   expect(second).toEqual({ resolved: true, action: "remove-player" });
 
-  const bob = await t.run((ctx) => ctx.db.get(ids["bob"] as any));
-  expect((bob as any).active).toBe(false);
+  const bob = await t.run((ctx) => ctx.db.get(ids["bob"]));
+  expect(bob!.active).toBe(false);
 });
