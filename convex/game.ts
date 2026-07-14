@@ -16,27 +16,29 @@ function generateOTP(length = 6): string {
 }
 
 export const sendHeartbeat = mutation({
-  handler: async (ctx) => {
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
     // Ensure user is authenticated
     const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error("User must be authenticated to send a heartbeat.");
     }
 
-    // Get the player associated with the user
+    // Get the player associated with the user *in this game* (a user may be in
+    // several games at once, so byUser().first() is not safe here).
     const player = await ctx.db
       .query("players")
-      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
     if (!player) {
       throw new Error("No player found for authed user");
     }
 
-    // Get the current time
-    const now = Date.now();
-
-    await ctx.db.patch(player._id, { lastAlive: now });
+    // A live heartbeat means the player is present: refresh lastAlive and undo
+    // any consensus removal (they have reconnected).
+    await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
   },
 });
 

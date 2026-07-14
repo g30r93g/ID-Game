@@ -75,14 +75,15 @@ export function Game({ preloadedGame }: GameProps) {
   );
 
   useEffect(() => {
+    if (!game) return;
     const intervalId = setInterval(() => {
-      sendHeartbeat()
+      sendHeartbeat({ gameId: game._id })
         .then(() => console.log("Heartbeat sent"))
         .catch((error) => console.error("Error sending heartbeat:", error));
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [sendHeartbeat]);
+  }, [sendHeartbeat, game]);
 
   useEffect(() => {
     if (players.length <= 1 && currentRound?.phase === "display-results") {
