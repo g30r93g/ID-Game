@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { shouldSetCompletedAt } from "../lib/admin/metrics";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -380,8 +381,11 @@ export const startNewGameRound = mutation({
       phase: "create-scenarios",
     });
 
-    // update the round number
-    await ctx.db.patch(game._id, { currentRound: newRoundNumber });
+    // update the round number; stamp the game's start time on round 1
+    await ctx.db.patch(game._id, {
+      currentRound: newRoundNumber,
+      ...(newRoundNumber === 1 ? { startedAt: Date.now() } : {}),
+    });
 
     return newGameRound;
   },
@@ -505,6 +509,16 @@ export const transitionRoundPhase = mutation({
 
     // change phase
     await ctx.db.patch(gameRound._id, { phase: args.toPhase });
+
+    // stamp game completion when the final round finishes
+    const game = await ctx.db.get(gameRound.gameId);
+    if (
+      game &&
+      game.completedAt === undefined &&
+      shouldSetCompletedAt(args.toPhase, gameRound.roundNumber, game.totalRounds)
+    ) {
+      await ctx.db.patch(game._id, { completedAt: Date.now() });
+    }
   },
 });
 
@@ -564,6 +578,14 @@ export const selectGameRoundScenario = mutation({
 
     // Change selected state for the chosen scenario
     await ctx.db.patch(args.gameRoundScenarioId, { selected: true });
+
+    // Increment the popularity counter on the underlying scenario
+    const scenario = await ctx.db.get(selectedGameRoundScenario.scenarioId);
+    if (scenario) {
+      await ctx.db.patch(scenario._id, {
+        timesSelected: (scenario.timesSelected ?? 0) + 1,
+      });
+    }
   },
 });
 

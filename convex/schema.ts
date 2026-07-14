@@ -17,12 +17,31 @@ export default defineSchema({
     currentRound: v.optional(v.number()),
     isOpen: v.boolean(),
     createdBy: v.string(),
-  }).index("byJoinCode", ["joinCode"]),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("byJoinCode", ["joinCode"])
+    .index("byIsOpen", ["isOpen"])
+    .index("byStartedAt", ["startedAt"])
+    .index("byCompletedAt", ["completedAt"]),
 
   scenarios: defineTable({
     description: v.string(),
     category: v.string(),
-  }).index("byCategory", ["category"]),
+    timesSelected: v.optional(v.number()),
+  })
+    .index("byCategory", ["category"])
+    .index("byTimesSelected", ["timesSelected"]),
+
+  // Managed controlled-vocabulary of scenario categories. A category can exist
+  // here before any scenario uses it (created via the admin "Manage categories"
+  // dialog). `name` is unique (enforced in the mutations, looked up by index).
+  scenarioCategories: defineTable({
+    name: v.string(),
+    // Optional style brief that steers AI generation for this category
+    // (tone, spice level, length, example lines). Editable in the admin UI.
+    brief: v.optional(v.string()),
+  }).index("byName", ["name"]),
 
   gameRounds: defineTable({
     gameId: v.id("games"),

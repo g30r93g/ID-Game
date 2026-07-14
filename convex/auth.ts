@@ -3,7 +3,7 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { emailOTP } from "better-auth/plugins";
+import { admin, emailOTP } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
 import { components } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
@@ -58,6 +58,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       },
     },
     plugins: [
+      admin(),
       emailOTP({
         otpLength: 6,
         expiresIn: 600,
@@ -105,6 +106,7 @@ export const getCurrentUser = query({
       name: user.name ?? null,
       email: user.email,
       image: user.image ?? null,
+      role: (user as { role?: string }).role ?? "user",
     };
   },
 });
