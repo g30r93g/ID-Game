@@ -977,3 +977,122 @@ export const submitRating = mutation({
     });
   },
 });
+
+export const castPresenceVote = mutation({
+  args: { joinCode: v.string(), targetPlayerId: v.id("players") },
+  handler: async (ctx, args) => {
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to vote.");
+    }
+
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .first();
+    if (!game) throw new Error("Game does not exist.");
+
+    const caller = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    if (!caller || caller.active === false) {
+      throw new Error("Only active players in the game can vote.");
+    }
+
+    const target = await ctx.db.get(args.targetPlayerId);
+    if (!target || target.gameId !== game._id) {
+      throw new Error("Target is not a player in this game.");
+    }
+    if (target._id === caller._id) {
+      throw new Error("You cannot vote about yourself.");
+    }
+
+    // Consensus recovery only applies within an active round.
+    const currentRoundNumber = game.currentRound;
+    if (!currentRoundNumber) {
+      return { resolved: false as const };
+    }
+    const round = await ctx.db
+      .query("gameRounds")
+      .withIndex("byGameRound", (q) =>
+        q.eq("gameId", game._id).eq("roundNumber", currentRoundNumber),
+      )
+      .unique();
+    if (!round) {
+      return { resolved: false as const };
+    }
+
+    const now = Date.now();
+
+    const existingVotes = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", game._id).eq("targetPlayerId", target._id),
+      )
+      .collect();
+
+    // If the target is back online, cancel any open vote and do nothing.
+    if (isConnected(target.lastAlive, now)) {
+      await Promise.all(existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)));
+      return { resolved: false as const };
+    }
+
+    const kind =
+      round.hostPlayerId === target._id ? "reassign-host" : "remove-player";
+
+    // Record the caller's vote (once).
+    if (!existingVotes.some((voteRow) => voteRow.voterPlayerId === caller._id)) {
+      await ctx.db.insert("presenceVotes", {
+        gameId: game._id,
+        roundNumber: currentRoundNumber,
+        targetPlayerId: target._id,
+        voterPlayerId: caller._id,
+        kind,
+        createdAt: now,
+      });
+    }
+
+    // Tally against currently-connected, active, non-target players.
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .collect();
+    const connectedNonTarget = players.filter(
+      (p) =>
+        p._id !== target._id &&
+        p.active !== false &&
+        isConnected(p.lastAlive, now),
+    );
+    const eligibleVoterIds = new Set(connectedNonTarget.map((p) => p._id));
+
+    const votes = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", game._id).eq("targetPlayerId", target._id),
+      )
+      .collect();
+    const agreeing = new Set(
+      votes
+        .filter((voteRow) => eligibleVoterIds.has(voteRow.voterPlayerId))
+        .map((voteRow) => voteRow.voterPlayerId),
+    ).size;
+
+    const denominator = connectedNonTarget.length;
+    if (denominator === 0 || agreeing <= denominator / 2) {
+      return { resolved: false as const };
+    }
+
+    // Majority reached and target confirmed stale — execute.
+    if (kind === "reassign-host") {
+      const newHostId = await pickHost(ctx, game._id, connectedNonTarget);
+      await ctx.db.patch(round._id, { hostPlayerId: newHostId });
+    } else {
+      await ctx.db.patch(target._id, { active: false });
+    }
+
+    await Promise.all(votes.map((voteRow) => ctx.db.delete(voteRow._id)));
+    return { resolved: true as const, action: kind };
+  },
+});

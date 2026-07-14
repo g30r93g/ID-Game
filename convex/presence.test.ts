@@ -257,3 +257,104 @@ test("getGuessesStatusForRound ignores removed (inactive) non-host players", asy
   expect(status.guessingCompleteByAllUsers).toBe(true);
   expect(status.playerGuesses.map((p) => p.displayName)).toEqual(["A"]);
 });
+
+async function seedRoundGame(
+  t: ReturnType<typeof convexTest>,
+  players: { userId: string; connected: boolean; host?: boolean }[],
+  phase: "guess-scenario" | "create-scenarios" = "guess-scenario",
+) {
+  return t.run(async (ctx) => {
+    const now = Date.now();
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "CPV001",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: players[0].userId,
+    });
+    const ids: Record<string, string> = {};
+    for (const p of players) {
+      ids[p.userId] = await ctx.db.insert("players", {
+        userId: p.userId,
+        gameId,
+        displayName: p.userId.toUpperCase(),
+        lastAlive: p.connected ? now : 0,
+      });
+    }
+    const host = players.find((p) => p.host) ?? players[0];
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId: ids[host.userId] as any,
+      phase,
+    });
+    return { gameId, roundId, ids };
+  });
+}
+
+test("castPresenceVote reassigns the host when the host is stale and majority agrees", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId, ids } = await seedRoundGame(t, [
+    { userId: "host", connected: false, host: true },
+    { userId: "alice", connected: true },
+  ]);
+
+  const res = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["host"] as any,
+    });
+
+  expect(res).toEqual({ resolved: true, action: "reassign-host" });
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round!.hostPlayerId).toBe(ids["alice"]);
+});
+
+test("castPresenceVote refuses to act on a connected target", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId, ids } = await seedRoundGame(t, [
+    { userId: "host", connected: true, host: true },
+    { userId: "alice", connected: true },
+  ]);
+
+  const res = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["host"] as any,
+    });
+
+  expect(res.resolved).toBe(false);
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round!.hostPlayerId).toBe(ids["host"]);
+});
+
+test("castPresenceVote needs a majority to remove a non-host", async () => {
+  const t = convexTest(schema, modules);
+  const { ids } = await seedRoundGame(t, [
+    { userId: "host", connected: true, host: true },
+    { userId: "alice", connected: true },
+    { userId: "bob", connected: false },
+  ]);
+
+  // Denominator = connected non-target players = {host, alice} = 2, needs > 1.
+  const first = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["bob"] as any,
+    });
+  expect(first.resolved).toBe(false);
+
+  const second = await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["bob"] as any,
+    });
+  expect(second).toEqual({ resolved: true, action: "remove-player" });
+
+  const bob = await t.run((ctx) => ctx.db.get(ids["bob"] as any));
+  expect((bob as any).active).toBe(false);
+});
