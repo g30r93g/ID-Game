@@ -1,10 +1,11 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { activePlayers14dCore } from "./admin";
+import { activePlayers14dCore, gameStatsCore } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
 
 const modules = import.meta.glob("./**/*.*s");
+const NOW = 1_000_000_000_000;
 
 test("activePlayers14dCore dedupes users across recent player rows", async () => {
   const t = convexTest(schema, modules);
@@ -27,4 +28,19 @@ test("activePlayers14dCore dedupes users across recent player rows", async () =>
   expect(count).toBe(3);
   // sanity on the window constant
   expect(FOURTEEN_DAYS_MS).toBe(14 * 24 * 60 * 60 * 1000);
+});
+
+test("gameStatsCore computes counts and average duration", async () => {
+  const t = convexTest(schema, modules);
+  const now = NOW;
+  await t.run(async (ctx) => {
+    await ctx.db.insert("games", { joinCode: "1", totalRounds: 1, isOpen: true, createdBy: "x", startedAt: now - 1000 });
+    await ctx.db.insert("games", { joinCode: "2", totalRounds: 1, isOpen: false, createdBy: "x", startedAt: now - 3000, completedAt: now - 1000 });
+    await ctx.db.insert("games", { joinCode: "3", totalRounds: 1, isOpen: false, createdBy: "x", startedAt: now - 9000, completedAt: now - 1000 });
+  });
+  const stats = await t.run((ctx) => gameStatsCore(ctx, now));
+  expect(stats.activeNow).toBe(1);
+  expect(stats.started14d).toBe(3);
+  expect(stats.completed14d).toBe(2);
+  expect(stats.avgLengthMs).toBe(5000); // (2000 + 8000) / 2
 });

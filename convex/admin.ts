@@ -1,9 +1,14 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { authComponent, createAuthOptions, createAuth } from "./auth";
 import { requireAdmin } from "./adminAuth";
-import { activePlayerCount } from "../lib/admin/metrics";
+import {
+  activePlayerCount,
+  computeGameStats,
+  gameDurationMs,
+} from "../lib/admin/metrics";
 
 /**
  * One-off bootstrap: promote a user to admin by email. Uses the Better Auth
@@ -98,5 +103,47 @@ export const listUsers = query({
         createdAt: Number(u.createdAt),
       })),
     };
+  },
+});
+
+export async function gameStatsCore(ctx: QueryCtx, now: number) {
+  const games = await ctx.db.query("games").collect();
+  return computeGameStats(games, now);
+}
+
+export const gameStats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return gameStatsCore(ctx, Date.now());
+  },
+});
+
+export const listGames = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
+    await requireAdmin(ctx);
+    const result = await ctx.db
+      .query("games")
+      .order("desc")
+      .paginate(paginationOpts);
+
+    const page = await Promise.all(
+      result.page.map(async (game) => {
+        const players = await ctx.db
+          .query("players")
+          .withIndex("byGame", (q) => q.eq("gameId", game._id))
+          .collect();
+        return {
+          _id: game._id,
+          _creationTime: game._creationTime,
+          partySize: players.length,
+          totalRounds: game.totalRounds,
+          finished: game.completedAt !== undefined,
+          durationMs: gameDurationMs(game),
+        };
+      }),
+    );
+    return { ...result, page };
   },
 });
