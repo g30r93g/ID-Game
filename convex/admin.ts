@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { authComponent, createAuthOptions, createAuth } from "./auth";
 import { requireAdmin } from "./adminAuth";
 import {
@@ -46,11 +46,15 @@ export const createScenario = mutation({
     const category = args.category.trim();
     if (!description) throw new Error("Scenario text is required.");
     if (!category) throw new Error("Category is required.");
-    return await ctx.db.insert("scenarios", {
+    const id = await ctx.db.insert("scenarios", {
       description,
       category,
       timesSelected: 0,
     });
+    // Keep the managed category list in sync: any category a scenario uses
+    // should exist in scenarioCategories.
+    await ensureCategory(ctx, category);
+    return id;
   },
 });
 
@@ -204,7 +208,153 @@ export const scenarioCategoriesForAdmin = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
+    const [managed, scenarios] = await Promise.all([
+      ctx.db.query("scenarioCategories").collect(),
+      ctx.db.query("scenarios").collect(),
+    ]);
+    // Union of the managed list and any category strings already on scenarios,
+    // so nothing disappears from the Select/filter before the seed runs.
+    const names = new Set<string>([
+      ...managed.map((c) => c.name),
+      ...scenarios.map((s) => s.category),
+    ]);
+    return [...names].sort();
+  },
+});
+
+// ---- Managed category vocabulary ----
+
+async function categoryByName(ctx: QueryCtx, name: string) {
+  return ctx.db
+    .query("scenarioCategories")
+    .withIndex("byName", (q) => q.eq("name", name))
+    .unique();
+}
+
+async function countScenariosInCategory(ctx: QueryCtx, name: string) {
+  const rows = await ctx.db
+    .query("scenarios")
+    .withIndex("byCategory", (q) => q.eq("category", name))
+    .collect();
+  return rows.length;
+}
+
+/** Insert a category row if one with this name doesn't already exist. */
+async function ensureCategory(ctx: MutationCtx, name: string) {
+  if (!(await categoryByName(ctx, name))) {
+    await ctx.db.insert("scenarioCategories", { name });
+  }
+}
+
+export async function createCategoryCore(ctx: MutationCtx, rawName: string) {
+  const name = rawName.trim();
+  if (!name) throw new Error("Category name is required.");
+  if (await categoryByName(ctx, name)) {
+    throw new Error(`Category "${name}" already exists.`);
+  }
+  return ctx.db.insert("scenarioCategories", { name });
+}
+
+export async function renameCategoryCore(
+  ctx: MutationCtx,
+  rawFrom: string,
+  rawTo: string,
+) {
+  const from = rawFrom.trim();
+  const to = rawTo.trim();
+  if (!to) throw new Error("New category name is required.");
+  if (from === to) return 0;
+  const row = await categoryByName(ctx, from);
+  if (!row) throw new Error(`Category "${from}" does not exist.`);
+  if (await categoryByName(ctx, to)) {
+    throw new Error(`A category named "${to}" already exists.`);
+  }
+  await ctx.db.patch(row._id, { name: to });
+  // Cascade the rename to every scenario using the old name.
+  const scenarios = await ctx.db
+    .query("scenarios")
+    .withIndex("byCategory", (q) => q.eq("category", from))
+    .collect();
+  await Promise.all(scenarios.map((s) => ctx.db.patch(s._id, { category: to })));
+  return scenarios.length;
+}
+
+export async function deleteCategoryCore(ctx: MutationCtx, rawName: string) {
+  const name = rawName.trim();
+  const row = await categoryByName(ctx, name);
+  if (!row) throw new Error(`Category "${name}" does not exist.`);
+  const count = await countScenariosInCategory(ctx, name);
+  if (count > 0) {
+    throw new Error(
+      `Category "${name}" is used by ${count} scenario(s) — reassign them first.`,
+    );
+  }
+  await ctx.db.delete(row._id);
+}
+
+export const listCategoriesWithCounts = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const [managed, scenarios] = await Promise.all([
+      ctx.db.query("scenarioCategories").collect(),
+      ctx.db.query("scenarios").collect(),
+    ]);
+    const counts = new Map<string, number>();
+    for (const s of scenarios) {
+      counts.set(s.category, (counts.get(s.category) ?? 0) + 1);
+    }
+    const names = new Set<string>([
+      ...managed.map((c) => c.name),
+      ...counts.keys(),
+    ]);
+    return [...names]
+      .sort()
+      .map((name) => ({ name, count: counts.get(name) ?? 0 }));
+  },
+});
+
+export const createCategory = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    await requireAdmin(ctx);
+    return createCategoryCore(ctx, name);
+  },
+});
+
+export const renameCategory = mutation({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, { from, to }) => {
+    await requireAdmin(ctx);
+    return renameCategoryCore(ctx, from, to);
+  },
+});
+
+export const deleteCategory = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    await requireAdmin(ctx);
+    await deleteCategoryCore(ctx, name);
+  },
+});
+
+/**
+ * One-off: seed scenarioCategories from the distinct categories already present
+ * on scenarios. Run once at rollout:
+ *   pnpm exec convex run admin:seedScenarioCategories '{}'
+ */
+export const seedScenarioCategories = internalMutation({
+  args: {},
+  handler: async (ctx) => {
     const scenarios = await ctx.db.query("scenarios").collect();
-    return [...new Set(scenarios.map((s) => s.category))].sort();
+    const distinct = [...new Set(scenarios.map((s) => s.category))];
+    let created = 0;
+    for (const name of distinct) {
+      if (!(await categoryByName(ctx, name))) {
+        await ctx.db.insert("scenarioCategories", { name });
+        created++;
+      }
+    }
+    return { created };
   },
 });

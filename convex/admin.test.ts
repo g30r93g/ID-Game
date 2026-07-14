@@ -1,7 +1,14 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { activePlayers14dCore, gameStatsCore, listScenariosPage } from "./admin";
+import {
+  activePlayers14dCore,
+  createCategoryCore,
+  deleteCategoryCore,
+  gameStatsCore,
+  listScenariosPage,
+  renameCategoryCore,
+} from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
 
 const modules = import.meta.glob("./**/*.*s");
@@ -70,4 +77,45 @@ test("listScenariosPage filters by category when provided", async () => {
   );
   expect(page.page.map((s) => s.description)).toEqual(["a1", "a2"]);
   expect(page.page.every((s) => s.category === "Alpha")).toBe(true);
+});
+
+test("createCategoryCore inserts and rejects duplicates/empty", async () => {
+  const t = convexTest(schema, modules);
+  await t.run((ctx) => createCategoryCore(ctx, "  Work  "));
+  const rows = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
+  expect(rows.map((r) => r.name)).toEqual(["Work"]); // trimmed
+  await expect(t.run((ctx) => createCategoryCore(ctx, "Work"))).rejects.toThrow(/already exists/);
+  await expect(t.run((ctx) => createCategoryCore(ctx, "   "))).rejects.toThrow(/required/);
+});
+
+test("renameCategoryCore cascades to scenarios and blocks name clashes", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Old" });
+    await ctx.db.insert("scenarioCategories", { name: "Taken" });
+    await ctx.db.insert("scenarios", { description: "s1", category: "Old", timesSelected: 0 });
+    await ctx.db.insert("scenarios", { description: "s2", category: "Old", timesSelected: 0 });
+    await ctx.db.insert("scenarios", { description: "s3", category: "Other", timesSelected: 0 });
+  });
+  const moved = await t.run((ctx) => renameCategoryCore(ctx, "Old", "New"));
+  expect(moved).toBe(2);
+  const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
+  expect(cats.map((c) => c.name).sort()).toEqual(["New", "Taken"]);
+  const scenarios = await t.run((ctx) => ctx.db.query("scenarios").collect());
+  expect(scenarios.filter((s) => s.category === "New")).toHaveLength(2);
+  expect(scenarios.filter((s) => s.category === "Old")).toHaveLength(0);
+  await expect(t.run((ctx) => renameCategoryCore(ctx, "New", "Taken"))).rejects.toThrow(/already exists/);
+});
+
+test("deleteCategoryCore blocks deletion while in use", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Used" });
+    await ctx.db.insert("scenarioCategories", { name: "Empty" });
+    await ctx.db.insert("scenarios", { description: "s", category: "Used", timesSelected: 0 });
+  });
+  await expect(t.run((ctx) => deleteCategoryCore(ctx, "Used"))).rejects.toThrow(/used by 1 scenario/);
+  await t.run((ctx) => deleteCategoryCore(ctx, "Empty"));
+  const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
+  expect(cats.map((c) => c.name)).toEqual(["Used"]);
 });

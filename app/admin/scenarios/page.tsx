@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { AdminDataTable, type Column } from "@/components/admin/admin-data-table";
 import { AddScenarioDialog } from "@/components/admin/add-scenario-dialog";
+import { ManageCategoriesDialog } from "@/components/admin/manage-categories-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -76,7 +77,10 @@ export default function ScenariosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Scenarios</h1>
-        <AddScenarioDialog />
+        <div className="flex items-center gap-2">
+          <ManageCategoriesDialog />
+          <AddScenarioDialog />
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex items-center gap-2">

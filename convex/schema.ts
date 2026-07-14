@@ -33,6 +33,13 @@ export default defineSchema({
     .index("byCategory", ["category"])
     .index("byTimesSelected", ["timesSelected"]),
 
+  // Managed controlled-vocabulary of scenario categories. A category can exist
+  // here before any scenario uses it (created via the admin "Manage categories"
+  // dialog). `name` is unique (enforced in the mutations, looked up by index).
+  scenarioCategories: defineTable({
+    name: v.string(),
+  }).index("byName", ["name"]),
+
   gameRounds: defineTable({
     gameId: v.id("games"),
     roundNumber: v.number(),
