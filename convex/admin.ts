@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { paginationOptsValidator } from "convex/server";
+import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { authComponent, createAuthOptions, createAuth } from "./auth";
@@ -8,6 +8,8 @@ import {
   activePlayerCount,
   computeGameStats,
   gameDurationMs,
+  scenarioSortToQuery,
+  type ScenarioSort,
 } from "../lib/admin/metrics";
 
 /**
@@ -145,5 +147,62 @@ export const listGames = query({
       }),
     );
     return { ...result, page };
+  },
+});
+
+const SCENARIO_SORTS = ["popular-desc", "popular-asc", "newest", "oldest"] as const;
+
+/**
+ * `scenarioSortToQuery` reports the target index as either "byTimesSelected"
+ * or the system creation-time index. The `scenarios` table only defines a
+ * "byTimesSelected" index (see convex/schema.ts) - there is no
+ * "by_creation_time" index to pass to `.withIndex`, and Convex's generated
+ * types reject that string there. So for the creation-time sorts we fall
+ * back to the default (unindexed) query, which is already ordered by
+ * creation time, and just apply `.order()`.
+ */
+export async function listScenariosPage(
+  ctx: QueryCtx,
+  sort: ScenarioSort,
+  paginationOpts: PaginationOptions,
+) {
+  const { index, order } = scenarioSortToQuery(sort);
+  const result =
+    index === "by_creation_time"
+      ? await ctx.db.query("scenarios").order(order).paginate(paginationOpts)
+      : await ctx.db
+          .query("scenarios")
+          .withIndex("byTimesSelected")
+          .order(order)
+          .paginate(paginationOpts);
+  return {
+    ...result,
+    page: result.page.map((s) => ({
+      _id: s._id,
+      _creationTime: s._creationTime,
+      description: s.description,
+      category: s.category,
+      timesSelected: s.timesSelected ?? 0,
+    })),
+  };
+}
+
+export const listScenarios = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    sort: v.union(...SCENARIO_SORTS.map((s) => v.literal(s))),
+  },
+  handler: async (ctx, { paginationOpts, sort }) => {
+    await requireAdmin(ctx);
+    return listScenariosPage(ctx, sort, paginationOpts);
+  },
+});
+
+export const scenarioCategoriesForAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const scenarios = await ctx.db.query("scenarios").collect();
+    return [...new Set(scenarios.map((s) => s.category))].sort();
   },
 });

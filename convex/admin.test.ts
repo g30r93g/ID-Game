@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { activePlayers14dCore, gameStatsCore } from "./admin";
+import { activePlayers14dCore, gameStatsCore, listScenariosPage } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
 
 const modules = import.meta.glob("./**/*.*s");
@@ -43,4 +43,17 @@ test("gameStatsCore computes counts and average duration", async () => {
   expect(stats.started14d).toBe(3);
   expect(stats.completed14d).toBe(2);
   expect(stats.avgLengthMs).toBe(5000); // (2000 + 8000) / 2
+});
+
+test("listScenariosPage orders by popularity", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarios", { description: "low", category: "c", timesSelected: 1 });
+    await ctx.db.insert("scenarios", { description: "high", category: "c", timesSelected: 9 });
+    await ctx.db.insert("scenarios", { description: "mid", category: "c", timesSelected: 5 });
+  });
+  const page = await t.run((ctx) =>
+    listScenariosPage(ctx, "popular-desc", { numItems: 10, cursor: null }),
+  );
+  expect(page.page.map((s) => s.description)).toEqual(["high", "mid", "low"]);
 });
