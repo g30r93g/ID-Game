@@ -20,11 +20,25 @@ type ScenarioRow = {
 };
 
 const columns: Column<ScenarioRow>[] = [
-  { header: "Scenario", cell: (s) => s.description, className: "max-w-md" },
-  { header: "Category", cell: (s) => <Badge variant="secondary">{s.category}</Badge> },
-  { header: "Times selected", cell: (s) => s.timesSelected },
-  { header: "Introduced", cell: (s) => new Date(s._creationTime).toLocaleDateString() },
+  {
+    header: "Scenario",
+    cell: (s) => s.description,
+    className: "align-top whitespace-normal break-words min-w-[280px] max-w-[560px]",
+  },
+  {
+    header: "Category",
+    cell: (s) => <Badge variant="secondary">{s.category}</Badge>,
+    className: "align-top",
+  },
+  { header: "Times selected", cell: (s) => s.timesSelected, className: "align-top" },
+  {
+    header: "Introduced",
+    cell: (s) => new Date(s._creationTime).toLocaleDateString(),
+    className: "align-top whitespace-nowrap",
+  },
 ];
+
+const ALL = "all";
 
 const SORT_LABELS: Record<ScenarioSort, string> = {
   "popular-desc": "Most popular",
@@ -35,12 +49,16 @@ const SORT_LABELS: Record<ScenarioSort, string> = {
 
 export default function ScenariosPage() {
   const [sort, setSort] = useState<ScenarioSort>("popular-desc");
+  const [category, setCategory] = useState<string>(ALL);
   const [pageSize, setPageSize] = useState(25);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [page, setPage] = useState(0);
 
+  const categories = useQuery(api.admin.scenarioCategoriesForAdmin, {}) ?? [];
+
   const data = useQuery(api.admin.listScenarios, {
     sort,
+    category: category === ALL ? undefined : category,
     paginationOpts: { numItems: pageSize, cursor: cursors[page] ?? null },
   });
 
@@ -60,16 +78,30 @@ export default function ScenariosPage() {
         <h1 className="text-2xl font-semibold">Scenarios</h1>
         <AddScenarioDialog />
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Sort</span>
-        <Select value={sort} onValueChange={(v) => { setSort(v as ScenarioSort); reset(); }}>
-          <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {(Object.keys(SORT_LABELS) as ScenarioSort[]).map((k) => (
-              <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Sort</span>
+          <Select value={sort} onValueChange={(v) => { setSort(v as ScenarioSort); reset(); }}>
+            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(SORT_LABELS) as ScenarioSort[]).map((k) => (
+                <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Category</span>
+          <Select value={category} onValueChange={(v) => { setCategory(v); reset(); }}>
+            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <AdminDataTable
         columns={columns}

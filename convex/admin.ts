@@ -165,16 +165,17 @@ export async function listScenariosPage(
   ctx: QueryCtx,
   sort: ScenarioSort,
   paginationOpts: PaginationOptions,
+  category?: string,
 ) {
   const { index, order } = scenarioSortToQuery(sort);
-  const result =
+  const ordered =
     index === "by_creation_time"
-      ? await ctx.db.query("scenarios").order(order).paginate(paginationOpts)
-      : await ctx.db
-          .query("scenarios")
-          .withIndex("byTimesSelected")
-          .order(order)
-          .paginate(paginationOpts);
+      ? ctx.db.query("scenarios").order(order)
+      : ctx.db.query("scenarios").withIndex("byTimesSelected").order(order);
+  const filtered = category
+    ? ordered.filter((q) => q.eq(q.field("category"), category))
+    : ordered;
+  const result = await filtered.paginate(paginationOpts);
   return {
     ...result,
     page: result.page.map((s) => ({
@@ -191,10 +192,11 @@ export const listScenarios = query({
   args: {
     paginationOpts: paginationOptsValidator,
     sort: v.union(...SCENARIO_SORTS.map((s) => v.literal(s))),
+    category: v.optional(v.string()),
   },
-  handler: async (ctx, { paginationOpts, sort }) => {
+  handler: async (ctx, { paginationOpts, sort, category }) => {
     await requireAdmin(ctx);
-    return listScenariosPage(ctx, sort, paginationOpts);
+    return listScenariosPage(ctx, sort, paginationOpts, category);
   },
 });
 

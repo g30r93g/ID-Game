@@ -57,3 +57,17 @@ test("listScenariosPage orders by popularity", async () => {
   );
   expect(page.page.map((s) => s.description)).toEqual(["high", "mid", "low"]);
 });
+
+test("listScenariosPage filters by category when provided", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarios", { description: "a1", category: "Alpha", timesSelected: 3 });
+    await ctx.db.insert("scenarios", { description: "b1", category: "Beta", timesSelected: 2 });
+    await ctx.db.insert("scenarios", { description: "a2", category: "Alpha", timesSelected: 1 });
+  });
+  const page = await t.run((ctx) =>
+    listScenariosPage(ctx, "popular-desc", { numItems: 10, cursor: null }, "Alpha"),
+  );
+  expect(page.page.map((s) => s.description)).toEqual(["a1", "a2"]);
+  expect(page.page.every((s) => s.category === "Alpha")).toBe(true);
+});
