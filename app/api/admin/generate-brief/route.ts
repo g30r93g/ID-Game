@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   try {
     const { text } = await generateText({
-      model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4",
+      model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4.1-fast-non-reasoning",
       system,
       prompt,
       temperature: 0.8,

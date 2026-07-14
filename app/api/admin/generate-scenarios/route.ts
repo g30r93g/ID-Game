@@ -10,7 +10,7 @@ import { api } from "@/convex/_generated/api";
 //
 // Requires `AI_GATEWAY_API_KEY` in the environment (auto-provided on Vercel;
 // set it in `.env.local` for local dev). Override the model with
-// `AI_SCENARIO_MODEL` (defaults to "xai/grok-4").
+// `AI_SCENARIO_MODEL` (defaults to "xai/grok-4.1-fast-non-reasoning").
 
 const bodySchema = z.object({
   instructions: z.string().default(""),
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   try {
     const { object } = await generateObject({
-      model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4",
+      model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4.1-fast-non-reasoning",
       schema: outputSchema,
       system,
       prompt,
