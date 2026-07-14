@@ -70,19 +70,19 @@ test("sendHeartbeat updates only the specified game's player row and reactivates
       gameId: g1,
       displayName: "P",
       lastAlive: 0,
-      active: false,
     });
     await ctx.db.insert("players", {
       userId: "u1",
       gameId: g2,
       displayName: "P",
       lastAlive: 0,
+      active: false,
     });
     return { g1, g2 };
   });
 
   await t.withIdentity({ subject: "u1" }).mutation(api.game.sendHeartbeat, {
-    gameId: g1,
+    gameId: g2,
   });
 
   const rows = await t.run(async (ctx) => {
@@ -97,7 +97,7 @@ test("sendHeartbeat updates only the specified game's player row and reactivates
     return { p1, p2 };
   });
 
-  expect(rows.p1!.lastAlive).toBeGreaterThan(0);
-  expect(rows.p1!.active).toBe(true);
-  expect(rows.p2!.lastAlive).toBe(0);
+  expect(rows.p2!.lastAlive).toBeGreaterThan(0);
+  expect(rows.p2!.active).toBe(true);
+  expect(rows.p1!.lastAlive).toBe(0);
 });
