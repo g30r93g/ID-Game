@@ -7,9 +7,25 @@ export default defineSchema({
     gameId: v.id("games"),
     displayName: v.string(),
     lastAlive: v.number(),
+    // Set to false when the player is removed from the game by consensus while
+    // disconnected. Absent/true = participating. Reset to true on reconnect.
+    active: v.optional(v.boolean()),
   })
     .index("byGame", ["gameId"])
     .index("byUser", ["userId"]),
+
+  // One row per (target, voter) while a disconnect-recovery vote is open. Rows
+  // are deleted when the vote resolves or the target reconnects.
+  presenceVotes: defineTable({
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    targetPlayerId: v.id("players"),
+    voterPlayerId: v.id("players"),
+    kind: v.union(v.literal("reassign-host"), v.literal("remove-player")),
+    createdAt: v.number(),
+  })
+    .index("byGameTarget", ["gameId", "targetPlayerId"])
+    .index("byGameRound", ["gameId", "roundNumber"]),
 
   games: defineTable({
     joinCode: v.string(),
