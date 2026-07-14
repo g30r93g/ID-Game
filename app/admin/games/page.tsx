@@ -11,6 +11,9 @@ import { formatDuration } from "@/lib/admin/metrics";
 type GameRow = {
   _id: string;
   _creationTime: number;
+  joinCode: string;
+  createdBy: string;
+  createdByName: string | null;
   partySize: number;
   totalRounds: number;
   finished: boolean;
@@ -18,6 +21,8 @@ type GameRow = {
 };
 
 const columns: Column<GameRow>[] = [
+  { header: "Join code", cell: (g) => <span className="font-mono">{g.joinCode}</span> },
+  { header: "Started by", cell: (g) => g.createdByName ?? <span className="font-mono text-muted-foreground">{g.createdBy}</span> },
   { header: "Party", cell: (g) => g.partySize },
   { header: "Rounds", cell: (g) => g.totalRounds },
   { header: "Finished", cell: (g) => (g.finished ? <Badge>Yes</Badge> : <Badge variant="outline">No</Badge>) },

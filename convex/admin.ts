@@ -140,9 +140,13 @@ export const listGames = query({
           .query("players")
           .withIndex("byGame", (q) => q.eq("gameId", game._id))
           .collect();
+        const creator = players.find((p) => p.userId === game.createdBy);
         return {
           _id: game._id,
           _creationTime: game._creationTime,
+          joinCode: game.joinCode,
+          createdBy: game.createdBy,
+          createdByName: creator?.displayName ?? null,
           partySize: players.length,
           totalRounds: game.totalRounds,
           finished: game.completedAt !== undefined,
