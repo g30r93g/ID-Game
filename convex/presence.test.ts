@@ -359,3 +359,159 @@ test("castPresenceVote needs a majority to remove a non-host", async () => {
   const bob = await t.run((ctx) => ctx.db.get(ids["bob"]));
   expect(bob!.active).toBe(false);
 });
+
+test("castPresenceVote ignores votes from a previous round", async () => {
+  const t = convexTest(schema, modules);
+  const { ids } = await t.run(async (ctx) => {
+    const now = Date.now();
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "CPV002",
+      totalRounds: 3,
+      currentRound: 2,
+      isOpen: false,
+      createdBy: "host",
+    });
+    const ids: Record<string, Id<"players">> = {};
+    ids["host"] = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "HOST",
+      lastAlive: now,
+    });
+    ids["a"] = await ctx.db.insert("players", {
+      userId: "a",
+      gameId,
+      displayName: "A",
+      lastAlive: now,
+    });
+    ids["b"] = await ctx.db.insert("players", {
+      userId: "b",
+      gameId,
+      displayName: "B",
+      lastAlive: 0,
+    });
+    await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 2,
+      hostPlayerId: ids["host"],
+      phase: "guess-scenario",
+    });
+    // A leaked vote from round 1 targeting B, cast by A.
+    await ctx.db.insert("presenceVotes", {
+      gameId,
+      roundNumber: 1,
+      targetPlayerId: ids["b"],
+      voterPlayerId: ids["a"],
+      kind: "remove-player",
+      createdAt: 1,
+    });
+    return { ids };
+  });
+
+  const res = await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV002",
+      targetPlayerId: ids["b"],
+    });
+
+  expect(res.resolved).toBe(false);
+  const b = await t.run((ctx) => ctx.db.get(ids["b"]));
+  expect(b!.active).not.toBe(false);
+});
+
+test("sendHeartbeat cancels votes targeting the reconnecting player", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, xId } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "HB0003",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "x",
+    });
+    const xId = await ctx.db.insert("players", {
+      userId: "x",
+      gameId,
+      displayName: "X",
+      lastAlive: 0,
+    });
+    const voter = await ctx.db.insert("players", {
+      userId: "voter",
+      gameId,
+      displayName: "Voter",
+      lastAlive: Date.now(),
+    });
+    await ctx.db.insert("presenceVotes", {
+      gameId,
+      roundNumber: 1,
+      targetPlayerId: xId,
+      voterPlayerId: voter,
+      kind: "remove-player",
+      createdAt: Date.now(),
+    });
+    return { gameId, xId };
+  });
+
+  await t.withIdentity({ subject: "x" }).mutation(api.game.sendHeartbeat, {
+    gameId,
+  });
+
+  const votes = await t.run((ctx) =>
+    ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", gameId).eq("targetPlayerId", xId),
+      )
+      .collect(),
+  );
+  expect(votes.length).toBe(0);
+});
+
+test("startNewGameRound skips removed players when choosing a host", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, p1 } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "SNR001",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "p1",
+    });
+    const p1 = await ctx.db.insert("players", {
+      userId: "p1",
+      gameId,
+      displayName: "P1",
+      lastAlive: 0,
+    });
+    // P2 (removed) has hosted nothing, so it would normally be picked as the
+    // least-hosted candidate — but it must be skipped because it's inactive.
+    await ctx.db.insert("players", {
+      userId: "p2",
+      gameId,
+      displayName: "P2",
+      lastAlive: 0,
+      active: false,
+    });
+    // P1 has hosted round 1 already.
+    await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId: p1,
+      phase: "display-results",
+    });
+    return { gameId, p1 };
+  });
+
+  await t.mutation(api.game.startNewGameRound, { game: gameId });
+
+  const newRound = await t.run((ctx) =>
+    ctx.db
+      .query("gameRounds")
+      .withIndex("byGameRound", (q) =>
+        q.eq("gameId", gameId).eq("roundNumber", 2),
+      )
+      .unique(),
+  );
+  expect(newRound!.hostPlayerId).toBe(p1);
+});

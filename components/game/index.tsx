@@ -87,7 +87,10 @@ export function Game({ preloadedGame }: GameProps) {
   }, [sendHeartbeat, game]);
 
   useEffect(() => {
-    if (players.length <= 1 && currentRound?.phase === "display-results") {
+    if (
+      players.filter((p) => p.active !== false).length <= 1 &&
+      currentRound?.phase === "display-results"
+    ) {
       replace("/game");
     }
     // Intentionally only re-run when the player list changes: this redirect is a

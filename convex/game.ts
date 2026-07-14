@@ -71,6 +71,17 @@ export const sendHeartbeat = mutation({
     // A live heartbeat means the player is present: refresh lastAlive and undo
     // any consensus removal (they have reconnected).
     await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
+
+    // A reconnecting player cancels any in-flight vote against them.
+    const votesAgainstPlayer = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", args.gameId).eq("targetPlayerId", player._id),
+      )
+      .collect();
+    await Promise.all(
+      votesAgainstPlayer.map((voteRow) => ctx.db.delete(voteRow._id)),
+    );
   },
 });
 
@@ -422,7 +433,8 @@ export const startNewGameRound = mutation({
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", args.game))
         .collect();
-      player = await pickHost(ctx, args.game, players);
+      const activePlayers = players.filter((p) => p.active !== false);
+      player = await pickHost(ctx, args.game, activePlayers);
     }
 
     // ensure player is defined
@@ -1042,8 +1054,14 @@ export const castPresenceVote = mutation({
     const kind =
       round.hostPlayerId === target._id ? "reassign-host" : "remove-player";
 
-    // Record the caller's vote (once).
-    if (!existingVotes.some((voteRow) => voteRow.voterPlayerId === caller._id)) {
+    // Record the caller's vote (once per round).
+    if (
+      !existingVotes.some(
+        (voteRow) =>
+          voteRow.voterPlayerId === caller._id &&
+          voteRow.roundNumber === currentRoundNumber,
+      )
+    ) {
       await ctx.db.insert("presenceVotes", {
         gameId: game._id,
         roundNumber: currentRoundNumber,
@@ -1075,7 +1093,11 @@ export const castPresenceVote = mutation({
       .collect();
     const agreeing = new Set(
       votes
-        .filter((voteRow) => eligibleVoterIds.has(voteRow.voterPlayerId))
+        .filter(
+          (voteRow) =>
+            voteRow.roundNumber === currentRoundNumber &&
+            eligibleVoterIds.has(voteRow.voterPlayerId),
+        )
         .map((voteRow) => voteRow.voterPlayerId),
     ).size;
 

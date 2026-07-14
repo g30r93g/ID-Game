@@ -32,7 +32,9 @@ export default function RankPlayersGamePhase({
   );
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [players, setPlayers] = useState(playersForGame ?? []);
+  const [players, setPlayers] = useState(
+    (playersForGame ?? []).filter((p) => p.active !== false),
+  );
 
   async function submitPlayerRankings() {
     try {
