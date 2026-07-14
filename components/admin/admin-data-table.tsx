@@ -9,7 +9,15 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export type Column<T> = { header: string; cell: (row: T) => React.ReactNode; className?: string };
+export type Column<T> = {
+  header: string;
+  cell: (row: T) => React.ReactNode;
+  /** Applied to body cells only. */
+  className?: string;
+  /** Applied to the header cell only (body `className` is not leaked here, so
+   *  the header keeps its default vertical centering). */
+  headerClassName?: string;
+};
 
 export function AdminDataTable<T>({
   columns, data, isLoading, page, hasNext, hasPrev, onNext, onPrev, pageSize, onPageSize,
@@ -31,7 +39,7 @@ export function AdminDataTable<T>({
         <TableHeader>
           <TableRow>
             {columns.map((c) => (
-              <TableHead key={c.header} className={c.className}>{c.header}</TableHead>
+              <TableHead key={c.header} className={c.headerClassName}>{c.header}</TableHead>
             ))}
           </TableRow>
         </TableHeader>
