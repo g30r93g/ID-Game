@@ -98,6 +98,19 @@ export const createGame = mutation({
     const authUser = await authComponent.safeGetAuthUser(ctx);
     const displayName = authUser?.name?.trim() || "Unknown Player";
 
+    // Reuse the user's existing open lobby instead of creating a duplicate.
+    // Guards against rapid repeated submits (and any mutation retry) creating
+    // a burst of party-of-one games. Race-safe under Convex's OCC: a concurrent
+    // insert conflicts on this read set and re-runs, finding the game below.
+    const existingOpenGame = await ctx.db
+      .query("games")
+      .withIndex("byIsOpen", (q) => q.eq("isOpen", true))
+      .filter((q) => q.eq(q.field("createdBy"), user.subject))
+      .first();
+    if (existingOpenGame) {
+      return existingOpenGame;
+    }
+
     // create game
     const gameId = await ctx.db.insert("games", {
       joinCode: generateOTP(),

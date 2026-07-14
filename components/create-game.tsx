@@ -81,10 +81,10 @@ export default function CreateGame() {
           <LoadingButton
             variant={"default"}
             className={"w-full"}
-            disabled={form.formState.isLoading || !form.formState.isValid}
-            loading={form.formState.isLoading}
+            disabled={form.formState.isSubmitting || !form.formState.isValid}
+            loading={form.formState.isSubmitting}
           >
-            {!form.formState.isLoading && (
+            {!form.formState.isSubmitting && (
               <>
                 Create New Game
                 <Plus />
