@@ -14,7 +14,13 @@ import PlayerCard from "@/components/game/lobby/player-card";
 
 interface LobbyGamePhaseProps {
   joinCode: string;
-  players: { id: string; name: string; userId: string }[];
+  players: {
+    id: string;
+    name: string;
+    userId: string;
+    lastAlive: number;
+    active?: boolean;
+  }[];
   isHost: boolean;
   advanceGame: () => void;
 }
@@ -78,13 +84,15 @@ export default function LobbyGamePhase({
         </h2>
         <div className={"flex flex-col gap-4"}>
           <div className={"grid grid-cols-1 lg:grid-cols-2 gap-4"}>
-            {players.map(({ id, name, userId }) => {
+            {players.map(({ id, name, userId, lastAlive, active }) => {
               return (
                 <PlayerCard
                   key={id}
                   playerId={id}
                   playerUserId={userId}
                   playerName={name}
+                  lastAlive={lastAlive}
+                  active={active}
                 />
               );
             })}

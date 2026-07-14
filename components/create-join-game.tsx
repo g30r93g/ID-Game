@@ -14,6 +14,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { useState } from "react";
 import CreateGame from "@/components/create-game";
 import { UserTray } from "@/components/user-tray";
+import ActiveGames from "@/components/active-games";
 
 export default function CreateJoinGame({ joinCode }: { joinCode?: string }) {
   const [view, setView] = useState<"join" | "create">("join");
@@ -48,6 +49,7 @@ export default function CreateJoinGame({ joinCode }: { joinCode?: string }) {
               </CardHeader>
               <CardContent>
                 <JoinGame defaultJoinCode={joinCode} />
+                <ActiveGames />
                 <Separator className={"my-3"} />
                 <Button
                   className={"w-full"}

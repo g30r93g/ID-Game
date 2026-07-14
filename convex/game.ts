@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { authComponent } from "./auth";
-import { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { mutation, query, MutationCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
+import { isConnected } from "../lib/presence";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -15,28 +16,72 @@ function generateOTP(length = 6): string {
   return otp;
 }
 
+// Pick the least-hosted player from `candidates`, breaking ties at random.
+// Host counts are tallied from all of the game's rounds so hosting stays even.
+export async function pickHost(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  candidates: Doc<"players">[],
+): Promise<Id<"players">> {
+  if (candidates.length === 0) throw new Error("No players available.");
+
+  const hostCounts = new Map<string, number>();
+  const rounds = await ctx.db
+    .query("gameRounds")
+    .withIndex("byGame", (q) => q.eq("gameId", gameId))
+    .collect();
+  rounds.forEach((round) => {
+    hostCounts.set(
+      round.hostPlayerId,
+      (hostCounts.get(round.hostPlayerId) || 0) + 1,
+    );
+  });
+
+  const minHostingCount = Math.min(
+    ...candidates.map((p) => hostCounts.get(p._id) || 0),
+  );
+  const leastHosted = candidates.filter(
+    (p) => (hostCounts.get(p._id) || 0) === minHostingCount,
+  );
+
+  return leastHosted[Math.floor(Math.random() * leastHosted.length)]._id;
+}
+
 export const sendHeartbeat = mutation({
-  handler: async (ctx) => {
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
     // Ensure user is authenticated
     const userId = (await ctx.auth.getUserIdentity())?.subject;
     if (!userId) {
       throw new Error("User must be authenticated to send a heartbeat.");
     }
 
-    // Get the player associated with the user
+    // Get the player associated with the user *in this game* (a user may be in
+    // several games at once, so byUser().first() is not safe here).
     const player = await ctx.db
       .query("players")
-      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
     if (!player) {
       throw new Error("No player found for authed user");
     }
 
-    // Get the current time
-    const now = Date.now();
+    // A live heartbeat means the player is present: refresh lastAlive and undo
+    // any consensus removal (they have reconnected).
+    await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
 
-    await ctx.db.patch(player._id, { lastAlive: now });
+    // A reconnecting player cancels any in-flight vote against them.
+    const votesAgainstPlayer = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", args.gameId).eq("targetPlayerId", player._id),
+      )
+      .collect();
+    await Promise.all(
+      votesAgainstPlayer.map((voteRow) => ctx.db.delete(voteRow._id)),
+    );
   },
 });
 
@@ -97,6 +142,19 @@ export const createGame = mutation({
 
     const authUser = await authComponent.safeGetAuthUser(ctx);
     const displayName = authUser?.name?.trim() || "Unknown Player";
+
+    // Reuse the user's existing open lobby instead of creating a duplicate.
+    // Guards against rapid repeated submits (and any mutation retry) creating
+    // a burst of party-of-one games. Race-safe under Convex's OCC: a concurrent
+    // insert conflicts on this read set and re-runs, finding the game below.
+    const existingOpenGame = await ctx.db
+      .query("games")
+      .withIndex("byIsOpen", (q) => q.eq("isOpen", true))
+      .filter((q) => q.eq(q.field("createdBy"), user.subject))
+      .first();
+    if (existingOpenGame) {
+      return existingOpenGame;
+    }
 
     // create game
     const gameId = await ctx.db.insert("games", {
@@ -202,6 +260,51 @@ export const getPlayersForGame = query({
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", args.game))
       .collect();
+  },
+});
+
+export const getMyActiveGames = query({
+  handler: async (ctx) => {
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated.");
+    }
+
+    const now = Date.now();
+
+    const myPlayerRows = await ctx.db
+      .query("players")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .collect();
+
+    const results = [];
+    for (const myPlayer of myPlayerRows) {
+      // Skip games this user was removed from.
+      if (myPlayer.active === false) continue;
+
+      const game = await ctx.db.get(myPlayer.gameId);
+      // Skip missing or finished games.
+      if (!game || game.completedAt !== undefined) continue;
+
+      const players = await ctx.db
+        .query("players")
+        .withIndex("byGame", (q) => q.eq("gameId", game._id))
+        .collect();
+      const connectedPlayerCount = players.filter(
+        (p) => p.active !== false && isConnected(p.lastAlive, now),
+      ).length;
+
+      results.push({
+        gameId: game._id,
+        joinCode: game.joinCode,
+        isOpen: game.isOpen,
+        currentRound: game.currentRound ?? 0,
+        totalRounds: game.totalRounds,
+        connectedPlayerCount,
+      });
+    }
+
+    return results;
   },
 });
 
@@ -324,48 +427,14 @@ export const startNewGameRound = mutation({
       }
     }
 
-    // if the player is still undefined, we randomly select one
+    // if the player is still undefined, we pick the least-hosted player
     if (!player) {
-      // Step 1: Get host counts directly from DB
-      const hostCounts = new Map<string, number>();
-
-      const rounds = await ctx.db
-        .query("gameRounds")
-        .withIndex("byGame", (q) => q.eq("gameId", args.game))
-        .collect();
-
-      rounds.forEach((round) => {
-        if (round.hostPlayerId) {
-          hostCounts.set(
-            round.hostPlayerId,
-            (hostCounts.get(round.hostPlayerId) || 0) + 1,
-          );
-        }
-      });
-
-      // Step 2: Get the players in this game
       const players = await ctx.db
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", args.game))
         .collect();
-
-      if (players.length === 0) throw new Error("No players available.");
-
-      // Step 3: Find the least hosted players
-      const minHostingCount = Math.min(
-        ...players.map((p) => hostCounts.get(p._id) || 0),
-      );
-      const leastHostedPlayers = players.filter(
-        (p) => (hostCounts.get(p._id) || 0) === minHostingCount,
-      );
-
-      // Step 4: Randomly pick a host from the least-hosted players
-      if (leastHostedPlayers.length > 0) {
-        player =
-          leastHostedPlayers[
-            Math.floor(Math.random() * leastHostedPlayers.length)
-          ]._id;
-      }
+      const activePlayers = players.filter((p) => p.active !== false);
+      player = await pickHost(ctx, args.game, activePlayers);
     }
 
     // ensure player is defined
@@ -781,7 +850,7 @@ export const getGuessesStatusForRound = query({
       .collect();
 
     const nonHostPlayers = players.filter(
-      (p) => p._id !== gameRound.hostPlayerId,
+      (p) => p._id !== gameRound.hostPlayerId && p.active !== false,
     );
 
     // Get all guesses for the round
@@ -918,5 +987,134 @@ export const submitRating = mutation({
       userId: userId,
       rating: args.rating,
     });
+  },
+});
+
+export const castPresenceVote = mutation({
+  args: { joinCode: v.string(), targetPlayerId: v.id("players") },
+  handler: async (ctx, args) => {
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to vote.");
+    }
+
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .first();
+    if (!game) throw new Error("Game does not exist.");
+
+    const caller = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    if (!caller || caller.active === false) {
+      throw new Error("Only active players in the game can vote.");
+    }
+
+    const target = await ctx.db.get(args.targetPlayerId);
+    if (!target || target.gameId !== game._id) {
+      throw new Error("Target is not a player in this game.");
+    }
+    if (target._id === caller._id) {
+      throw new Error("You cannot vote about yourself.");
+    }
+
+    // Consensus recovery only applies within an active round.
+    const currentRoundNumber = game.currentRound;
+    if (!currentRoundNumber) {
+      return { resolved: false as const };
+    }
+    const round = await ctx.db
+      .query("gameRounds")
+      .withIndex("byGameRound", (q) =>
+        q.eq("gameId", game._id).eq("roundNumber", currentRoundNumber),
+      )
+      .unique();
+    if (!round) {
+      return { resolved: false as const };
+    }
+
+    const now = Date.now();
+
+    const existingVotes = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", game._id).eq("targetPlayerId", target._id),
+      )
+      .collect();
+
+    // If the target is back online, cancel any open vote and do nothing.
+    if (isConnected(target.lastAlive, now)) {
+      await Promise.all(existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)));
+      return { resolved: false as const };
+    }
+
+    const kind =
+      round.hostPlayerId === target._id ? "reassign-host" : "remove-player";
+
+    // Record the caller's vote (once per round).
+    if (
+      !existingVotes.some(
+        (voteRow) =>
+          voteRow.voterPlayerId === caller._id &&
+          voteRow.roundNumber === currentRoundNumber,
+      )
+    ) {
+      await ctx.db.insert("presenceVotes", {
+        gameId: game._id,
+        roundNumber: currentRoundNumber,
+        targetPlayerId: target._id,
+        voterPlayerId: caller._id,
+        kind,
+        createdAt: now,
+      });
+    }
+
+    // Tally against currently-connected, active, non-target players.
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .collect();
+    const connectedNonTarget = players.filter(
+      (p) =>
+        p._id !== target._id &&
+        p.active !== false &&
+        isConnected(p.lastAlive, now),
+    );
+    const eligibleVoterIds = new Set(connectedNonTarget.map((p) => p._id));
+
+    const votes = await ctx.db
+      .query("presenceVotes")
+      .withIndex("byGameTarget", (q) =>
+        q.eq("gameId", game._id).eq("targetPlayerId", target._id),
+      )
+      .collect();
+    const agreeing = new Set(
+      votes
+        .filter(
+          (voteRow) =>
+            voteRow.roundNumber === currentRoundNumber &&
+            eligibleVoterIds.has(voteRow.voterPlayerId),
+        )
+        .map((voteRow) => voteRow.voterPlayerId),
+    ).size;
+
+    const denominator = connectedNonTarget.length;
+    if (denominator === 0 || agreeing <= denominator / 2) {
+      return { resolved: false as const };
+    }
+
+    // Majority reached and target confirmed stale — execute.
+    if (kind === "reassign-host") {
+      const newHostId = await pickHost(ctx, game._id, connectedNonTarget);
+      await ctx.db.patch(round._id, { hostPlayerId: newHostId });
+    } else {
+      await ctx.db.patch(target._id, { active: false });
+    }
+
+    await Promise.all(votes.map((voteRow) => ctx.db.delete(voteRow._id)));
+    return { resolved: true as const, action: kind };
   },
 });

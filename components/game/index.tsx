@@ -30,6 +30,7 @@ import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
 import { usePostHog } from "posthog-js/react";
+import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
@@ -75,17 +76,21 @@ export function Game({ preloadedGame }: GameProps) {
   );
 
   useEffect(() => {
+    if (!game) return;
     const intervalId = setInterval(() => {
-      sendHeartbeat()
+      sendHeartbeat({ gameId: game._id })
         .then(() => console.log("Heartbeat sent"))
         .catch((error) => console.error("Error sending heartbeat:", error));
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [sendHeartbeat]);
+  }, [sendHeartbeat, game]);
 
   useEffect(() => {
-    if (players.length <= 1 && currentRound?.phase === "display-results") {
+    if (
+      players.filter((p) => p.active !== false).length <= 1 &&
+      currentRound?.phase === "display-results"
+    ) {
       replace("/game");
     }
     // Intentionally only re-run when the player list changes: this redirect is a
@@ -256,6 +261,8 @@ export function Game({ preloadedGame }: GameProps) {
               id: p._id,
               name: p.displayName,
               userId: p.userId,
+              lastAlive: p.lastAlive,
+              active: p.active,
             };
           })}
           isHost={userIsHost()}
@@ -329,6 +336,14 @@ export function Game({ preloadedGame }: GameProps) {
     <div
       className={"flex flex-col w-full md:w-[75%] h-full max-h-svh gap-4 py-4"}
     >
+      {game && !game.isOpen && currentRound && (
+        <DisconnectPrompt
+          joinCode={game.joinCode}
+          players={players}
+          hostPlayerId={currentRound.hostPlayerId}
+          viewerPlayerId={userPlayer?._id}
+        />
+      )}
       <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
         {!isGameFinished() && !userIsHost() && (
