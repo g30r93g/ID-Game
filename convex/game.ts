@@ -574,6 +574,27 @@ export const transitionRoundPhase = mutation({
       throw new Error("Only game round host can transition a game round");
     }
 
+    // Enforce a legal forward phase transition. Phases advance linearly; a skip,
+    // rewind, or unknown jump is rejected. A no-op to the same phase is allowed
+    // so a double-submit / mutation retry doesn't error.
+    const NEXT_PHASE: Partial<
+      Record<Doc<"gameRounds">["phase"], Doc<"gameRounds">["phase"]>
+    > = {
+      "create-scenarios": "pick-scenario",
+      "pick-scenario": "rank-players",
+      "rank-players": "guess-scenario",
+      "guess-scenario": "display-results",
+      "display-results": "finished",
+    };
+    if (
+      args.toPhase !== gameRound.phase &&
+      NEXT_PHASE[gameRound.phase] !== args.toPhase
+    ) {
+      throw new Error(
+        `Illegal phase transition: ${gameRound.phase} -> ${args.toPhase}`,
+      );
+    }
+
     // change phase
     await ctx.db.patch(gameRound._id, { phase: args.toPhase });
 

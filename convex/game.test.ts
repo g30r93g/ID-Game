@@ -122,6 +122,83 @@ test("transitionRoundPhase sets completedAt when the final round shows results",
   expect(typeof game?.completedAt).toBe("number");
 });
 
+async function seedRoundWithPhase(
+  t: ReturnType<typeof convexTest>,
+  phase:
+    | "create-scenarios"
+    | "pick-scenario"
+    | "rank-players"
+    | "guess-scenario"
+    | "display-results"
+    | "finished",
+) {
+  return t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "PHS123",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "host",
+      startedAt: 1000,
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId,
+      phase,
+    });
+    return { gameId, roundId };
+  });
+}
+
+test("transitionRoundPhase rejects an illegal phase skip", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithPhase(t, "pick-scenario");
+
+  await expect(
+    t.withIdentity({ subject: "host" }).mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "finished",
+    }),
+  ).rejects.toThrow(/Illegal phase transition/);
+});
+
+test("transitionRoundPhase allows the legal next phase", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithPhase(t, "pick-scenario");
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "rank-players",
+    });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("rank-players");
+});
+
+test("transitionRoundPhase tolerates a no-op transition to the same phase", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithPhase(t, "guess-scenario");
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "guess-scenario",
+    });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+});
+
 test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
   const t = convexTest(schema, modules);
   const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {
