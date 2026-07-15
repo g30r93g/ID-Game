@@ -6,7 +6,7 @@ import {
   SortableContent,
   SortableItem,
 } from "@/components/ui/sortable";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -32,11 +32,23 @@ export default function RankPlayersGamePhase({
   );
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [players, setPlayers] = useState(
-    (playersForGame ?? []).filter((p) => p.active !== false),
-  );
+  // `null` until the players query first resolves, so a cold first render can't
+  // seed an empty ranking.
+  const [players, setPlayers] = useState<
+    NonNullable<typeof playersForGame> | null
+  >(null);
+
+  // Seed the ranking list the first time the players query resolves. Setting
+  // state during render (guarded, so it runs exactly once) is React's sanctioned
+  // way to derive initial state from async data without an effect. We never
+  // resync afterwards — that would clobber the host's drag order mid-rank.
+  if (players === null && playersForGame !== undefined) {
+    setPlayers(playersForGame.filter((p) => p.active !== false));
+  }
 
   async function submitPlayerRankings() {
+    if (!players) return;
+
     try {
       setLoading(true);
 
@@ -51,6 +63,14 @@ export default function RankPlayersGamePhase({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (players === null) {
+    return (
+      <div className={"flex grow items-center justify-center py-8"}>
+        <Loader2 className={"size-6 animate-spin text-muted-foreground"} />
+      </div>
+    );
   }
 
   return (
