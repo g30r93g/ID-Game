@@ -176,14 +176,28 @@ export async function listScenariosPage(
   category?: string,
 ) {
   const { index, order } = scenarioSortToQuery(sort);
+  // Pick an index that already encodes the category equality so we never fall
+  // back to a post-index `.filter` (a full-table scan). `byCategory` and
+  // `byCategoryTimesSelected` both start with `category`; Convex appends
+  // `_creationTime` as the final tiebreak, so `byCategory` also serves the
+  // creation-time sorts.
   const ordered =
-    index === "by_creation_time"
-      ? ctx.db.query("scenarios").order(order)
-      : ctx.db.query("scenarios").withIndex("byTimesSelected").order(order);
-  const filtered = category
-    ? ordered.filter((q) => q.eq(q.field("category"), category))
-    : ordered;
-  const result = await filtered.paginate(paginationOpts);
+    category === undefined
+      ? index === "by_creation_time"
+        ? ctx.db.query("scenarios").order(order)
+        : ctx.db.query("scenarios").withIndex("byTimesSelected").order(order)
+      : index === "by_creation_time"
+        ? ctx.db
+            .query("scenarios")
+            .withIndex("byCategory", (q) => q.eq("category", category))
+            .order(order)
+        : ctx.db
+            .query("scenarios")
+            .withIndex("byCategoryTimesSelected", (q) =>
+              q.eq("category", category),
+            )
+            .order(order);
+  const result = await ordered.paginate(paginationOpts);
   return {
     ...result,
     page: result.page.map((s) => ({

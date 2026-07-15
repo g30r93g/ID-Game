@@ -47,7 +47,11 @@ export default defineSchema({
     timesSelected: v.optional(v.number()),
   })
     .index("byCategory", ["category"])
-    .index("byTimesSelected", ["timesSelected"]),
+    .index("byTimesSelected", ["timesSelected"])
+    // Category-scoped popularity sort: category equality + timesSelected order
+    // (Convex appends _creationTime as the final tiebreak). Lets the admin
+    // scenario list filter by category without a post-index `.filter` scan.
+    .index("byCategoryTimesSelected", ["category", "timesSelected"]),
 
   // Managed controlled-vocabulary of scenario categories. A category can exist
   // here before any scenario uses it (created via the admin "Manage categories"
