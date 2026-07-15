@@ -394,10 +394,8 @@ export const startNewGameRound = mutation({
 
     // determine the new round number
     const newRoundNumber = (game.currentRound ?? 0) + 1;
-    console.log("newRoundNumber", newRoundNumber);
 
-    // ensure new round number is not greater than the number of rounds set
-    // if the game has zero rounds, it means it is an infinite game
+    // No rounds left — the game is over (round counts are always >= 1, enforced in createGame).
     if (newRoundNumber > game.totalRounds) {
       return null;
     }
@@ -638,7 +636,7 @@ export const selectGameRoundScenario = mutation({
     const selectedScenariosForRound = await ctx.db
       .query("gameRoundScenarios")
       .withIndex("byRound", (q) => q.eq("roundId", args.gameRoundId))
-      .filter((q) => q.field("selected"))
+      .filter((q) => q.eq(q.field("selected"), true))
       .collect();
 
     if (selectedScenariosForRound.length > 0) {
@@ -765,7 +763,7 @@ export const markGuessesForRound = mutation({
     const selectedScenario = await ctx.db
       .query("gameRoundScenarios")
       .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .filter((q) => q.field("selected"))
+      .filter((q) => q.eq(q.field("selected"), true))
       .first();
 
     if (!selectedScenario) {
@@ -864,7 +862,7 @@ export const getGuessesStatusForRound = query({
       return {
         player: p._id,
         displayName: p.displayName,
-        hasGuessed: guesses.find((g) => g.playerId === p._id) ?? false,
+        hasGuessed: guesses.some((g) => g.playerId === p._id),
       };
     });
 

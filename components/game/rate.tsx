@@ -66,7 +66,7 @@ export default function RatingCard({ joinCode }: { joinCode: string }) {
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Thanks For Playing!</CardTitle>
-        <CardDescription></CardDescription>
+        <CardDescription>How was it? Give the game a quick rating below.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
