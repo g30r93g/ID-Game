@@ -264,20 +264,46 @@ const isCategoryRewind =
 
 **Branch:** `feat/presence-reinclusion`
 
-**Goal:** A player removed by consensus while disconnected can get back into the game and the current round, rather than being locked out until it ends.
+**Goal:** A player removed by consensus while disconnected can get back into the game *and the round in progress*, rather than being locked out until it ends.
 
-**What already works:** `sendHeartbeat` (`convex/game.ts:50-86`) resets `active: true` and clears open votes against a reconnecting player, so a player whose tab stayed open recovers automatically (#45).
+**Observed incident (game `CGHZ18`):** a two-player game, both players idle long enough for their heartbeats to lapse, after which one player was missing from the round despite still being in the game.
 
-**What doesn't:** every route back into the game is closed for a player who closed the tab. `getMyActiveGames` skips rows where `active === false` (`convex/game.ts:283`), so the game vanishes from "Jump back in"; `joinGame` throws `Game is not open to new players` (`convex/game.ts:199-201`) for any closed game, so re-entering the code fails too. And even on a successful reconnect, mid-round state does not reconcile: `rank-players.tsx:45-47` seeds its list once and deliberately never resyncs, so a returning player never appears in the ranking; `getGuessesStatusForRound` excludes them from the completion gate while `makeGuessForRound` still accepts their guess, so a late return can submit a guess the host stopped waiting for — after `await-guesses.tsx:43-51` has already auto-advanced.
+**Root cause, and the decision taken:** with two players the vote denominator is always 1 — `connectedNonTarget` (`convex/game.ts:1099-1104`) excludes the target, leaving only the voter — so one Agree tap removes the other player. **This is accepted behaviour and is not being changed:** with two players there is no larger consensus to reach, and requiring one would leave a genuinely-stuck round unrecoverable. The fix is therefore entirely on the recovery side — removal stays cheap, but coming back must be complete and immediate.
+
+**What already works:** `sendHeartbeat` (`convex/game.ts:73`) sets `active: true` and clears open votes against a reconnecting player, so re-inclusion is automatic on any heartbeat (#45).
+
+**What doesn't:**
+
+1. *Re-inclusion is slow.* The heartbeat is `setInterval(…, 15000)` with no leading call (`components/game/index.tsx:79-88`), so a returning player is re-included up to 15s after their tab wakes — and mobile browsers freeze background timers, so a player who merely switched apps returns already flagged stale.
+2. *The game is unfindable.* `getMyActiveGames` skips rows where `active === false` (`convex/game.ts:283`), so the game vanishes from "Jump back in"; `joinGame` throws `Game is not open to new players` (`convex/game.ts:199-201`) for any closed game. The direct URL `/game/<code>` does still work — `isUserPlayer` ignores `active` — but nothing points there.
+3. *The round has moved on.* `rank-players.tsx:45-47` seeds its list once and deliberately never resyncs, so a player returning mid-rank never appears. Worse, if the host already submitted, `gameRoundPlayerRankings` has no row for them at all, `getGuessesStatusForRound` had already reported the round complete, and `await-guesses.tsx:43-51` may have auto-advanced.
+
+**Design for (3):** re-inclusion is automatic, and the host is then *prompted* to redo the part of the round that excluded the player. The prompt rewinds to `rank-players`, keeping the selected scenario — a player rejoining doesn't invalidate the scenario, and unselecting it would need the `scenarios.timesSelected` increment from `selectGameRoundScenario` unwound. The rewind is a dedicated mutation rather than a relaxation of `transitionRoundPhase`, so the strict linear guard from #49 stays intact and the dependent rows are cleared in the same transaction.
 
 **Files:**
-- Modify: `convex/game.ts` (`getMyActiveGames`, `joinGame`, `makeGuessForRound`, `leaveGame`)
+- Modify: `convex/game.ts` (`getMyActiveGames`, `joinGame`, `makeGuessForRound`, `leaveGame`, new `rewindRoundForRejoin`)
+- Modify: `components/game/index.tsx`
 - Modify: `components/active-games.tsx`
 - Modify: `components/game/presence/disconnect-prompt.tsx`
 - Modify: `components/game/rank-players.tsx`
+- Create: `components/game/presence/rejoin-prompt.tsx`
 - Test: `convex/presence.test.ts`
 
-### Task 4.1: Surface removed games as rejoinable
+### Task 4.1: Publish presence immediately on wake
+
+**Interfaces:**
+- Produces: the game shell heartbeats on mount and whenever the tab becomes visible, not only on the 15s interval.
+
+Re-inclusion already happens on any heartbeat, so this alone shortens the window in which a returning player is still shown as gone — and shortens the window in which they can be voted out despite being back.
+
+- [ ] **Step 1:** In `components/game/index.tsx:79-88`, send one heartbeat immediately before starting the interval. `setInterval` has no leading edge, so today the first beat lands 15s after mount.
+- [ ] **Step 2:** Add a `visibilitychange` listener that heartbeats when `document.visibilityState === "visible"`. Mobile browsers freeze timers in background tabs, so a player who switched apps returns already stale and stays stale until the next tick.
+- [ ] **Step 3:** Keep the interval itself at `HEARTBEAT_INTERVAL_MS` from `lib/presence.ts` — do not re-declare the constant, and do not change it or `PRESENCE_TIMEOUT_MS`.
+- [ ] **Step 4:** Note the effect depends on `game`, whose reference changes whenever the games document updates, which restarts the interval and resets its countdown. With a leading beat this is no longer able to starve the heartbeat. Leave the dependency array as-is.
+- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — background the tab for a minute, return, and confirm the other player's client shows them online within a second or two rather than up to 15.
+- [ ] **Step 6: Commit** — `fix(presence): heartbeat on mount and on tab focus`.
+
+### Task 4.2: Surface removed games as rejoinable
 
 **Interfaces:**
 - Produces: `getMyActiveGames` returns rows for games the caller was removed from, flagged `removed: true`.
@@ -289,7 +315,7 @@ const isCategoryRewind =
 - [ ] **Step 5: Run to verify it passes**, then `pnpm exec tsc --noEmit && pnpm lint`.
 - [ ] **Step 6: Commit** — `feat(presence): show games you were dropped from as rejoinable`.
 
-### Task 4.2: Let a removed player re-enter a closed game
+### Task 4.3: Let a removed player re-enter a closed game
 
 **Interfaces:**
 - Produces: `joinGame` reactivates an existing `active: false` player row for a closed game instead of throwing.
@@ -300,19 +326,46 @@ const isCategoryRewind =
 - [ ] **Step 4: Run to verify it passes.** `pnpm test convex/presence.test.ts`.
 - [ ] **Step 5: Commit** — `feat(presence): let a dropped player rejoin a closed game`.
 
-### Task 4.3: Reconcile a mid-round return
+### Task 4.4: Absorb a return that lands before the host submits
 
 **Interfaces:**
-- Produces: `makeGuessForRound` rejects guesses from inactive players and from rounds past `guess-scenario`; `RankPlayersGamePhase` absorbs players who reappear before submission.
+- Produces: `RankPlayersGamePhase` absorbs players who become active after its initial seed; `makeGuessForRound` rejects guesses from inactive players and from rounds past `guess-scenario`.
+
+A return during `rank-players` needs no prompt — the host has not committed anything yet, so the player can simply reappear in the list.
 
 - [ ] **Step 1: Write the failing tests.** Assert `makeGuessForRound` throws for a player with `active === false`, and throws when the round has already moved to `display-results`.
 - [ ] **Step 2: Run to verify they fail.** The mutation (`convex/game.ts:902-955`) checks only that the caller is not the host.
-- [ ] **Step 3: Implement** both guards in `makeGuessForRound`. This closes the gap where a returning player's guess lands after the host's completion check passed.
+- [ ] **Step 3: Implement** both guards in `makeGuessForRound`. An `active` player who returns is unaffected — `sendHeartbeat` has already flipped them back — so this rejects only genuinely-removed callers and late arrivals after the reveal.
 - [ ] **Step 4:** In `rank-players.tsx`, keep the deliberate no-resync behaviour for reordering but merge in players who become active after the initial seed — append any `active !== false` player missing from local state to the end of the list, without disturbing the host's existing drag order. Document why the merge is append-only.
 - [ ] **Step 5: Run to verify they pass**, then `pnpm exec tsc --noEmit && pnpm lint`.
-- [ ] **Step 6: Commit** — `fix(presence): reconcile players who return mid-round`.
+- [ ] **Step 6: Commit** — `fix(presence): absorb players who return before ranking is submitted`.
 
-### Task 4.4: Tell the removed player what happened
+### Task 4.5: `rewindRoundForRejoin` mutation
+
+**Interfaces:**
+- Produces: `rewindRoundForRejoin({ gameRoundId: Id<"gameRounds"> })` — host-only. Deletes the round's `gameRoundPlayerRankings` and `gameRoundGuesses`, patches the round back to `phase: "rank-players"`, and leaves `gameRoundScenarios` untouched so the selected scenario survives.
+
+- [ ] **Step 1: Write the failing tests.** Seed a round in `guess-scenario` with submitted rankings, one guess, and a selected scenario. Assert that after the mutation: phase is `rank-players`, zero ranking rows, zero guess rows, and the `gameRoundScenarios` row is still `selected: true`. Assert a non-host caller throws, and that a round not in `guess-scenario` throws.
+- [ ] **Step 2: Run to verify they fail.** `pnpm test convex/presence.test.ts` — the mutation does not exist.
+- [ ] **Step 3: Implement.** Authorise host-only exactly as `transitionRoundPhase` does (`convex/game.ts:567-576`), then gate on `gameRound.phase === "guess-scenario"` — this is a recovery path, not a general rewind. Collect and delete both dependent tables via their `byRound` indexes before patching the phase, so no client ever observes `rank-players` with stale rankings still attached.
+- [ ] **Step 4:** Patch the phase directly here rather than calling `transitionRoundPhase`. The linear `NEXT_PHASE` guard added in #49 stays untouched and keeps rejecting every ad-hoc rewind; this mutation is the single sanctioned exception because it clears the dependent rows in the same transaction.
+- [ ] **Step 5: Run to verify they pass.** `pnpm test convex/presence.test.ts`.
+- [ ] **Step 6: Commit** — `feat(presence): add rewindRoundForRejoin recovery mutation`.
+
+### Task 4.6: Prompt the host to re-rank
+
+**Interfaces:**
+- Consumes: Task 4.5; `getPlayerRankingsForRound`, `getPlayersForGame` (both already subscribed in the shell).
+- Produces: `components/game/presence/rejoin-prompt.tsx` — host-only banner offering to re-rank when an active player is missing from the round's submitted rankings.
+
+- [ ] **Step 1:** Derive the condition client-side; no new query is needed. Prompt when the viewer is the host, `currentRound.phase === "guess-scenario"`, and some player has `active !== false`, is not the host, and has no row in `getPlayerRankingsForRound`.
+- [ ] **Step 2:** Render the banner naming the returning player, with **Re-rank** (calls `rewindRoundForRejoin`) and **Continue without them**. Show non-hosts a passive "waiting for the host" note so a returning player understands why the round looks wrong from their side.
+- [ ] **Step 3:** Persist a decline in `localStorage`, keyed by round id + player id, so dismissing doesn't re-prompt on every reactive update. A declined player stays `active` and simply sits out the round — they are picked up normally by `startNewGameRound` next round, which filters on `active !== false` (`convex/game.ts:434`).
+- [ ] **Step 4:** On re-rank, the returning player's client moves back to the waiting view automatically — `index.tsx` renders phases off `currentRound.phase`, so no extra handling is needed. Confirm the host's `RankPlayersGamePhase` remounts with a fresh seed (its `players === null` guard runs once per mount, so a key on the round phase may be required).
+- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — with two profiles, vote one player out mid-round, let the host reach `guess-scenario`, then bring the player back and confirm the host is prompted, re-ranks, and both players complete the round.
+- [ ] **Step 6: Commit** — `feat(presence): prompt the host to re-rank when a player returns`.
+
+### Task 4.7: Tell the removed player what happened
 
 **Interfaces:**
 - Produces: a banner in the game shell when the viewer's own player row is `active: false`.
@@ -322,23 +375,25 @@ const isCategoryRewind =
 - [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
 - [ ] **Step 4: Commit** — `feat(presence): explain removal and offer a rejoin`.
 
-### Task 4.5: Make leaving consistent with removal
+### Task 4.8: Make leaving consistent with removal
 
 **Interfaces:**
 - Produces: `leaveGame` soft-flags `active: false` instead of deleting the player row.
 
 - [ ] **Step 1: Write the failing test.** After `leaveGame`, assert the row still exists with `active === false`.
 - [ ] **Step 2: Run to verify it fails.** `leaveGame` (`convex/game.ts:225-247`) hard-deletes.
-- [ ] **Step 3: Implement** the patch. This makes the two exit paths identical, so everything built in Tasks 4.1–4.4 gives a voluntary leaver the same route back, and stops deleted rows orphaning `gameRoundGuesses` / `gameRoundPlayerRankings` that reference them.
+- [ ] **Step 3: Implement** the patch. This makes the two exit paths identical, so everything built in Tasks 4.1–4.7 gives a voluntary leaver the same route back, and stops deleted rows orphaning `gameRoundGuesses` / `gameRoundPlayerRankings` that reference them.
 - [ ] **Step 4:** Audit callers that assume a deleted row. `index.tsx:90-103` redirects when `players.filter(p => p.active !== false).length <= 1`, which already reads the flag rather than the row count — confirm and leave alone.
 - [ ] **Step 5: Run to verify it passes.** `pnpm test`.
 - [ ] **Step 6: Commit** — `refactor(presence): soft-flag players who leave`.
 
-### Task 4.6: PR 4 verification sweep
+### Task 4.9: PR 4 verification sweep
 
 - [ ] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Manual with three profiles: drop a non-host mid-round, vote them out, close their tab entirely, reopen `/game`, rejoin from "Jump back in", and confirm they play the next round.
+- [ ] **Reproduce `CGHZ18` and confirm it recovers.** Two profiles only. Let both go idle past the 45s threshold, wake one, tap Agree until the other is removed, then close the removed player's tab entirely. Reopen `/game`, rejoin from "Jump back in", and confirm: they are re-included immediately (not after 15s), the host is prompted to re-rank, and both players finish the round together.
+- [ ] Repeat with three profiles, dropping a non-host mid-round, to confirm the multi-player majority path is unchanged.
 - [ ] Repeat for the host case — confirm host reassignment still holds after the original host rejoins as a normal player.
+- [ ] Confirm the decline path: dismiss the re-rank prompt and check the returning player sits out the round cleanly and is included in the next one.
 
 ---
 
