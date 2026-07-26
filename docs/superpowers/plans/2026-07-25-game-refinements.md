@@ -310,12 +310,12 @@ Two cross-references worth keeping in mind while the rest of this roadmap lands:
 }
 ```
 
-- [ ] **Step 1: Write the failing tests.** Seed a round in `guess-scenario` with three non-host players, two of whom have guessed. Assert: the host receives a `tally` summing to 2; a player who has guessed receives the same tally; a player who has not receives `tally: null` but still receives the `playerGuesses` list; and an unauthenticated caller receives `tally: null`.
-- [ ] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the query (`convex/game.ts:856-900`) returns no tally and never reads identity.
-- [ ] **Step 3: Implement.** Resolve the caller's player row from `ctx.auth.getUserIdentity()`; the query is currently unauthenticated, so treat a missing identity as "not allowed to see the tally" rather than throwing — `display-results` and the host both keep working. Group the round's guesses by `scenarioId`, join through `gameRoundScenarios` to `scenarios` for descriptions, and include every scenario at count 0 so the list is stable as votes land. Return `tally: null` unless the caller is the host or has guessed.
-- [ ] **Step 4:** Deliberately exclude voter identities from the tally — counts only. Who guessed what is revealed at `display-results` by `getGuessesForRound`, and moving that reveal earlier changes the game, not just the UI. If per-voter attribution is wanted later it belongs in its own change.
-- [ ] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
-- [ ] **Step 6: Commit** — `feat(game): return a gated live guess tally`.
+- [x] **Step 1: Write the failing tests.** Seed a round in `guess-scenario` with three non-host players, two of whom have guessed. Assert: the host receives a `tally` summing to 2; a player who has guessed receives the same tally; a player who has not receives `tally: null` but still receives the `playerGuesses` list; and an unauthenticated caller receives `tally: null`.
+- [x] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the query (`convex/game.ts:856-900`) returns no tally and never reads identity.
+- [x] **Step 3: Implement.** Resolve the caller's player row from `ctx.auth.getUserIdentity()`; the query is currently unauthenticated, so treat a missing identity as "not allowed to see the tally" rather than throwing — `display-results` and the host both keep working. Group the round's guesses by `scenarioId`, join through `gameRoundScenarios` to `scenarios` for descriptions, and include every scenario at count 0 so the list is stable as votes land. Return `tally: null` unless the caller is the host or has guessed.
+- [x] **Step 4:** Deliberately exclude voter identities from the tally — counts only. Who guessed what is revealed at `display-results` by `getGuessesForRound`, and moving that reveal earlier changes the game, not just the UI. If per-voter attribution is wanted later it belongs in its own change.
+- [x] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
+- [x] **Step 6: Commit** — `feat(game): return a gated live guess tally`.
 
 ### Task 5.2: Render the live tally
 
@@ -323,27 +323,29 @@ Two cross-references worth keeping in mind while the rest of this roadmap lands:
 - Consumes: Task 5.1.
 - Produces: `AwaitGuessesGamePhase` renders the tally when present, keeping the existing per-player checklist.
 
-- [ ] **Step 1:** Add a tally section above the existing player list in `await-guesses.tsx`, one row per scenario with a count and a proportional bar. Sort by count descending, tie-broken stably by scenario id so rows don't jump as votes arrive.
-- [ ] **Step 2:** Animate count changes with `motion` — the point of the feature is watching votes land. Keep it to the bar width and the number.
-- [ ] **Step 3:** Render nothing where `tally === null`, so the pre-guess view is unchanged.
-- [ ] **Step 4:** Do not let the tally interfere with the auto-advance effect (`await-guesses.tsx:43-51`) — it stays keyed on `guessingCompleteByAllUsers` and `isHost` only.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
-- [ ] **Step 6: Commit** — `feat(game): show live guess tallies as votes land`.
+- [x] **Step 1:** Add a tally section above the existing player list in `await-guesses.tsx`, one row per scenario with a count and a proportional bar. Sort by count descending, tie-broken stably by scenario id so rows don't jump as votes arrive.
+- [x] **Step 2:** Animate count changes with `motion` — the point of the feature is watching votes land. Keep it to the bar width and the number.
+- [x] **Step 3:** Render nothing where `tally === null`, so the pre-guess view is unchanged.
+- [x] **Step 4:** Do not let the tally interfere with the auto-advance effect (`await-guesses.tsx:43-51`) — it stays keyed on `guessingCompleteByAllUsers` and `isHost` only.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
+- [x] **Step 6: Commit** — `feat(game): show live guess tallies as votes land`.
 
 ### Task 5.3: Derive `hasGuessed` from the server
 
 **Interfaces:**
 - Produces: `GuessScenarioGamePhase` reads `viewerHasGuessed` from the query instead of local state.
 
-- [ ] **Step 1:** `guess-scenario.tsx:41` holds `hasGuessed` in component state, so a refresh mid-phase returns the player to the guessing UI even though their guess is recorded — and with Task 5.1 in place it would also hide the tally they had earned. Subscribe to `getGuessesStatusForRound` and use `viewerHasGuessed`.
-- [ ] **Step 2:** Keep the local flag as an optimistic overlay so the switch to the waiting view stays instant, OR-ing it with the server value.
-- [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — guess, hard-refresh, confirm the waiting view with the tally is restored rather than the guessing UI.
-- [ ] **Step 4: Commit** — `fix(game): derive guess submission state from the server`.
+- [x] **Step 1:** `guess-scenario.tsx:41` holds `hasGuessed` in component state, so a refresh mid-phase returns the player to the guessing UI even though their guess is recorded — and with Task 5.1 in place it would also hide the tally they had earned. Subscribe to `getGuessesStatusForRound` and use `viewerHasGuessed`.
+- [x] **Step 2:** Keep the local flag as an optimistic overlay so the switch to the waiting view stays instant, OR-ing it with the server value.
+- [x] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — guess, hard-refresh, confirm the waiting view with the tally is restored rather than the guessing UI.
+- [x] **Step 4: Commit** — `fix(game): derive guess submission state from the server`.
+
+> **Built slightly differently.** The tally is ordered server-side in draw order rather than sorted by count in the UI as Step 1 of 5.2 specified — a list that resorts itself on every vote is harder to follow than static rows with moving bars, and draw order matches the order the guessers were shown. Rendering lives in its own `components/game/guess-tally.tsx` rather than inline in `await-guesses.tsx`.
 
 ### Task 5.4: PR 5 verification sweep
 
-- [ ] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Manual with four profiles: as each player guesses, confirm the tally appears only for players who have already guessed and for the host, and that a player who has not guessed sees no counts anywhere in their network traffic.
+- [x] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Manual with four profiles: as each player guesses, confirm the tally appears only for players who have already guessed and for the host, and that a player who has not guessed sees no counts anywhere in their network traffic.
 
 ---
 
