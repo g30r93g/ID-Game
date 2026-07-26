@@ -199,6 +199,119 @@ test("transitionRoundPhase tolerates a no-op transition to the same phase", asyn
   expect(round?.phase).toBe("guess-scenario");
 });
 
+// A round with the answer already chosen, plus a non-host player, so the
+// "can a guesser see the answer" question can be asked in any phase.
+async function seedRoundWithSelectedScenario(
+  t: ReturnType<typeof convexTest>,
+  phase: "pick-scenario" | "rank-players" | "guess-scenario" | "display-results",
+) {
+  return t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "LEAK01",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "host",
+      startedAt: 1000,
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    await ctx.db.insert("players", {
+      userId: "guesser",
+      gameId,
+      displayName: "Guesser",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId,
+      phase,
+    });
+    const answerId = await ctx.db.insert("scenarios", {
+      description: "Most likely to lose their phone",
+      category: "General",
+    });
+    const decoyId = await ctx.db.insert("scenarios", {
+      description: "Most likely to cry at a film",
+      category: "General",
+    });
+    await ctx.db.insert("gameRoundScenarios", {
+      gameId,
+      roundId,
+      scenarioId: answerId,
+      selected: true,
+    });
+    await ctx.db.insert("gameRoundScenarios", {
+      gameId,
+      roundId,
+      scenarioId: decoyId,
+      selected: false,
+    });
+    return { gameId, roundId };
+  });
+}
+
+test("gameRoundScenarios hides the selected flag from non-hosts mid-round", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "guess-scenario");
+
+  const asGuesser = await t
+    .withIdentity({ subject: "guesser" })
+    .query(api.game.gameRoundScenarios, { gameRound: roundId });
+
+  expect(asGuesser).toHaveLength(2);
+  expect(asGuesser.filter((scenario) => scenario.selected)).toHaveLength(0);
+});
+
+test("gameRoundScenarios still reveals the selected flag to the round host", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "guess-scenario");
+
+  const asHost = await t
+    .withIdentity({ subject: "host" })
+    .query(api.game.gameRoundScenarios, { gameRound: roundId });
+
+  expect(asHost.filter((scenario) => scenario.selected)).toHaveLength(1);
+});
+
+test("gameRoundScenarios reveals the selected flag to everyone at display-results", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "display-results");
+
+  const asGuesser = await t
+    .withIdentity({ subject: "guesser" })
+    .query(api.game.gameRoundScenarios, { gameRound: roundId });
+
+  expect(asGuesser.filter((scenario) => scenario.selected)).toHaveLength(1);
+});
+
+test("getCorrectAnswer withholds the answer before results", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "guess-scenario");
+
+  const answer = await t
+    .withIdentity({ subject: "guesser" })
+    .query(api.game.getCorrectAnswer, { roundId });
+
+  expect(answer).toBeNull();
+});
+
+test("getCorrectAnswer returns the answer once results are shown", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "display-results");
+
+  const answer = await t
+    .withIdentity({ subject: "guesser" })
+    .query(api.game.getCorrectAnswer, { roundId });
+
+  expect(answer).toBe("Most likely to lose their phone");
+});
+
 test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
   const t = convexTest(schema, modules);
   const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {

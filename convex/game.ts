@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, MutationCtx } from "./_generated/server";
+import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
 
@@ -467,9 +467,33 @@ export const scenarioCategories = query({
   },
 });
 
+// Whether this caller may know which scenario the round host picked. The host
+// chose it, so they always may; everyone else waits for the reveal. Convex ships
+// query results to every subscriber, so without this gate `selected: true` is
+// readable straight out of a guesser's client cache during guess-scenario.
+async function canSeeSelectedScenario(
+  ctx: QueryCtx,
+  round: Doc<"gameRounds">,
+): Promise<boolean> {
+  if (round.phase === "display-results" || round.phase === "finished") {
+    return true;
+  }
+
+  const userId = (await ctx.auth.getUserIdentity())?.subject;
+  if (!userId) return false;
+
+  const host = await ctx.db.get(round.hostPlayerId);
+  return host?.userId === userId;
+}
+
 export const gameRoundScenarios = query({
   args: { gameRound: v.id("gameRounds") },
   handler: async (ctx, args) => {
+    const round = await ctx.db.get(args.gameRound);
+    if (!round) return [];
+
+    const revealSelected = await canSeeSelectedScenario(ctx, round);
+
     // Fetch all gameRoundScenarios entries for the given game round
     const scenarios = await ctx.db
       .query("gameRoundScenarios")
@@ -489,9 +513,11 @@ export const gameRoundScenarios = query({
       scenarioDocs.filter(Boolean).map((s) => [s!._id, s]),
     );
 
-    // Attach scenario details to each gameRoundScenario entry
+    // Attach scenario details to each gameRoundScenario entry. `selected` is
+    // blanked rather than omitted so the shape stays stable for every caller.
     return scenarios.map((scenario) => ({
       ...scenario,
+      selected: revealSelected ? scenario.selected : false,
       scenarioDetails: scenarioMap.get(scenario.scenarioId) ?? null, // Ensure graceful fallback
     }));
   },
@@ -957,6 +983,15 @@ export const makeGuessForRound = mutation({
 export const getCorrectAnswer = query({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
+    // This query hands back the answer in plain text, so it is gated on the
+    // round having actually reached its reveal. Otherwise any player could call
+    // it directly during guess-scenario and skip the guessing entirely.
+    const round = await ctx.db.get(args.roundId);
+    if (!round) return null;
+    if (round.phase !== "display-results" && round.phase !== "finished") {
+      return null;
+    }
+
     // get the gameRoundScenario for the round where `selected` is true
     const gameRoundScenario = await ctx.db
       .query("gameRoundScenarios")
