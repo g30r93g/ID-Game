@@ -205,6 +205,21 @@ export function Game({ preloadedGame }: GameProps) {
     }
   };
 
+  // The one backward step the round allows: the host reconsidering the category
+  // they picked. `transitionRoundPhase` rejects it once a scenario is locked in.
+  const goBack = () => {
+    if (!currentRound) return;
+
+    if (posthog) {
+      posthog.capture("game_phase_rewind", { phase: currentRound.phase });
+    }
+
+    transitionRoundPhase({
+      gameRoundId: currentRound._id,
+      toPhase: "create-scenarios",
+    }).catch(() => toast("Couldn't go back to the categories."));
+  };
+
   const gamePhaseTitle = () => {
     if (game?.isOpen) {
       return "Lobby";
@@ -288,6 +303,7 @@ export function Game({ preloadedGame }: GameProps) {
           <PickScenarioGamePhase
             gameRound={currentRound._id}
             advanceGame={advanceGame}
+            goBack={goBack}
           />
         ) : (
           <WaitGamePhase />
@@ -312,6 +328,10 @@ export function Game({ preloadedGame }: GameProps) {
             gameRoundId={currentRound._id}
             isHost={userIsHost()}
             advanceGame={userIsHost() ? advanceGame : undefined}
+            scenario={
+              currentRoundScenarios.find((x) => x.selected)?.scenarioDetails
+                ?.description
+            }
           />
         ) : (
           <GuessScenarioGamePhase
@@ -326,6 +346,7 @@ export function Game({ preloadedGame }: GameProps) {
             joinCode={game!.joinCode}
             roundId={currentRound._id}
             isHost={userIsHost()}
+            hostDisplayName={currentRoundHost?.displayName}
             isGameFinished={isGameFinished}
             advanceGame={advanceGame}
           />

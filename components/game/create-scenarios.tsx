@@ -21,6 +21,9 @@ export default function CreateScenariosGamePhase({
   advanceGame,
 }: CreateScenarioGamePhaseProps) {
   const scenarioCategories = useQuery(api.game.scenarioCategories);
+  const roundScenarios = useQuery(api.game.gameRoundScenarios, {
+    gameRound: gameRoundId,
+  });
   const generateScenarios = useMutation(api.game.selectScenariosForGameRound);
 
   const posthog = usePostHog();
@@ -28,6 +31,19 @@ export default function CreateScenariosGamePhase({
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
     undefined,
   );
+
+  // A host arriving here from "Change category" already has a draw. Show which
+  // category it came from instead of resetting to nothing. Seeded exactly once
+  // (guarded, set during render — the same pattern as rank-players) so it never
+  // overrides the host's own subsequent choice.
+  const [seededFromDraw, setSeededFromDraw] = useState<boolean>(false);
+  if (!seededFromDraw && roundScenarios !== undefined) {
+    setSeededFromDraw(true);
+    const drawnCategory = roundScenarios.find((roundScenario) =>
+      roundScenario.scenarioDetails,
+    )?.scenarioDetails?.category;
+    if (drawnCategory) setSelectedCategory(drawnCategory);
+  }
 
   async function handleCategorySelection() {
     if (!selectedCategory) return;

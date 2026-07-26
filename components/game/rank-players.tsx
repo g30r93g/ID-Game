@@ -12,6 +12,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { LoadingButton } from "@/components/ui/loading-button";
+import ScenarioBanner from "@/components/game/scenario-banner";
 
 interface RankPlayersGamePhaseProps {
   gameId: Id<"games">;
@@ -75,13 +76,7 @@ export default function RankPlayersGamePhase({
 
   return (
     <div className={"flex flex-col gap-8"}>
-      <div
-        className={
-          "rounded-lg p-2 px-4 border border-muted-foreground/50 font-semibold bg-secondary/75"
-        }
-      >
-        {scenario}
-      </div>
+      <ScenarioBanner scenario={scenario} />
       <div className={"grid grid-cols-1 gap-2"}>
         <span className={"pl-3 text-muted-foreground text-sm"}>
           Most likely

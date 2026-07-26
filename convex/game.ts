@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { authComponent } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, MutationCtx } from "./_generated/server";
+import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
 
@@ -467,9 +467,33 @@ export const scenarioCategories = query({
   },
 });
 
+// Whether this caller may know which scenario the round host picked. The host
+// chose it, so they always may; everyone else waits for the reveal. Convex ships
+// query results to every subscriber, so without this gate `selected: true` is
+// readable straight out of a guesser's client cache during guess-scenario.
+async function canSeeSelectedScenario(
+  ctx: QueryCtx,
+  round: Doc<"gameRounds">,
+): Promise<boolean> {
+  if (round.phase === "display-results" || round.phase === "finished") {
+    return true;
+  }
+
+  const userId = (await ctx.auth.getUserIdentity())?.subject;
+  if (!userId) return false;
+
+  const host = await ctx.db.get(round.hostPlayerId);
+  return host?.userId === userId;
+}
+
 export const gameRoundScenarios = query({
   args: { gameRound: v.id("gameRounds") },
   handler: async (ctx, args) => {
+    const round = await ctx.db.get(args.gameRound);
+    if (!round) return [];
+
+    const revealSelected = await canSeeSelectedScenario(ctx, round);
+
     // Fetch all gameRoundScenarios entries for the given game round
     const scenarios = await ctx.db
       .query("gameRoundScenarios")
@@ -489,9 +513,11 @@ export const gameRoundScenarios = query({
       scenarioDocs.filter(Boolean).map((s) => [s!._id, s]),
     );
 
-    // Attach scenario details to each gameRoundScenario entry
+    // Attach scenario details to each gameRoundScenario entry. `selected` is
+    // blanked rather than omitted so the shape stays stable for every caller.
     return scenarios.map((scenario) => ({
       ...scenario,
+      selected: revealSelected ? scenario.selected : false,
       scenarioDetails: scenarioMap.get(scenario.scenarioId) ?? null, // Ensure graceful fallback
     }));
   },
@@ -504,6 +530,32 @@ export const selectScenariosForGameRound = mutation({
     category: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to draw round scenarios.");
+    }
+
+    // Get game round referenced
+    const gameRound = await ctx.db.get(args.gameRound);
+    if (!gameRound) {
+      throw new Error("Game round does not exist");
+    }
+
+    // Ensure current user is the round host. This matters more now than it did
+    // when the mutation only inserted: it deletes any previous draw, so without
+    // the check any player could wipe the host's scenarios mid-round.
+    const gameRoundHostPlayer = await ctx.db.get(gameRound.hostPlayerId);
+    if (!gameRoundHostPlayer) {
+      throw new Error("Game round host does not exist");
+    }
+
+    if (userId !== gameRoundHostPlayer.userId) {
+      throw new Error(
+        "Only the game round host can draw the round's scenarios",
+      );
+    }
+
     // Fetch scenarios, leveraging index if a category is specified
     const query = args.category
       ? ctx.db
@@ -513,11 +565,26 @@ export const selectScenariosForGameRound = mutation({
 
     const scenarios = await query.collect();
 
+    // Checked before anything is deleted, so a re-draw into a category that
+    // turns out to be too small leaves the existing draw intact.
     if (scenarios.length < 10) {
       throw new Error(
         "Not enough scenarios available in the selected category.",
       );
     }
+
+    // A re-draw replaces the previous category's scenarios rather than adding to
+    // them. Once the host has locked one in the category can no longer change:
+    // selectGameRoundScenario has already incremented scenarios.timesSelected,
+    // and unwinding that is out of scope.
+    const existingDraw = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRound", (q) => q.eq("roundId", args.gameRound))
+      .collect();
+    if (existingDraw.some((row) => row.selected)) {
+      throw new Error("A scenario has already been selected.");
+    }
+    await Promise.all(existingDraw.map((row) => ctx.db.delete(row._id)));
 
     // Shuffle and pick 10 scenarios
     const shuffledScenarios = scenarios.sort(() => Math.random() - 0.5);
@@ -586,9 +653,28 @@ export const transitionRoundPhase = mutation({
       "guess-scenario": "display-results",
       "display-results": "finished",
     };
+    // The single sanctioned rewind: the host backing out of a category choice to
+    // pick a different one. Legal only while nothing has been locked in — after
+    // that `selectGameRoundScenario` has already bumped the scenario's
+    // timesSelected, and unwinding it is out of scope. Checked lazily so the
+    // extra read only happens for this one phase pair.
+    let isCategoryRewind = false;
+    if (
+      gameRound.phase === "pick-scenario" &&
+      args.toPhase === "create-scenarios"
+    ) {
+      const lockedIn = await ctx.db
+        .query("gameRoundScenarios")
+        .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
+        .filter((q) => q.eq(q.field("selected"), true))
+        .first();
+      isCategoryRewind = lockedIn === null;
+    }
+
     if (
       args.toPhase !== gameRound.phase &&
-      NEXT_PHASE[gameRound.phase] !== args.toPhase
+      NEXT_PHASE[gameRound.phase] !== args.toPhase &&
+      !isCategoryRewind
     ) {
       throw new Error(
         `Illegal phase transition: ${gameRound.phase} -> ${args.toPhase}`,
@@ -957,6 +1043,15 @@ export const makeGuessForRound = mutation({
 export const getCorrectAnswer = query({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
+    // This query hands back the answer in plain text, so it is gated on the
+    // round having actually reached its reveal. Otherwise any player could call
+    // it directly during guess-scenario and skip the guessing entirely.
+    const round = await ctx.db.get(args.roundId);
+    if (!round) return null;
+    if (round.phase !== "display-results" && round.phase !== "finished") {
+      return null;
+    }
+
     // get the gameRoundScenario for the round where `selected` is true
     const gameRoundScenario = await ctx.db
       .query("gameRoundScenarios")

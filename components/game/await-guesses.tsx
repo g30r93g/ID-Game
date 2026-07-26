@@ -1,24 +1,33 @@
 "use client";
 
-import { Id } from "@/convex/_generated/dataModel";
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import ScenarioBanner from "@/components/game/scenario-banner";
 import { Card, CardTitle } from "@/components/ui/card";
-import { Check, Loader2 } from "lucide-react";
-import { clsx } from "clsx";
-import { useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { clsx } from "clsx";
+import { useQuery } from "convex/react";
+import { Check, Eye, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface AwaitGuessesGamePhaseProps {
   gameRoundId: Id<"gameRounds">;
   isHost: boolean;
   advanceGame?: () => void;
+  /**
+   * The scenario the host picked, so they can re-check it while waiting rather
+   * than having to remember it. Passed only on the host branch; a non-host
+   * client could not resolve it anyway, because `gameRoundScenarios` withholds
+   * the `selected` flag from them until results.
+   */
+  scenario?: string;
 }
 
 export default function AwaitGuessesGamePhase({
   gameRoundId,
   isHost,
   advanceGame,
+  scenario,
 }: AwaitGuessesGamePhaseProps) {
   if (isHost && !advanceGame) {
     throw new Error("advanceGame must be defined if player is host");
@@ -50,6 +59,12 @@ export default function AwaitGuessesGamePhase({
     return () => clearTimeout(timeoutId);
   }, [guessStatus?.guessingCompleteByAllUsers, isHost]);
 
+  // Hidden by default: a host holding their phone up to show the guessers
+  // shouldn't reveal the answer by accident. The text stays mounted and is
+  // blurred rather than unmounted, so the banner keeps its size and the whole
+  // thing stays a large tap target instead of a small toggle button.
+  const [scenarioHidden, setScenarioHidden] = useState<boolean>(true);
+
   if (!guessStatus) {
     return <p className="text-center text-gray-500">Loading...</p>;
   }
@@ -58,6 +73,41 @@ export default function AwaitGuessesGamePhase({
 
   return (
     <>
+      {scenario && (
+        <button
+          type="button"
+          onClick={() => setScenarioHidden((hidden) => !hidden)}
+          aria-pressed={!scenarioHidden}
+          aria-label={scenarioHidden ? "Show scenario" : "Hide scenario"}
+          className="relative mb-6! w-full cursor-pointer text-left rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <ScenarioBanner
+            scenario={scenario}
+            className="w-full"
+            contentClassName={scenarioHidden ? "select-none" : undefined}
+            contentStyle={{
+              filter: scenarioHidden ? "blur(6px)" : "blur(0px)",
+              WebkitFilter: scenarioHidden ? "blur(6px)" : "blur(0px)",
+              opacity: scenarioHidden ? 0.7 : 1,
+              transition:
+                "filter 300ms ease-out, -webkit-filter 300ms ease-out, opacity 300ms ease-out",
+            }}
+          />
+          {/* Sits over the blurred text as the affordance, and fades out with
+              it. Never intercepts the tap — the whole banner is the target. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground"
+            style={{
+              opacity: scenarioHidden ? 1 : 0,
+              transition: "opacity 300ms ease-out",
+            }}
+          >
+            <Eye className="size-4 shrink-0" />
+            Peek at selected scenario
+          </span>
+        </button>
+      )}
       <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
         <div className="grid grid-cols-1 gap-2">
           {playerGuesses.map((playerGuess) => (
