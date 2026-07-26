@@ -128,29 +128,29 @@
 - Consumes: `motion` (already in `package.json`), existing `Dialog` primitives.
 - Produces: `GameInstructions` renders one step at a time with next/back controls and a progress indicator.
 
-- [ ] **Step 1:** Extract the eight `<li>` items plus the "Tip" card (`game-instructions.tsx:35-65`) into a module-level `SLIDES` array of `{ title, body }`. The tip becomes its own slide rather than an `<li>`-sibling `<Card>` — note the current markup nests a `<Card>` directly inside an `<ol>`, which is invalid HTML; the slideshow removes that.
-- [ ] **Step 2:** Render the active slide with a `motion` enter/exit transition, keyed on the slide index so direction reads correctly.
-- [ ] **Step 3:** Replace the single "Okay" footer button with Back / Next, where Next becomes "Got it" (closing the dialog) on the final slide. Add dot indicators.
-- [ ] **Step 4:** Support keyboard arrows and reset to slide 0 whenever the dialog reopens.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — open How To Play, page through, close and reopen (should start at slide 1).
-- [ ] **Step 6:** Commit — `feat(game): make How To Play a slideshow`.
+- [x] **Step 1:** Extract the eight `<li>` items plus the "Tip" card (`game-instructions.tsx:35-65`) into a module-level `SLIDES` array of `{ title, body }`. The tip becomes its own slide rather than an `<li>`-sibling `<Card>` — note the current markup nests a `<Card>` directly inside an `<ol>`, which is invalid HTML; the slideshow removes that.
+- [x] **Step 2:** Render the active slide with a `motion` enter/exit transition, keyed on the slide index so direction reads correctly.
+- [x] **Step 3:** Replace the single "Okay" footer button with Back / Next, where Next becomes "Got it" (closing the dialog) on the final slide. Add dot indicators.
+- [x] **Step 4:** Support keyboard arrows and reset to slide 0 whenever the dialog reopens.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — open How To Play, page through, close and reopen (should start at slide 1).
+- [x] **Step 6:** Commit — `feat(game): make How To Play a slideshow`.
 
 ### Task 2.2: Open the native share sheet for the join code
 
 **Interfaces:**
 - Produces: `LobbyGamePhase`'s share button calls `navigator.share` when available and falls back to the existing clipboard path.
 
-- [ ] **Step 1:** Rename `copyUrl` (`lobby/index.tsx:34-46`) to `shareGame` and branch on `typeof navigator !== "undefined" && !!navigator.share`.
-- [ ] **Step 2:** Share a payload of `title` ("The ID Game"), `text` (an invite naming the join code) and the existing `url`. Both prerequisites for the share sheet are already met: it is invoked from a click handler (user gesture) and the app is HTTPS in production.
-- [ ] **Step 3:** Swallow `AbortError` — the user dismissing the share sheet is not a failure and must not fire the "Failed to copy URL" toast. Any other rejection falls through to the clipboard path so the existing behaviour is preserved.
-- [ ] **Step 4:** Keep the clipboard branch exactly as-is for desktop browsers without `navigator.share`, including its toast copy.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a mobile browser the OS share sheet opens; on desktop Firefox the clipboard toast still appears.
-- [ ] **Step 6:** Commit — `feat(game): open the native share sheet for the join code`.
+- [x] **Step 1:** Rename `copyUrl` (`lobby/index.tsx:34-46`) to `shareGame` and branch on `typeof navigator !== "undefined" && !!navigator.share`.
+- [x] **Step 2:** Share a payload of `title` ("The ID Game"), `text` (an invite naming the join code) and the existing `url`. Both prerequisites for the share sheet are already met: it is invoked from a click handler (user gesture) and the app is HTTPS in production.
+- [x] **Step 3:** Swallow `AbortError` — the user dismissing the share sheet is not a failure and must not fire the "Failed to copy URL" toast. Any other rejection falls through to the clipboard path so the existing behaviour is preserved.
+- [x] **Step 4:** Keep the clipboard branch exactly as-is for desktop browsers without `navigator.share`, including its toast copy.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a mobile browser the OS share sheet opens; on desktop Firefox the clipboard toast still appears.
+- [x] **Step 6:** Commit — `feat(game): open the native share sheet for the join code`.
 
 ### Task 2.3: PR 2 verification sweep
 
-- [ ] `pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Confirm no Convex function or schema file appears in `git diff --name-only main...`.
+- [x] `pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Confirm no Convex function or schema file appears in `git diff --name-only main...`.
 
 ---
 
