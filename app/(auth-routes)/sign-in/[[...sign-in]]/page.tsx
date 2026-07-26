@@ -85,26 +85,39 @@ export default function SignInPage() {
 
   // Conditional-UI passkey autofill: offer stored passkeys from the email
   // field's autocomplete dropdown on supporting browsers.
+  //
+  // The ceremony can outlive this component and there is no way to abort it from
+  // here: `signIn.passkey` never forwards a signal to navigator.credentials.get()
+  // (`fetchOptions.signal` reaches only the verify request). That is survivable,
+  // because SimpleWebAuthn's WebAuthnAbortService aborts any in-flight ceremony
+  // whenever a new one begins — so pressing "Continue with passkey" supersedes
+  // this autofill on its own. What it cannot prevent is a late autofill success
+  // navigating a component that has already gone away, so `onSuccess` is guarded
+  // too, not just the availability check.
+  const autofillLive = React.useRef(true);
   React.useEffect(() => {
+    autofillLive.current = true;
     if (
       typeof window === "undefined" ||
       !window.PublicKeyCredential?.isConditionalMediationAvailable
     )
       return;
-    let cancelled = false;
     void PublicKeyCredential.isConditionalMediationAvailable().then(
       (available) => {
-        if (!available || cancelled) return;
+        if (!available || !autofillLive.current) return;
         void authClient.signIn.passkey({
           autoFill: true,
           fetchOptions: {
-            onSuccess: () => router.push(nextPath),
+            onSuccess: () => {
+              if (!autofillLive.current) return;
+              router.push(nextPath);
+            },
           },
         });
       },
     );
     return () => {
-      cancelled = true;
+      autofillLive.current = false;
     };
   }, [router, nextPath]);
 
