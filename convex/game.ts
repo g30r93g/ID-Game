@@ -60,8 +60,9 @@ export const sendHeartbeat = mutation({
     // several games at once, so byUser().first() is not safe here).
     const player = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.gameId).eq("userId", userId),
+      )
       .first();
 
     if (!player) {
@@ -106,8 +107,9 @@ export const isUserPlayer = query({
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
       .first();
 
     return !!userPlayer;
@@ -149,8 +151,9 @@ export const createGame = mutation({
     // insert conflicts on this read set and re-runs, finding the game below.
     const existingOpenGame = await ctx.db
       .query("games")
-      .withIndex("byIsOpen", (q) => q.eq("isOpen", true))
-      .filter((q) => q.eq(q.field("createdBy"), user.subject))
+      .withIndex("byIsOpenCreatedBy", (q) =>
+        q.eq("isOpen", true).eq("createdBy", user.subject),
+      )
       .first();
     if (existingOpenGame) {
       return existingOpenGame;
@@ -203,8 +206,9 @@ export const joinGame = mutation({
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
       .first();
 
     if (!userPlayer) {
@@ -234,8 +238,9 @@ export const leaveGame = mutation({
     // Get the player for the game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.gameId).eq("userId", user.subject),
+      )
       .first();
     if (!userPlayer) {
       return;
@@ -320,8 +325,9 @@ export const getPlayerForCurrentUserForGame = query({
     // Match user to player in game
     return await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.game))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.game).eq("userId", userId),
+      )
       .first();
   },
 });
@@ -414,8 +420,9 @@ export const startNewGameRound = mutation({
     if (newRoundNumber === 1) {
       const creatorPlayer = await ctx.db
         .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", args.game))
-        .filter((q) => q.eq(q.field("userId"), game.createdBy))
+        .withIndex("byGameUser", (q) =>
+          q.eq("gameId", args.game).eq("userId", game.createdBy),
+        )
         .first();
 
       if (creatorPlayer) {
@@ -665,8 +672,9 @@ export const transitionRoundPhase = mutation({
     ) {
       const lockedIn = await ctx.db
         .query("gameRoundScenarios")
-        .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
-        .filter((q) => q.eq(q.field("selected"), true))
+        .withIndex("byRoundSelected", (q) =>
+          q.eq("roundId", gameRound._id).eq("selected", true),
+        )
         .first();
       isCategoryRewind = lockedIn === null;
     }
@@ -689,7 +697,11 @@ export const transitionRoundPhase = mutation({
     if (
       game &&
       game.completedAt === undefined &&
-      shouldSetCompletedAt(args.toPhase, gameRound.roundNumber, game.totalRounds)
+      shouldSetCompletedAt(
+        args.toPhase,
+        gameRound.roundNumber,
+        game.totalRounds,
+      )
     ) {
       await ctx.db.patch(game._id, { completedAt: Date.now() });
     }
@@ -742,8 +754,9 @@ export const selectGameRoundScenario = mutation({
     // Unselect any previously selected scenario for this game round
     const selectedScenariosForRound = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.gameRoundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.gameRoundId).eq("selected", true),
+      )
       .collect();
 
     if (selectedScenariosForRound.length > 0) {
@@ -869,8 +882,9 @@ export const markGuessesForRound = mutation({
     // Get the selected scenario for the game round (assuming one selected scenario per round)
     const selectedScenario = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.roundId).eq("selected", true),
+      )
       .first();
 
     if (!selectedScenario) {
@@ -1070,8 +1084,9 @@ export const makeGuessForRound = mutation({
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.game))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.game).eq("userId", userId),
+      )
       .first();
 
     if (!player) {
@@ -1105,8 +1120,9 @@ export const getCorrectAnswer = query({
     // get the gameRoundScenario for the round where `selected` is true
     const gameRoundScenario = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.roundId).eq("selected", true),
+      )
       .first();
     if (!gameRoundScenario) {
       // throw new Error("No game round scenario for this round is selected as the correct answer!")
@@ -1170,8 +1186,9 @@ export const castPresenceVote = mutation({
 
     const caller = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", userId),
+      )
       .first();
     if (!caller || caller.active === false) {
       throw new Error("Only active players in the game can vote.");
@@ -1211,7 +1228,9 @@ export const castPresenceVote = mutation({
 
     // If the target is back online, cancel any open vote and do nothing.
     if (isConnected(target.lastAlive, now)) {
-      await Promise.all(existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)));
+      await Promise.all(
+        existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)),
+      );
       return { resolved: false as const };
     }
 

@@ -12,7 +12,10 @@ export default defineSchema({
     active: v.optional(v.boolean()),
   })
     .index("byGame", ["gameId"])
-    .index("byUser", ["userId"]),
+    .index("byUser", ["userId"])
+    // A user may be in several games at once, so resolving "me in this game"
+    // needs both fields. Without it every such lookup scans the players table.
+    .index("byGameUser", ["gameId", "userId"]),
 
   // One row per (target, voter) while a disconnect-recovery vote is open. Rows
   // are deleted when the vote resolves or the target reconnects.
@@ -37,7 +40,9 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("byJoinCode", ["joinCode"])
-    .index("byIsOpen", ["isOpen"])
+    // Finds a creator's existing open game without scanning all open games.
+    // Its `isOpen` prefix also serves plain open-game queries.
+    .index("byIsOpenCreatedBy", ["isOpen", "createdBy"])
     .index("byStartedAt", ["startedAt"])
     .index("byCompletedAt", ["completedAt"]),
 
@@ -85,7 +90,10 @@ export default defineSchema({
     roundId: v.id("gameRounds"),
     scenarioId: v.id("scenarios"),
     selected: v.boolean(),
-  }).index("byRound", ["roundId"]),
+  })
+    .index("byRound", ["roundId"])
+    // The round's chosen answer, looked up on nearly every phase transition.
+    .index("byRoundSelected", ["roundId", "selected"]),
 
   gameRoundPlayerRankings: defineTable({
     gameId: v.id("games"),
