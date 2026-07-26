@@ -653,9 +653,28 @@ export const transitionRoundPhase = mutation({
       "guess-scenario": "display-results",
       "display-results": "finished",
     };
+    // The single sanctioned rewind: the host backing out of a category choice to
+    // pick a different one. Legal only while nothing has been locked in — after
+    // that `selectGameRoundScenario` has already bumped the scenario's
+    // timesSelected, and unwinding it is out of scope. Checked lazily so the
+    // extra read only happens for this one phase pair.
+    let isCategoryRewind = false;
+    if (
+      gameRound.phase === "pick-scenario" &&
+      args.toPhase === "create-scenarios"
+    ) {
+      const lockedIn = await ctx.db
+        .query("gameRoundScenarios")
+        .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
+        .filter((q) => q.eq(q.field("selected"), true))
+        .first();
+      isCategoryRewind = lockedIn === null;
+    }
+
     if (
       args.toPhase !== gameRound.phase &&
-      NEXT_PHASE[gameRound.phase] !== args.toPhase
+      NEXT_PHASE[gameRound.phase] !== args.toPhase &&
+      !isCategoryRewind
     ) {
       throw new Error(
         `Illegal phase transition: ${gameRound.phase} -> ${args.toPhase}`,

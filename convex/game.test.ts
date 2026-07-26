@@ -441,6 +441,53 @@ test("selectScenariosForGameRound is host-only", async () => {
   ).rejects.toThrow(/host/);
 });
 
+test("transitionRoundPhase allows rewinding to category selection", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithPhase(t, "pick-scenario");
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "create-scenarios",
+    });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("create-scenarios");
+});
+
+test("transitionRoundPhase refuses the rewind once a scenario is selected", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedRoundWithSelectedScenario(t, "pick-scenario");
+
+  await expect(
+    t.withIdentity({ subject: "host" }).mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "create-scenarios",
+    }),
+  ).rejects.toThrow(/Illegal phase transition/);
+});
+
+test("transitionRoundPhase still rejects every other rewind", async () => {
+  const t = convexTest(schema, modules);
+
+  const ranking = await seedRoundWithPhase(t, "rank-players");
+  await expect(
+    t.withIdentity({ subject: "host" }).mutation(api.game.transitionRoundPhase, {
+      gameRoundId: ranking.roundId,
+      toPhase: "pick-scenario",
+    }),
+  ).rejects.toThrow(/Illegal phase transition/);
+
+  const guessing = await seedRoundWithPhase(t, "guess-scenario");
+  await expect(
+    t.withIdentity({ subject: "host" }).mutation(api.game.transitionRoundPhase, {
+      gameRoundId: guessing.roundId,
+      toPhase: "rank-players",
+    }),
+  ).rejects.toThrow(/Illegal phase transition/);
+});
+
 test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
   const t = convexTest(schema, modules);
   const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {
