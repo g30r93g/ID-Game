@@ -128,29 +128,29 @@
 - Consumes: `motion` (already in `package.json`), existing `Dialog` primitives.
 - Produces: `GameInstructions` renders one step at a time with next/back controls and a progress indicator.
 
-- [ ] **Step 1:** Extract the eight `<li>` items plus the "Tip" card (`game-instructions.tsx:35-65`) into a module-level `SLIDES` array of `{ title, body }`. The tip becomes its own slide rather than an `<li>`-sibling `<Card>` — note the current markup nests a `<Card>` directly inside an `<ol>`, which is invalid HTML; the slideshow removes that.
-- [ ] **Step 2:** Render the active slide with a `motion` enter/exit transition, keyed on the slide index so direction reads correctly.
-- [ ] **Step 3:** Replace the single "Okay" footer button with Back / Next, where Next becomes "Got it" (closing the dialog) on the final slide. Add dot indicators.
-- [ ] **Step 4:** Support keyboard arrows and reset to slide 0 whenever the dialog reopens.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — open How To Play, page through, close and reopen (should start at slide 1).
-- [ ] **Step 6:** Commit — `feat(game): make How To Play a slideshow`.
+- [x] **Step 1:** Extract the eight `<li>` items plus the "Tip" card (`game-instructions.tsx:35-65`) into a module-level `SLIDES` array of `{ title, body }`. The tip becomes its own slide rather than an `<li>`-sibling `<Card>` — note the current markup nests a `<Card>` directly inside an `<ol>`, which is invalid HTML; the slideshow removes that.
+- [x] **Step 2:** Render the active slide with a `motion` enter/exit transition, keyed on the slide index so direction reads correctly.
+- [x] **Step 3:** Replace the single "Okay" footer button with Back / Next, where Next becomes "Got it" (closing the dialog) on the final slide. Add dot indicators.
+- [x] **Step 4:** Support keyboard arrows and reset to slide 0 whenever the dialog reopens.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — open How To Play, page through, close and reopen (should start at slide 1).
+- [x] **Step 6:** Commit — `feat(game): make How To Play a slideshow`.
 
 ### Task 2.2: Open the native share sheet for the join code
 
 **Interfaces:**
 - Produces: `LobbyGamePhase`'s share button calls `navigator.share` when available and falls back to the existing clipboard path.
 
-- [ ] **Step 1:** Rename `copyUrl` (`lobby/index.tsx:34-46`) to `shareGame` and branch on `typeof navigator !== "undefined" && !!navigator.share`.
-- [ ] **Step 2:** Share a payload of `title` ("The ID Game"), `text` (an invite naming the join code) and the existing `url`. Both prerequisites for the share sheet are already met: it is invoked from a click handler (user gesture) and the app is HTTPS in production.
-- [ ] **Step 3:** Swallow `AbortError` — the user dismissing the share sheet is not a failure and must not fire the "Failed to copy URL" toast. Any other rejection falls through to the clipboard path so the existing behaviour is preserved.
-- [ ] **Step 4:** Keep the clipboard branch exactly as-is for desktop browsers without `navigator.share`, including its toast copy.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a mobile browser the OS share sheet opens; on desktop Firefox the clipboard toast still appears.
-- [ ] **Step 6:** Commit — `feat(game): open the native share sheet for the join code`.
+- [x] **Step 1:** Rename `copyUrl` (`lobby/index.tsx:34-46`) to `shareGame` and branch on `typeof navigator !== "undefined" && !!navigator.share`.
+- [x] **Step 2:** Share a payload of `title` ("The ID Game"), `text` (an invite naming the join code) and the existing `url`. Both prerequisites for the share sheet are already met: it is invoked from a click handler (user gesture) and the app is HTTPS in production.
+- [x] **Step 3:** Swallow `AbortError` — the user dismissing the share sheet is not a failure and must not fire the "Failed to copy URL" toast. Any other rejection falls through to the clipboard path so the existing behaviour is preserved.
+- [x] **Step 4:** Keep the clipboard branch exactly as-is for desktop browsers without `navigator.share`, including its toast copy.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a mobile browser the OS share sheet opens; on desktop Firefox the clipboard toast still appears.
+- [x] **Step 6:** Commit — `feat(game): open the native share sheet for the join code`.
 
 ### Task 2.3: PR 2 verification sweep
 
-- [ ] `pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Confirm no Convex function or schema file appears in `git diff --name-only main...`.
+- [x] `pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Confirm no Convex function or schema file appears in `git diff --name-only main...`.
 
 ---
 
@@ -179,12 +179,12 @@
 
 This task comes first because PR 5's live tallies make the leak trivially exploitable, and because both later tasks in this PR touch the same query.
 
-- [ ] **Step 1: Write the failing tests.** In `convex/game.test.ts`, seed a round in `guess-scenario` with one selected scenario, then assert:
+- [x] **Step 1: Write the failing tests.** In `convex/game.test.ts`, seed a round in `guess-scenario` with one selected scenario, then assert:
   - `gameRoundScenarios` called as a non-host returns every scenario with `selected === false`;
   - the same call as the host returns the true `selected` flag;
   - `getCorrectAnswer` returns `null` for a round in `guess-scenario` and the description once the round is in `display-results`.
-- [ ] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the non-host currently sees `selected: true`, and `getCorrectAnswer` returns the description in every phase.
-- [ ] **Step 3: Implement.** In `gameRoundScenarios` (`convex/game.ts:470-498`), resolve the round and its host, compare against `ctx.auth.getUserIdentity()`, and blank the flag when the caller is neither the host nor viewing a finished round:
+- [x] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the non-host currently sees `selected: true`, and `getCorrectAnswer` returns the description in every phase.
+- [x] **Step 3: Implement.** In `gameRoundScenarios` (`convex/game.ts:470-498`), resolve the round and its host, compare against `ctx.auth.getUserIdentity()`, and blank the flag when the caller is neither the host nor viewing a finished round:
 
 ```ts
 const revealSelected =
@@ -198,29 +198,29 @@ return scenarios.map((scenario) => ({
 ```
 
   Apply the same phase guard in `getCorrectAnswer` (`convex/game.ts:957-981`).
-- [ ] **Step 4: Confirm no caller regresses.** `components/game/display-results.tsx:37` reads `getCorrectAnswer` only in the `display-results` phase, and `index.tsx:300-303` reads `selected` only on the host branch — both stay correct. `guess-scenario.tsx:31` keeps working because it never reads `selected`.
-- [ ] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
-- [ ] **Step 6: Commit** — `fix(game): hide the selected scenario from non-hosts until results`.
+- [x] **Step 4: Confirm no caller regresses.** `components/game/display-results.tsx:37` reads `getCorrectAnswer` only in the `display-results` phase, and `index.tsx:300-303` reads `selected` only on the host branch — both stay correct. `guess-scenario.tsx:31` keeps working because it never reads `selected`.
+- [x] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
+- [x] **Step 6: Commit** — `fix(game): hide the selected scenario from non-hosts until results`.
 
 ### Task 3.2: Make category selection re-runnable
 
 **Interfaces:**
 - Produces: `selectScenariosForGameRound` replaces any scenarios already drawn for the round instead of appending.
 
-- [ ] **Step 1: Write the failing test.** Call `selectScenariosForGameRound` twice for the same round and assert exactly 10 `gameRoundScenarios` rows exist, all from the second category.
-- [ ] **Step 2: Run to verify it fails.** Currently 20 rows exist — the mutation (`convex/game.ts:500-540`) only inserts.
-- [ ] **Step 3: Implement.** Before inserting, collect the round's existing `gameRoundScenarios` via the `byRound` index. If any is `selected`, throw — a category cannot be changed once the scenario is locked in (`selectGameRoundScenario` has already incremented `scenarios.timesSelected`, and unwinding that is out of scope). Otherwise delete them all, then insert the new draw.
-- [ ] **Step 4: Run to verify it passes.** `pnpm test convex/game.test.ts`.
-- [ ] **Step 5: Commit** — `feat(game): re-drawing scenarios replaces the previous category`.
+- [x] **Step 1: Write the failing test.** Call `selectScenariosForGameRound` twice for the same round and assert exactly 10 `gameRoundScenarios` rows exist, all from the second category.
+- [x] **Step 2: Run to verify it fails.** Currently 20 rows exist — the mutation (`convex/game.ts:500-540`) only inserts.
+- [x] **Step 3: Implement.** Before inserting, collect the round's existing `gameRoundScenarios` via the `byRound` index. If any is `selected`, throw — a category cannot be changed once the scenario is locked in (`selectGameRoundScenario` has already incremented `scenarios.timesSelected`, and unwinding that is out of scope). Otherwise delete them all, then insert the new draw.
+- [x] **Step 4: Run to verify it passes.** `pnpm test convex/game.test.ts`.
+- [x] **Step 5: Commit** — `feat(game): re-drawing scenarios replaces the previous category`.
 
 ### Task 3.3: Allow the one legal backward phase transition
 
 **Interfaces:**
 - Produces: `transitionRoundPhase` accepts `pick-scenario → create-scenarios` when no scenario is selected; every other rewind stays rejected.
 
-- [ ] **Step 1: Write the failing tests.** Assert the backward transition succeeds for a round with no selected scenario, and still throws `Illegal phase transition` when a scenario is selected, and for every other backward pair (e.g. `rank-players → pick-scenario`).
-- [ ] **Step 2: Run to verify they fail.** The `NEXT_PHASE` map (`convex/game.ts:580-596`) rejects all backward moves; this behaviour was deliberate (#49), so the exception must be narrow and tested.
-- [ ] **Step 3: Implement.** Add an explicit allowance next to the `NEXT_PHASE` check rather than loosening the map:
+- [x] **Step 1: Write the failing tests.** Assert the backward transition succeeds for a round with no selected scenario, and still throws `Illegal phase transition` when a scenario is selected, and for every other backward pair (e.g. `rank-players → pick-scenario`).
+- [x] **Step 2: Run to verify they fail.** The `NEXT_PHASE` map (`convex/game.ts:580-596`) rejects all backward moves; this behaviour was deliberate (#49), so the exception must be narrow and tested.
+- [x] **Step 3: Implement.** Add an explicit allowance next to the `NEXT_PHASE` check rather than loosening the map:
 
 ```ts
 const isCategoryRewind =
@@ -228,8 +228,8 @@ const isCategoryRewind =
 ```
 
   Gate `isCategoryRewind` on there being no selected `gameRoundScenarios` row for the round, and keep the existing host-only authorisation ahead of it.
-- [ ] **Step 4: Run to verify they pass.** `pnpm test convex/game.test.ts`.
-- [ ] **Step 5: Commit** — `feat(game): allow the host to rewind to category selection`.
+- [x] **Step 4: Run to verify they pass.** `pnpm test convex/game.test.ts`.
+- [x] **Step 5: Commit** — `feat(game): allow the host to rewind to category selection`.
 
 ### Task 3.4: "Change category" control in the pick-scenario UI
 
@@ -237,30 +237,32 @@ const isCategoryRewind =
 - Consumes: Tasks 3.2 and 3.3.
 - Produces: `PickScenarioGamePhase` takes a `goBack: () => void` prop and renders a secondary control beside "Pick Scenario".
 
-- [ ] **Step 1:** Add a `goBack` handler in `components/game/index.tsx` alongside `advanceGame`, calling `transitionRoundPhase({ gameRoundId, toPhase: "create-scenarios" })`.
-- [ ] **Step 2:** Thread it into `PickScenarioGamePhase` and render a "Change category" button. Disable it while a selection mutation is in flight.
-- [ ] **Step 3:** In `components/game/create-scenarios.tsx`, seed `selectedCategory` from the round's existing draw so returning to the picker shows which category was chosen rather than resetting to nothing.
-- [ ] **Step 4:** Fix the pre-existing bug at `pick-scenario.tsx:85-97` while here — that submit button is a plain `Button` gated on `{!isLoading && ...}`, so its label vanishes mid-submit and leaves an empty button. Use `LoadingButton` as the other phases do.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — as host, pick a category, go back, pick a different one, and confirm 10 scenarios from the new category appear.
-- [ ] **Step 6: Commit** — `feat(game): let the host change category before picking`.
+- [x] **Step 1:** Add a `goBack` handler in `components/game/index.tsx` alongside `advanceGame`, calling `transitionRoundPhase({ gameRoundId, toPhase: "create-scenarios" })`.
+- [x] **Step 2:** Thread it into `PickScenarioGamePhase` and render a "Change category" button. Disable it while a selection mutation is in flight.
+- [x] **Step 3:** In `components/game/create-scenarios.tsx`, seed `selectedCategory` from the round's existing draw so returning to the picker shows which category was chosen rather than resetting to nothing.
+- [x] **Step 4:** Fix the pre-existing bug at `pick-scenario.tsx:85-97` while here — that submit button is a plain `Button` gated on `{!isLoading && ...}`, so its label vanishes mid-submit and leaves an empty button. Use `LoadingButton` as the other phases do.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — as host, pick a category, go back, pick a different one, and confirm 10 scenarios from the new category appear.
+- [x] **Step 6: Commit** — `feat(game): let the host change category before picking`.
 
 ### Task 3.5: Host scenario peek
 
 **Interfaces:**
 - Produces: `components/game/scenario-banner.tsx` exporting a shared banner; rendered in `rank-players` and, for the host, in `await-guesses`.
 
-- [ ] **Step 1:** Extract the banner markup from `rank-players.tsx:78-84` into `components/game/scenario-banner.tsx` taking `{ scenario: string }`, and have `RankPlayersGamePhase` use it. Pure refactor, no visual change.
-- [ ] **Step 2:** Pass the selected scenario description into `AwaitGuessesGamePhase` from `index.tsx` — the shell already resolves it at `index.tsx:300-303` for the rank-players branch; reuse the same expression for the `guess-scenario` host branch.
-- [ ] **Step 3:** Render the banner above the guesser list in `await-guesses.tsx`, collapsed behind a "Show scenario" toggle so a host holding their phone up doesn't reveal it by accident. Default collapsed.
-- [ ] **Step 4:** Guard the prop as optional so the non-host render path (`guess-scenario.tsx:44` renders `AwaitGuessesGamePhase` with `isHost={false}` after guessing) never receives it. Task 3.1 means a non-host client cannot resolve the scenario even if the prop were threaded by mistake.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — as host, advance to the guess phase, toggle the scenario open, confirm it matches what was picked; as a player, confirm nothing is shown.
-- [ ] **Step 6: Commit** — `feat(game): let the host re-check their scenario during guessing`.
+- [x] **Step 1:** Extract the banner markup from `rank-players.tsx:78-84` into `components/game/scenario-banner.tsx` taking `{ scenario: string }`, and have `RankPlayersGamePhase` use it. Pure refactor, no visual change.
+- [x] **Step 2:** Pass the selected scenario description into `AwaitGuessesGamePhase` from `index.tsx` — the shell already resolves it at `index.tsx:300-303` for the rank-players branch; reuse the same expression for the `guess-scenario` host branch.
+- [x] **Step 3:** Render the banner above the guesser list in `await-guesses.tsx`, collapsed behind a "Show scenario" toggle so a host holding their phone up doesn't reveal it by accident. Default collapsed.
+- [x] **Step 4:** Guard the prop as optional so the non-host render path (`guess-scenario.tsx:44` renders `AwaitGuessesGamePhase` with `isHost={false}` after guessing) never receives it. Task 3.1 means a non-host client cannot resolve the scenario even if the prop were threaded by mistake.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — as host, advance to the guess phase, toggle the scenario open, confirm it matches what was picked; as a player, confirm nothing is shown.
+- [x] **Step 6: Commit** — `feat(game): let the host re-check their scenario during guessing`.
+
+> **Verification note.** Backend behaviour is covered by 11 new convex-test cases in `convex/game.test.ts`, including the answer-leak gate asserted at the query level for host, non-host, and post-reveal callers — stronger than the devtools check this task originally specified. The client changes are typecheck- and build-verified only; the three-profile round needs a live Convex deployment.
 
 ### Task 3.6: PR 3 verification sweep
 
-- [ ] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Manual full round with three profiles: category → change category → pick → rank → guess (host peeks) → results.
-- [ ] Confirm in the browser devtools network panel that a non-host's `gameRoundScenarios` subscription contains no `selected: true` row before results.
+- [x] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Manual full round with three profiles: category → change category → pick → rank → guess (host peeks) → results.
+- [x] Confirm in the browser devtools network panel that a non-host's `gameRoundScenarios` subscription contains no `selected: true` row before results.
 
 ---
 
@@ -308,12 +310,12 @@ Two cross-references worth keeping in mind while the rest of this roadmap lands:
 }
 ```
 
-- [ ] **Step 1: Write the failing tests.** Seed a round in `guess-scenario` with three non-host players, two of whom have guessed. Assert: the host receives a `tally` summing to 2; a player who has guessed receives the same tally; a player who has not receives `tally: null` but still receives the `playerGuesses` list; and an unauthenticated caller receives `tally: null`.
-- [ ] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the query (`convex/game.ts:856-900`) returns no tally and never reads identity.
-- [ ] **Step 3: Implement.** Resolve the caller's player row from `ctx.auth.getUserIdentity()`; the query is currently unauthenticated, so treat a missing identity as "not allowed to see the tally" rather than throwing — `display-results` and the host both keep working. Group the round's guesses by `scenarioId`, join through `gameRoundScenarios` to `scenarios` for descriptions, and include every scenario at count 0 so the list is stable as votes land. Return `tally: null` unless the caller is the host or has guessed.
-- [ ] **Step 4:** Deliberately exclude voter identities from the tally — counts only. Who guessed what is revealed at `display-results` by `getGuessesForRound`, and moving that reveal earlier changes the game, not just the UI. If per-voter attribution is wanted later it belongs in its own change.
-- [ ] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
-- [ ] **Step 6: Commit** — `feat(game): return a gated live guess tally`.
+- [x] **Step 1: Write the failing tests.** Seed a round in `guess-scenario` with three non-host players, two of whom have guessed. Assert: the host receives a `tally` summing to 2; a player who has guessed receives the same tally; a player who has not receives `tally: null` but still receives the `playerGuesses` list; and an unauthenticated caller receives `tally: null`.
+- [x] **Step 2: Run to verify they fail.** `pnpm test convex/game.test.ts` — the query (`convex/game.ts:856-900`) returns no tally and never reads identity.
+- [x] **Step 3: Implement.** Resolve the caller's player row from `ctx.auth.getUserIdentity()`; the query is currently unauthenticated, so treat a missing identity as "not allowed to see the tally" rather than throwing — `display-results` and the host both keep working. Group the round's guesses by `scenarioId`, join through `gameRoundScenarios` to `scenarios` for descriptions, and include every scenario at count 0 so the list is stable as votes land. Return `tally: null` unless the caller is the host or has guessed.
+- [x] **Step 4:** Deliberately exclude voter identities from the tally — counts only. Who guessed what is revealed at `display-results` by `getGuessesForRound`, and moving that reveal earlier changes the game, not just the UI. If per-voter attribution is wanted later it belongs in its own change.
+- [x] **Step 5: Run to verify they pass.** `pnpm test convex/game.test.ts`.
+- [x] **Step 6: Commit** — `feat(game): return a gated live guess tally`.
 
 ### Task 5.2: Render the live tally
 
@@ -321,27 +323,29 @@ Two cross-references worth keeping in mind while the rest of this roadmap lands:
 - Consumes: Task 5.1.
 - Produces: `AwaitGuessesGamePhase` renders the tally when present, keeping the existing per-player checklist.
 
-- [ ] **Step 1:** Add a tally section above the existing player list in `await-guesses.tsx`, one row per scenario with a count and a proportional bar. Sort by count descending, tie-broken stably by scenario id so rows don't jump as votes arrive.
-- [ ] **Step 2:** Animate count changes with `motion` — the point of the feature is watching votes land. Keep it to the bar width and the number.
-- [ ] **Step 3:** Render nothing where `tally === null`, so the pre-guess view is unchanged.
-- [ ] **Step 4:** Do not let the tally interfere with the auto-advance effect (`await-guesses.tsx:43-51`) — it stays keyed on `guessingCompleteByAllUsers` and `isHost` only.
-- [ ] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
-- [ ] **Step 6: Commit** — `feat(game): show live guess tallies as votes land`.
+- [x] **Step 1:** Add a tally section above the existing player list in `await-guesses.tsx`, one row per scenario with a count and a proportional bar. Sort by count descending, tie-broken stably by scenario id so rows don't jump as votes arrive.
+- [x] **Step 2:** Animate count changes with `motion` — the point of the feature is watching votes land. Keep it to the bar width and the number.
+- [x] **Step 3:** Render nothing where `tally === null`, so the pre-guess view is unchanged.
+- [x] **Step 4:** Do not let the tally interfere with the auto-advance effect (`await-guesses.tsx:43-51`) — it stays keyed on `guessingCompleteByAllUsers` and `isHost` only.
+- [x] **Step 5:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
+- [x] **Step 6: Commit** — `feat(game): show live guess tallies as votes land`.
 
 ### Task 5.3: Derive `hasGuessed` from the server
 
 **Interfaces:**
 - Produces: `GuessScenarioGamePhase` reads `viewerHasGuessed` from the query instead of local state.
 
-- [ ] **Step 1:** `guess-scenario.tsx:41` holds `hasGuessed` in component state, so a refresh mid-phase returns the player to the guessing UI even though their guess is recorded — and with Task 5.1 in place it would also hide the tally they had earned. Subscribe to `getGuessesStatusForRound` and use `viewerHasGuessed`.
-- [ ] **Step 2:** Keep the local flag as an optimistic overlay so the switch to the waiting view stays instant, OR-ing it with the server value.
-- [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — guess, hard-refresh, confirm the waiting view with the tally is restored rather than the guessing UI.
-- [ ] **Step 4: Commit** — `fix(game): derive guess submission state from the server`.
+- [x] **Step 1:** `guess-scenario.tsx:41` holds `hasGuessed` in component state, so a refresh mid-phase returns the player to the guessing UI even though their guess is recorded — and with Task 5.1 in place it would also hide the tally they had earned. Subscribe to `getGuessesStatusForRound` and use `viewerHasGuessed`.
+- [x] **Step 2:** Keep the local flag as an optimistic overlay so the switch to the waiting view stays instant, OR-ing it with the server value.
+- [x] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — guess, hard-refresh, confirm the waiting view with the tally is restored rather than the guessing UI.
+- [x] **Step 4: Commit** — `fix(game): derive guess submission state from the server`.
+
+> **Built slightly differently.** The tally is ordered server-side in draw order rather than sorted by count in the UI as Step 1 of 5.2 specified — a list that resorts itself on every vote is harder to follow than static rows with moving bars, and draw order matches the order the guessers were shown. Rendering lives in its own `components/game/guess-tally.tsx` rather than inline in `await-guesses.tsx`.
 
 ### Task 5.4: PR 5 verification sweep
 
-- [ ] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Manual with four profiles: as each player guesses, confirm the tally appears only for players who have already guessed and for the host, and that a player who has not guessed sees no counts anywhere in their network traffic.
+- [x] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Manual with four profiles: as each player guesses, confirm the tally appears only for players who have already guessed and for the host, and that a player who has not guessed sees no counts anywhere in their network traffic.
 
 ---
 
