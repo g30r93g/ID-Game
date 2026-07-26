@@ -2,21 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { usePostHog } from "posthog-js/react";
 
 interface PickScenarioGamePhaseProps {
   gameRound: Id<"gameRounds">;
   advanceGame: () => void;
+  /** Rewind to category selection. Only offered before a scenario is chosen. */
+  goBack: () => void;
 }
 
 export default function PickScenarioGamePhase({
   gameRound,
   advanceGame,
+  goBack,
 }: PickScenarioGamePhaseProps) {
   const roundScenarios = useQuery(api.game.gameRoundScenarios, { gameRound });
   const performRoundScenarioSelection = useMutation(
@@ -82,19 +86,32 @@ export default function PickScenarioGamePhase({
           })}
         </div>
       </ScrollArea>
-      <Button
-        disabled={!selectedScenario}
-        onClick={() => {
-          handleScenarioSelection();
-        }}
-      >
-        {!isLoading && (
-          <>
-            Pick Scenario
-            <ArrowRight />
-          </>
-        )}
-      </Button>
+      <div className={"flex flex-col gap-2"}>
+        <LoadingButton
+          loading={isLoading}
+          disabled={!selectedScenario || isLoading}
+          onClick={() => {
+            handleScenarioSelection();
+          }}
+        >
+          {!isLoading && (
+            <>
+              Pick Scenario
+              <ArrowRight />
+            </>
+          )}
+        </LoadingButton>
+        <Button
+          variant={"ghost"}
+          disabled={isLoading}
+          onClick={() => {
+            goBack();
+          }}
+        >
+          <ArrowLeft />
+          Change category
+        </Button>
+      </div>
     </div>
   );
 }
