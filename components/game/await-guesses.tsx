@@ -4,21 +4,31 @@ import { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { Card, CardTitle } from "@/components/ui/card";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import ScenarioBanner from "@/components/game/scenario-banner";
 
 interface AwaitGuessesGamePhaseProps {
   gameRoundId: Id<"gameRounds">;
   isHost: boolean;
   advanceGame?: () => void;
+  /**
+   * The scenario the host picked, so they can re-check it while waiting rather
+   * than having to remember it. Passed only on the host branch; a non-host
+   * client could not resolve it anyway, because `gameRoundScenarios` withholds
+   * the `selected` flag from them until results.
+   */
+  scenario?: string;
 }
 
 export default function AwaitGuessesGamePhase({
   gameRoundId,
   isHost,
   advanceGame,
+  scenario,
 }: AwaitGuessesGamePhaseProps) {
   if (isHost && !advanceGame) {
     throw new Error("advanceGame must be defined if player is host");
@@ -50,6 +60,10 @@ export default function AwaitGuessesGamePhase({
     return () => clearTimeout(timeoutId);
   }, [guessStatus?.guessingCompleteByAllUsers, isHost]);
 
+  // Collapsed by default: a host holding their phone up to show the guessers
+  // shouldn't reveal the answer by accident.
+  const [scenarioVisible, setScenarioVisible] = useState<boolean>(false);
+
   if (!guessStatus) {
     return <p className="text-center text-gray-500">Loading...</p>;
   }
@@ -58,6 +72,21 @@ export default function AwaitGuessesGamePhase({
 
   return (
     <>
+      {scenario && (
+        <div className="mb-3 flex flex-col items-start gap-2">
+          {scenarioVisible && (
+            <ScenarioBanner scenario={scenario} className="w-full" />
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setScenarioVisible((visible) => !visible)}
+          >
+            {scenarioVisible ? <EyeOff /> : <Eye />}
+            {scenarioVisible ? "Hide scenario" : "Show scenario"}
+          </Button>
+        </div>
+      )}
       <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
         <div className="grid grid-cols-1 gap-2">
           {playerGuesses.map((playerGuess) => (
