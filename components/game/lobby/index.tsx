@@ -31,8 +31,28 @@ export default function LobbyGamePhase({
   isHost,
   advanceGame,
 }: LobbyGamePhaseProps) {
-  const copyUrl = useCallback(async () => {
+  const shareGame = useCallback(async () => {
     const url = `${window.location.origin}/game/${joinCode}`;
+
+    // Prefer the OS share sheet. Both of its preconditions already hold here:
+    // this runs from a click handler (a user gesture) and the app is served
+    // over HTTPS.
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "The ID Game",
+          text: `Join my game — code ${joinCode}`,
+          url,
+        });
+        return;
+      } catch (error) {
+        // Dismissing the sheet rejects with AbortError. That is a choice, not a
+        // failure, so it must not fall through to the clipboard path and toast
+        // at someone who just changed their mind. Anything else does fall
+        // through — no share target, permission denied, and so on.
+        if ((error as Error)?.name === "AbortError") return;
+      }
+    }
 
     try {
       await navigator.clipboard.writeText(url);
@@ -65,8 +85,10 @@ export default function LobbyGamePhase({
           </InputOTP>
           <Button
             variant={"ghost"}
+            aria-label="Share this game"
+            title="Share this game"
             onClick={() => {
-              copyUrl();
+              shareGame();
             }}
           >
             <Share />
