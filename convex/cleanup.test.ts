@@ -3,7 +3,10 @@ import { expect, test } from "vitest";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 
+import betterAuthSchema from "./betterAuth/schema";
+
 const modules = import.meta.glob("./**/*.*s");
+const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
 
 test("markAbandonedGames marks only games that break the rules", async () => {
   const t = convexTest(schema, modules);
@@ -161,6 +164,36 @@ test("a heartbeat clears the abandoned mark and restores the game", async () => 
   expect(result.map((g) => g.joinCode)).toEqual(["RES001"]);
 });
 
-// createGame's reuse decision is covered by findReusableLobby's unit tests in
-// lib/continuable.test.ts. Driving createGame itself here would mean seeding a
-// better-auth user record for the component it reads the display name from.
+test("createGame does not hand back an abandoned lobby", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+  const now = Date.now();
+
+  await t.run(async (ctx) => {
+    const dead = await ctx.db.insert("games", {
+      joinCode: "DED001",
+      totalRounds: 5,
+      isOpen: true,
+      createdBy: "me",
+      abandonedAt: now - 60 * 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: dead,
+      displayName: "Me",
+      lastAlive: now - 2 * 60 * 60_000,
+    });
+  });
+
+  // createGame resolves a display name through the betterAuth component, which
+  // looks the caller's session up by `identity.sessionId` — omit it and the
+  // component call fails its own arg validation before the dedupe is reached.
+  // No session row exists here, so the lookup simply finds nothing and
+  // createGame falls back to its default name.
+  const created = await t
+    .withIdentity({ subject: "me", sessionId: "session" })
+    .mutation(api.game.createGame, { numberOfRounds: 5 });
+
+  expect(created!.joinCode).not.toBe("DED001");
+  expect(created!.abandonedAt).toBeUndefined();
+});
