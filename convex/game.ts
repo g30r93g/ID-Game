@@ -4,6 +4,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
+import { evaluateContinuity } from "../lib/continuable";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -295,9 +296,27 @@ export const getMyActiveGames = query({
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", game._id))
         .collect();
-      const connectedPlayerCount = players.filter(
-        (p) => p.active !== false && isConnected(p.lastAlive, now),
+      const activePlayers = players.filter((p) => p.active !== false);
+      // Others, not everyone: the caller is sitting on the join screen, where
+      // no heartbeat is sent, so counting themselves would be misleading.
+      const othersOnline = activePlayers.filter(
+        (p) => p._id !== myPlayer._id && isConnected(p.lastAlive, now),
       ).length;
+      const lastActivityAt = activePlayers.reduce(
+        (newest, p) => Math.max(newest, p.lastAlive),
+        0,
+      );
+
+      // Hide games that have been abandoned rather than merely left.
+      const continuity = evaluateContinuity(
+        {
+          startedAt: game.startedAt,
+          lastActivityAt,
+          activePlayerCount: activePlayers.length,
+        },
+        now,
+      );
+      if (!continuity.continuable) continue;
 
       results.push({
         gameId: game._id,
@@ -305,11 +324,13 @@ export const getMyActiveGames = query({
         isOpen: game.isOpen,
         currentRound: game.currentRound ?? 0,
         totalRounds: game.totalRounds,
-        connectedPlayerCount,
+        othersOnline,
+        lastActivityAt,
       });
     }
 
-    return results;
+    // Most recently active first, so the game just left sits at the top.
+    return results.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
   },
 });
 

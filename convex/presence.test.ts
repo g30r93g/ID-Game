@@ -159,7 +159,98 @@ test("getMyActiveGames returns only unfinished games the user still belongs to",
 
   expect(result.map((g) => g.joinCode)).toEqual(["ACT001"]);
   expect(result[0].currentRound).toBe(2);
-  expect(result[0].connectedPlayerCount).toBe(1);
+  // The caller is not counted among the others.
+  expect(result[0].othersOnline).toBe(0);
+});
+
+test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+
+  await t.run(async (ctx) => {
+    // Started hours ago, nobody has heartbeat since — abandoned.
+    const stale = await ctx.db.insert("games", {
+      joinCode: "STL001",
+      totalRounds: 5,
+      currentRound: 2,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 5 * 60 * 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: stale,
+      displayName: "Me",
+      lastAlive: now - 4 * 60 * 60_000,
+    });
+
+    // Lobby nobody has touched for an hour — abandoned.
+    const idleLobby = await ctx.db.insert("games", {
+      joinCode: "IDL002",
+      totalRounds: 5,
+      isOpen: true,
+      createdBy: "me",
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: idleLobby,
+      displayName: "Me",
+      lastAlive: now - 60 * 60_000,
+    });
+
+    // Left minutes ago and everyone is offline — still continuable.
+    const empty = await ctx.db.insert("games", {
+      joinCode: "EMP003",
+      totalRounds: 5,
+      currentRound: 3,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 20 * 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: empty,
+      displayName: "Me",
+      lastAlive: now - 5 * 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "friend",
+      gameId: empty,
+      displayName: "Friend",
+      lastAlive: now - 6 * 60_000,
+    });
+
+    // Someone is in there right now.
+    const live = await ctx.db.insert("games", {
+      joinCode: "LIV004",
+      totalRounds: 5,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: live,
+      displayName: "Me",
+      lastAlive: now - 30 * 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "friend",
+      gameId: live,
+      displayName: "Friend",
+      lastAlive: now,
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "me" })
+    .query(api.game.getMyActiveGames, {});
+
+  // Sorted by most recent activity: the live game first.
+  expect(result.map((g) => g.joinCode)).toEqual(["LIV004", "EMP003"]);
+  expect(result[0].othersOnline).toBe(1);
+  expect(result[1].othersOnline).toBe(0);
 });
 
 test("pickHost returns the least-hosted candidate", async () => {
