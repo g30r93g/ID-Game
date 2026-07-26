@@ -23,7 +23,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Fingerprint, Mail } from "lucide-react";
 
-type Step = "start" | "otp" | "add-passkey";
+// "redirecting" covers the window between a credential being accepted and the
+// destination painting. It is not cosmetic: `proxy.ts` gates /game on session
+// cookie presence alone, so the route is reachable a beat before the Convex
+// client holds a token, and without this the app looks stalled.
+type Step = "start" | "otp" | "add-passkey" | "redirecting";
 type Mode = "sign-in" | "sign-up";
 // Which auth action is in flight. A single boolean can't distinguish "waiting on
 // the OS passkey sheet" (which can sit open for many seconds) from "verifying
@@ -110,6 +114,7 @@ export default function SignInPage() {
           fetchOptions: {
             onSuccess: () => {
               if (!autofillLive.current) return;
+              setStep("redirecting");
               router.push(nextPath);
             },
           },
@@ -141,6 +146,7 @@ export default function SignInPage() {
         );
         return;
       }
+      setStep("redirecting");
       router.push(nextPath);
     } finally {
       setAction(null);
@@ -197,6 +203,7 @@ export default function SignInPage() {
       if (!passkeys || passkeys.length === 0) {
         setStep("add-passkey");
       } else {
+        setStep("redirecting");
         router.push(nextPath);
       }
     } finally {
@@ -220,6 +227,7 @@ export default function SignInPage() {
         );
         return;
       }
+      setStep("redirecting");
       router.push(nextPath);
     } finally {
       setAction(null);
@@ -490,12 +498,29 @@ export default function SignInPage() {
                 type="button"
                 size="sm"
                 variant="link"
-                onClick={() => router.push(nextPath)}
+                onClick={() => {
+                  setStep("redirecting");
+                  router.push(nextPath);
+                }}
               >
                 Maybe later
               </Button>
             </div>
           </CardFooter>
+        </Card>
+      )}
+
+      {step === "redirecting" && (
+        <Card className="w-full sm:w-96">
+          <CardHeader>
+            <CardTitle>Signing you in…</CardTitle>
+            <CardDescription>
+              You&apos;re all set — getting your games ready.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center py-4">
+            <Icons.spinner className="size-6 animate-spin text-muted-foreground" />
+          </CardContent>
         </Card>
       )}
     </div>
