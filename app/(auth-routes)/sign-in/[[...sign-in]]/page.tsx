@@ -22,6 +22,11 @@ import {
 } from "@/components/ui/input-otp";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Fingerprint, Mail } from "lucide-react";
+import {
+  clearPasskeyNudge,
+  dismissPasskeyNudge,
+  isPasskeyNudgeDue,
+} from "@/lib/passkey-nudge";
 
 // "redirecting" covers the window between a credential being accepted and the
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
@@ -198,9 +203,10 @@ export default function SignInPage() {
         );
         return;
       }
-      // Signed in — nudge towards a passkey if they don't have one yet.
+      // Signed in — nudge towards a passkey if they don't have one yet and
+      // haven't turned it down recently.
       const { data: passkeys } = await authClient.passkey.listUserPasskeys();
-      if (!passkeys || passkeys.length === 0) {
+      if ((!passkeys || passkeys.length === 0) && isPasskeyNudgeDue()) {
         setStep("add-passkey");
       } else {
         setStep("redirecting");
@@ -227,6 +233,8 @@ export default function SignInPage() {
         );
         return;
       }
+      // A passkey exists now; re-arm the prompt in case it is later removed.
+      clearPasskeyNudge();
       setStep("redirecting");
       router.push(nextPath);
     } finally {
@@ -470,10 +478,11 @@ export default function SignInPage() {
       {step === "add-passkey" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
-            <CardTitle>Add a passkey</CardTitle>
+            <CardTitle>Skip the code next time</CardTitle>
             <CardDescription>
-              Sign in next time with your fingerprint, face, or device PIN — no
-              codes needed.
+              Add a passkey and you&apos;ll sign straight in with your
+              fingerprint, face, or device PIN — no waiting on an email, nothing
+              to type.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-y-4">
@@ -499,6 +508,7 @@ export default function SignInPage() {
                 size="sm"
                 variant="link"
                 onClick={() => {
+                  dismissPasskeyNudge();
                   setStep("redirecting");
                   router.push(nextPath);
                 }}
