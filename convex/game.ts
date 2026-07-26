@@ -4,6 +4,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
+import { evaluateContinuity, findReusableLobby } from "../lib/continuable";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -60,8 +61,9 @@ export const sendHeartbeat = mutation({
     // several games at once, so byUser().first() is not safe here).
     const player = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.gameId).eq("userId", userId),
+      )
       .first();
 
     if (!player) {
@@ -71,6 +73,14 @@ export const sendHeartbeat = mutation({
     // A live heartbeat means the player is present: refresh lastAlive and undo
     // any consensus removal (they have reconnected).
     await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
+
+    // Somebody is back, so the game is not abandoned after all. Patched only
+    // when the mark is actually set — heartbeats land every 15s and must not
+    // write to the game document for no reason.
+    const game = await ctx.db.get(args.gameId);
+    if (game?.abandonedAt !== undefined) {
+      await ctx.db.patch(args.gameId, { abandonedAt: undefined });
+    }
 
     // A reconnecting player cancels any in-flight vote against them.
     const votesAgainstPlayer = await ctx.db
@@ -106,8 +116,9 @@ export const isUserPlayer = query({
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
       .first();
 
     return !!userPlayer;
@@ -147,11 +158,14 @@ export const createGame = mutation({
     // Guards against rapid repeated submits (and any mutation retry) creating
     // a burst of party-of-one games. Race-safe under Convex's OCC: a concurrent
     // insert conflicts on this read set and re-runs, finding the game below.
-    const existingOpenGame = await ctx.db
-      .query("games")
-      .withIndex("byIsOpen", (q) => q.eq("isOpen", true))
-      .filter((q) => q.eq(q.field("createdBy"), user.subject))
-      .first();
+    const existingOpenGame = findReusableLobby(
+      await ctx.db
+        .query("games")
+        .withIndex("byIsOpenCreatedBy", (q) =>
+          q.eq("isOpen", true).eq("createdBy", user.subject),
+        )
+        .collect(),
+    );
     if (existingOpenGame) {
       return existingOpenGame;
     }
@@ -203,8 +217,9 @@ export const joinGame = mutation({
     // Only add user if not already in game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
       .first();
 
     if (!userPlayer) {
@@ -234,8 +249,9 @@ export const leaveGame = mutation({
     // Get the player for the game
     const userPlayer = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-      .filter((q) => q.eq(q.field("userId"), user.subject))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.gameId).eq("userId", user.subject),
+      )
       .first();
     if (!userPlayer) {
       return;
@@ -283,16 +299,37 @@ export const getMyActiveGames = query({
       if (myPlayer.active === false) continue;
 
       const game = await ctx.db.get(myPlayer.gameId);
-      // Skip missing or finished games.
+      // Skip missing, finished, or already-marked games. The rules are still
+      // evaluated below: the mark is only an hourly snapshot of them, so a
+      // game can break the rules before the cron has seen it.
       if (!game || game.completedAt !== undefined) continue;
+      if (game.abandonedAt !== undefined) continue;
 
       const players = await ctx.db
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", game._id))
         .collect();
-      const connectedPlayerCount = players.filter(
-        (p) => p.active !== false && isConnected(p.lastAlive, now),
+      const activePlayers = players.filter((p) => p.active !== false);
+      // Others, not everyone: the caller is sitting on the join screen, where
+      // no heartbeat is sent, so counting themselves would be misleading.
+      const othersOnline = activePlayers.filter(
+        (p) => p._id !== myPlayer._id && isConnected(p.lastAlive, now),
       ).length;
+      const lastActivityAt = activePlayers.reduce(
+        (newest, p) => Math.max(newest, p.lastAlive),
+        0,
+      );
+
+      // Hide games that have been abandoned rather than merely left.
+      const continuity = evaluateContinuity(
+        {
+          startedAt: game.startedAt,
+          lastActivityAt,
+          activePlayerCount: activePlayers.length,
+        },
+        now,
+      );
+      if (!continuity.continuable) continue;
 
       results.push({
         gameId: game._id,
@@ -300,11 +337,13 @@ export const getMyActiveGames = query({
         isOpen: game.isOpen,
         currentRound: game.currentRound ?? 0,
         totalRounds: game.totalRounds,
-        connectedPlayerCount,
+        othersOnline,
+        lastActivityAt,
       });
     }
 
-    return results;
+    // Most recently active first, so the game just left sits at the top.
+    return results.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
   },
 });
 
@@ -320,8 +359,9 @@ export const getPlayerForCurrentUserForGame = query({
     // Match user to player in game
     return await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.game))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.game).eq("userId", userId),
+      )
       .first();
   },
 });
@@ -414,8 +454,9 @@ export const startNewGameRound = mutation({
     if (newRoundNumber === 1) {
       const creatorPlayer = await ctx.db
         .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", args.game))
-        .filter((q) => q.eq(q.field("userId"), game.createdBy))
+        .withIndex("byGameUser", (q) =>
+          q.eq("gameId", args.game).eq("userId", game.createdBy),
+        )
         .first();
 
       if (creatorPlayer) {
@@ -665,8 +706,9 @@ export const transitionRoundPhase = mutation({
     ) {
       const lockedIn = await ctx.db
         .query("gameRoundScenarios")
-        .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
-        .filter((q) => q.eq(q.field("selected"), true))
+        .withIndex("byRoundSelected", (q) =>
+          q.eq("roundId", gameRound._id).eq("selected", true),
+        )
         .first();
       isCategoryRewind = lockedIn === null;
     }
@@ -689,7 +731,11 @@ export const transitionRoundPhase = mutation({
     if (
       game &&
       game.completedAt === undefined &&
-      shouldSetCompletedAt(args.toPhase, gameRound.roundNumber, game.totalRounds)
+      shouldSetCompletedAt(
+        args.toPhase,
+        gameRound.roundNumber,
+        game.totalRounds,
+      )
     ) {
       await ctx.db.patch(game._id, { completedAt: Date.now() });
     }
@@ -742,8 +788,9 @@ export const selectGameRoundScenario = mutation({
     // Unselect any previously selected scenario for this game round
     const selectedScenariosForRound = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.gameRoundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.gameRoundId).eq("selected", true),
+      )
       .collect();
 
     if (selectedScenariosForRound.length > 0) {
@@ -869,8 +916,9 @@ export const markGuessesForRound = mutation({
     // Get the selected scenario for the game round (assuming one selected scenario per round)
     const selectedScenario = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.roundId).eq("selected", true),
+      )
       .first();
 
     if (!selectedScenario) {
@@ -1070,8 +1118,9 @@ export const makeGuessForRound = mutation({
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", args.game))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.game).eq("userId", userId),
+      )
       .first();
 
     if (!player) {
@@ -1105,8 +1154,9 @@ export const getCorrectAnswer = query({
     // get the gameRoundScenario for the round where `selected` is true
     const gameRoundScenario = await ctx.db
       .query("gameRoundScenarios")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .filter((q) => q.eq(q.field("selected"), true))
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", args.roundId).eq("selected", true),
+      )
       .first();
     if (!gameRoundScenario) {
       // throw new Error("No game round scenario for this round is selected as the correct answer!")
@@ -1170,8 +1220,9 @@ export const castPresenceVote = mutation({
 
     const caller = await ctx.db
       .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", game._id))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", userId),
+      )
       .first();
     if (!caller || caller.active === false) {
       throw new Error("Only active players in the game can vote.");
@@ -1211,7 +1262,9 @@ export const castPresenceVote = mutation({
 
     // If the target is back online, cancel any open vote and do nothing.
     if (isConnected(target.lastAlive, now)) {
-      await Promise.all(existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)));
+      await Promise.all(
+        existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)),
+      );
       return { resolved: false as const };
     }
 
