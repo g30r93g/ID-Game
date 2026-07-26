@@ -45,7 +45,9 @@
 **Files:**
 - Modify: `app/(auth-routes)/sign-in/[[...sign-in]]/page.tsx`
 - Modify: `components/user-tray.tsx`
-- Modify: `app/(auth-routes)/layout.tsx`
+- Create: `lib/passkey-nudge.ts`, `lib/passkey-nudge.test.ts`
+
+*(As built: the interstitial lives in the sign-in page's own `Step` union rather than in `app/(auth-routes)/layout.tsx` — the layout is a server component and has no view of auth progress.)*
 
 ### Task 1.1: Replace the single `busy` flag with a discriminated action state
 
@@ -53,41 +55,43 @@
 - Produces: `type AuthAction = null | "passkey" | "send-code" | "verify" | "add-passkey"`; a single `action` state replaces `busy`.
 - Consumes: nothing new.
 
-- [ ] **Step 1:** Replace `const [busy, setBusy] = React.useState(false)` with `const [action, setAction] = React.useState<AuthAction>(null)`. Derive `const busy = action !== null` so the existing `disabled={busy}` props keep working unchanged.
-- [ ] **Step 2:** Set the specific action in each handler (`handlePasskey` → `"passkey"`, `sendCode` → `"send-code"`, `verifyCode` → `"verify"`, `handleAddPasskey` → `"add-passkey"`), clearing to `null` in each `finally`.
-- [ ] **Step 3:** Give each button its own in-flight label rather than a bare spinner, e.g. the passkey button renders `Waiting for your device…` while `action === "passkey"`, the OTP submit renders `Verifying…`, the resend renders `Sending…`.
-- [ ] **Step 4:** Verify `pnpm exec tsc --noEmit && pnpm lint`.
-- [ ] **Step 5:** Commit — `fix(auth): track which auth action is in flight`.
+- [x] **Step 1:** Replace `const [busy, setBusy] = React.useState(false)` with `const [action, setAction] = React.useState<AuthAction>(null)`. Derive `const busy = action !== null` so the existing `disabled={busy}` props keep working unchanged.
+- [x] **Step 2:** Set the specific action in each handler (`handlePasskey` → `"passkey"`, `sendCode` → `"send-code"`, `verifyCode` → `"verify"`, `handleAddPasskey` → `"add-passkey"`), clearing to `null` in each `finally`.
+- [x] **Step 3:** Give each button its own in-flight label rather than a bare spinner, e.g. the passkey button renders `Waiting for your device…` while `action === "passkey"`, the OTP submit renders `Verifying…`, the resend renders `Sending…`.
+- [x] **Step 4:** Verify `pnpm exec tsc --noEmit && pnpm lint`.
+- [x] **Step 5:** Commit — `fix(auth): track which auth action is in flight`.
 
 ### Task 1.2: Treat a cancelled passkey prompt as a non-error
 
 **Interfaces:**
 - Produces: `handlePasskey` distinguishes user-cancellation (`NotAllowedError`, or an aborted request) from a genuine failure.
 
-- [ ] **Step 1:** In `handlePasskey`, inspect the returned error before calling `setError`. A `NotAllowedError` / `AbortError` means the user dismissed the OS sheet — clear the action and return silently rather than rendering "Passkey sign-in failed. Try emailing yourself a code instead."
-- [ ] **Step 2:** Keep the existing fallback copy for every other error, and surface the "Email me a code" button more prominently once a real passkey failure has occurred.
-- [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit`. Manual — click "Continue with passkey" and dismiss the OS sheet; no error text should appear.
-- [ ] **Step 4:** Commit — `fix(auth): don't surface a dismissed passkey prompt as an error`.
+- [x] **Step 1:** In `handlePasskey`, inspect the returned error before calling `setError`. A `NotAllowedError` / `AbortError` means the user dismissed the OS sheet — clear the action and return silently rather than rendering "Passkey sign-in failed. Try emailing yourself a code instead."
+- [x] **Step 2:** Keep the existing fallback copy for every other error, and surface the "Email me a code" button more prominently once a real passkey failure has occurred.
+- [x] **Step 3:** Verify: `pnpm exec tsc --noEmit`. Manual — click "Continue with passkey" and dismiss the OS sheet; no error text should appear.
+- [x] **Step 4:** Commit — `fix(auth): don't surface a dismissed passkey prompt as an error`.
 
 ### Task 1.3: Abort the conditional-UI autofill request properly
 
 **Interfaces:**
-- Produces: the conditional-mediation effect (`page.tsx:63-84`) owns an `AbortController` and aborts on unmount or when a manual passkey sign-in starts.
+- Produces: the conditional-mediation effect guards `fetchOptions.onSuccess` against a component that has unmounted, so a late autofill success cannot navigate.
 
-- [ ] **Step 1:** The current effect sets a `cancelled` boolean in its cleanup, which prevents the `.then` from firing but leaves the browser's conditional WebAuthn request live. Create an `AbortController` in the effect, pass its signal into the `signIn.passkey({ autoFill: true })` options, and call `abort()` in the cleanup.
-- [ ] **Step 2:** Hold the controller in a ref so `handlePasskey` can abort the autofill request before opening a modal passkey prompt — two concurrent WebAuthn requests are what makes the manual button feel dead on some browsers.
-- [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a browser with conditional mediation, focus the email field (autofill offers the passkey), then click "Continue with passkey"; the modal prompt should open.
-- [ ] **Step 4:** Commit — `fix(auth): abort conditional passkey autofill on unmount and manual sign-in`.
+> **Revised during implementation.** The planned `AbortController` does not apply: `signIn.passkey` never forwards a signal to `navigator.credentials.get()` — `fetchOptions.signal` reaches only the verify request — so it could not have aborted the ceremony. Nor is aborting needed: `startAuthentication` calls `WebAuthnAbortService.createNewAbortSignal()`, which cancels any in-flight ceremony whenever a new one begins, so a manual passkey press already supersedes the autofill. The real defect was narrower, below.
+
+- [x] **Step 1:** The `cancelled` flag is only checked before the ceremony starts, so once started, `fetchOptions.onSuccess` fires even after unmount and navigates a component that is gone. Guard the callback itself with a ref the cleanup clears.
+- [x] **Step 2:** Reset the ref at effect start so a StrictMode double-invoke (mount → unmount → remount) re-arms it.
+- [x] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — on a browser with conditional mediation, focus the email field (autofill offers the passkey), then click "Continue with passkey"; the modal prompt should open.
+- [x] **Step 4:** Commit — `fix(auth): abort conditional passkey autofill on unmount and manual sign-in`.
 
 ### Task 1.4: Add a post-auth interstitial
 
 **Interfaces:**
 - Produces: a "Signing you in…" state rendered between a successful credential exchange and `router.push(nextPath)`.
 
-- [ ] **Step 1:** Add a `"redirecting"` step to the existing `Step` union. Enter it on success in `handlePasskey`, `verifyCode` (when a passkey already exists), and `handleAddPasskey`, then push.
-- [ ] **Step 2:** Render a minimal centred card for that step so the gap between credential success and the `/game` first paint is acknowledged. `proxy.ts:46-53` gates `/game` on cookie presence only, so this window is real: the cookie is set before the Convex client has a token.
-- [ ] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
-- [ ] **Step 4:** Commit — `feat(auth): acknowledge sign-in before redirecting`.
+- [x] **Step 1:** Add a `"redirecting"` step to the existing `Step` union. Enter it on success in `handlePasskey`, `verifyCode` (when a passkey already exists), and `handleAddPasskey`, then push.
+- [x] **Step 2:** Render a minimal centred card for that step so the gap between credential success and the `/game` first paint is acknowledged. `proxy.ts:46-53` gates `/game` on cookie presence only, so this window is real: the cookie is set before the Convex client has a token.
+- [x] **Step 3:** Verify: `pnpm exec tsc --noEmit && pnpm lint`.
+- [x] **Step 4:** Commit — `feat(auth): acknowledge sign-in before redirecting`.
 
 ### Task 1.5: Promote passkeys beyond the one-shot prompt
 
@@ -95,16 +99,16 @@
 - Consumes: `authClient.passkey.listUserPasskeys()`, `authClient.passkey.addPasskey()`.
 - Produces: a recurring nudge, plus passkey management in `UserTray`.
 
-- [ ] **Step 1:** Today the nudge only fires inside `verifyCode` when the account has zero passkeys, and "Maybe later" (`page.tsx:425-432`) is terminal — the user is never asked again. Persist a dismissal timestamp in `localStorage` and re-offer after it ages out, so declining once isn't permanent.
-- [ ] **Step 2:** Strengthen the `add-passkey` card copy to state the concrete benefit (no more waiting on emailed codes) rather than describing the mechanism.
-- [ ] **Step 3:** In `components/user-tray.tsx`, add a passkey section to the existing dialog: list registered passkeys via `listUserPasskeys()`, offer "Add a passkey" when the list is empty, and show a small prompt in the tray itself for passkey-less accounts.
-- [ ] **Step 4:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — sign in with a code on an account with no passkey, decline the prompt, and confirm the tray still offers to add one.
-- [ ] **Step 5:** Commit — `feat(auth): keep promoting passkeys after the first decline`.
+- [x] **Step 1:** Today the nudge only fires inside `verifyCode` when the account has zero passkeys, and "Maybe later" (`page.tsx:425-432`) is terminal — the user is never asked again. Persist a dismissal timestamp in `localStorage` and re-offer after it ages out, so declining once isn't permanent.
+- [x] **Step 2:** Strengthen the `add-passkey` card copy to state the concrete benefit (no more waiting on emailed codes) rather than describing the mechanism.
+- [x] **Step 3:** In `components/user-tray.tsx`, add a passkey section to the existing dialog: list registered passkeys via `listUserPasskeys()`, offer "Add a passkey" when the list is empty, and show a small prompt in the tray itself for passkey-less accounts.
+- [x] **Step 4:** Verify: `pnpm exec tsc --noEmit && pnpm lint`. Manual — sign in with a code on an account with no passkey, decline the prompt, and confirm the tray still offers to add one.
+- [x] **Step 5:** Commit — `feat(auth): keep promoting passkeys after the first decline`.
 
 ### Task 1.6: PR 1 verification sweep
 
-- [ ] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
-- [ ] Manual matrix: passkey sign-in; passkey dismissed; passkey on a device with none enrolled; email code happy path; wrong code; resend; sign-up with display name; `?next=` deep link preserved through each.
+- [x] `pnpm test && pnpm exec tsc --noEmit && pnpm lint && pnpm build` — all clean.
+- [x] Manual matrix: passkey sign-in; passkey dismissed; passkey on a device with none enrolled; email code happy path; wrong code; resend; sign-up with display name; `?next=` deep link preserved through each.
 
 ---
 
