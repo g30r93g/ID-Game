@@ -4,7 +4,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
-import { evaluateContinuity } from "../lib/continuable";
+import { evaluateContinuity, findReusableLobby } from "../lib/continuable";
 
 function generateOTP(length = 6): string {
   const characters = "ACDEGHIKLMNPQRSTUVXYZ0123456789"; // some are missing to reduce ambiguity
@@ -73,6 +73,14 @@ export const sendHeartbeat = mutation({
     // A live heartbeat means the player is present: refresh lastAlive and undo
     // any consensus removal (they have reconnected).
     await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
+
+    // Somebody is back, so the game is not abandoned after all. Patched only
+    // when the mark is actually set — heartbeats land every 15s and must not
+    // write to the game document for no reason.
+    const game = await ctx.db.get(args.gameId);
+    if (game?.abandonedAt !== undefined) {
+      await ctx.db.patch(args.gameId, { abandonedAt: undefined });
+    }
 
     // A reconnecting player cancels any in-flight vote against them.
     const votesAgainstPlayer = await ctx.db
@@ -150,12 +158,14 @@ export const createGame = mutation({
     // Guards against rapid repeated submits (and any mutation retry) creating
     // a burst of party-of-one games. Race-safe under Convex's OCC: a concurrent
     // insert conflicts on this read set and re-runs, finding the game below.
-    const existingOpenGame = await ctx.db
-      .query("games")
-      .withIndex("byIsOpenCreatedBy", (q) =>
-        q.eq("isOpen", true).eq("createdBy", user.subject),
-      )
-      .first();
+    const existingOpenGame = findReusableLobby(
+      await ctx.db
+        .query("games")
+        .withIndex("byIsOpenCreatedBy", (q) =>
+          q.eq("isOpen", true).eq("createdBy", user.subject),
+        )
+        .collect(),
+    );
     if (existingOpenGame) {
       return existingOpenGame;
     }
@@ -289,8 +299,11 @@ export const getMyActiveGames = query({
       if (myPlayer.active === false) continue;
 
       const game = await ctx.db.get(myPlayer.gameId);
-      // Skip missing or finished games.
+      // Skip missing, finished, or already-marked games. The rules are still
+      // evaluated below: the mark is only an hourly snapshot of them, so a
+      // game can break the rules before the cron has seen it.
       if (!game || game.completedAt !== undefined) continue;
+      if (game.abandonedAt !== undefined) continue;
 
       const players = await ctx.db
         .query("players")

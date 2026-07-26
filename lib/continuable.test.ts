@@ -3,6 +3,7 @@ import {
   IDLE_LOBBY_TIMEOUT_MS,
   STALE_GAME_TIMEOUT_MS,
   evaluateContinuity,
+  findReusableLobby,
 } from "./continuable";
 
 const now = 10_000_000;
@@ -62,4 +63,13 @@ test("a long-open lobby stays continuable while someone is heartbeating", () => 
       now,
     ),
   ).toEqual({ continuable: true });
+});
+
+test("findReusableLobby skips abandoned lobbies", () => {
+  const dead = { joinCode: "DEAD", abandonedAt: now - 60_000 };
+  const live: { joinCode: string; abandonedAt?: number } = { joinCode: "LIVE" };
+
+  expect(findReusableLobby([dead, live])).toBe(live);
+  expect(findReusableLobby([dead])).toBeUndefined();
+  expect(findReusableLobby([])).toBeUndefined();
 });

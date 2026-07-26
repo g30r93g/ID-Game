@@ -1,7 +1,15 @@
 export const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
-export function isActiveNow(game: { isOpen: boolean }): boolean {
-  return game.isOpen === true;
+/**
+ * An open lobby only counts as active while it is still continuable. Abandoned
+ * lobbies keep `isOpen: true` forever — nothing closes them — so without the
+ * `abandonedAt` check every lobby ever created would be counted as active now.
+ */
+export function isActiveNow(game: {
+  isOpen: boolean;
+  abandonedAt?: number;
+}): boolean {
+  return game.isOpen === true && game.abandonedAt === undefined;
 }
 
 export function withinWindow(
@@ -16,16 +24,24 @@ export function gameDurationMs(game: {
   startedAt?: number;
   completedAt?: number;
 }): number | null {
-  if (game.startedAt === undefined || game.completedAt === undefined) return null;
+  if (game.startedAt === undefined || game.completedAt === undefined)
+    return null;
   return game.completedAt - game.startedAt;
 }
 
-export type GameLike = { isOpen: boolean; startedAt?: number; completedAt?: number };
+export type GameLike = {
+  isOpen: boolean;
+  startedAt?: number;
+  completedAt?: number;
+  abandonedAt?: number;
+};
 
 export function computeGameStats(games: GameLike[], now: number) {
   const activeNow = games.filter(isActiveNow).length;
   const started14d = games.filter((g) => withinWindow(g.startedAt, now)).length;
-  const completedInWindow = games.filter((g) => withinWindow(g.completedAt, now));
+  const completedInWindow = games.filter((g) =>
+    withinWindow(g.completedAt, now),
+  );
   const durations = completedInWindow
     .map(gameDurationMs)
     .filter((d): d is number => d !== null && d >= 0);
@@ -89,8 +105,11 @@ export function formatDuration(ms: number | null): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-export function groupTimesSelected(rows: { scenarioId: string }[]): Map<string, number> {
+export function groupTimesSelected(
+  rows: { scenarioId: string }[],
+): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const r of rows) counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1);
+  for (const r of rows)
+    counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1);
   return counts;
 }

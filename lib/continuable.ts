@@ -61,3 +61,15 @@ export function evaluateContinuity(
     ? { continuable: false, reason: "stale" }
     : { continuable: true };
 }
+
+/**
+ * Of a creator's open lobbies, the one `createGame` may hand back instead of
+ * making a new game. An abandoned lobby is not reusable: nothing ever closes
+ * `isOpen`, so without this a creator who walked away from a lobby would be
+ * handed that same dead game every time they tapped Create.
+ */
+export function findReusableLobby<T extends { abandonedAt?: number }>(
+  openLobbies: T[],
+): T | undefined {
+  return openLobbies.find((lobby) => lobby.abandonedAt === undefined);
+}

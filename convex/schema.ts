@@ -38,13 +38,21 @@ export default defineSchema({
     createdBy: v.string(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    // Stamped by the hourly cleanup cron when the game breaks the rules in
+    // lib/continuable.ts. A cache of those rules, not a gravestone: any
+    // heartbeat from a returning player clears it.
+    abandonedAt: v.optional(v.number()),
   })
     .index("byJoinCode", ["joinCode"])
     // Finds a creator's existing open game without scanning all open games.
     // Its `isOpen` prefix also serves plain open-game queries.
     .index("byIsOpenCreatedBy", ["isOpen", "createdBy"])
     .index("byStartedAt", ["startedAt"])
-    .index("byCompletedAt", ["completedAt"]),
+    .index("byCompletedAt", ["completedAt"])
+    // The cleanup cron's candidate set: games that are neither finished nor
+    // already marked. Both fields are matched as `undefined`, so the scan
+    // never touches games it has nothing to do.
+    .index("byAbandonedAtCompletedAt", ["abandonedAt", "completedAt"]),
 
   scenarios: defineTable({
     description: v.string(),
