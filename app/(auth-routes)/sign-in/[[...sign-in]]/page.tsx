@@ -32,6 +32,20 @@ type AuthAction = null | "passkey" | "send-code" | "verify" | "add-passkey";
 
 const RESEND_SECONDS = 30;
 
+// Codes the passkey client reports when the WebAuthn ceremony itself never
+// produced a credential: a dismissed OS sheet arrives as NotAllowedError, which
+// SimpleWebAuthn passes through as ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY; an
+// aborted ceremony is ERROR_CEREMONY_ABORTED; anything it can't classify falls
+// back to AUTH_CANCELLED. The client overwrites the message with "Auth
+// cancelled" in every case, so none of them is worth showing as a failure —
+// platforms overload NotAllowedError for "you backed out" and "no usable
+// credential here" alike, and both want the same next step: email a code.
+const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
+  "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
+  "ERROR_CEREMONY_ABORTED",
+  "AUTH_CANCELLED",
+]);
+
 export default function SignInPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -51,6 +65,9 @@ export default function SignInPage() {
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  // Set once a passkey attempt ends without a credential, which flips the email
+  // path to be the primary action rather than the secondary one.
+  const [passkeyUnavailable, setPasskeyUnavailable] = React.useState(false);
   const [action, setAction] = React.useState<AuthAction>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
 
@@ -97,6 +114,14 @@ export default function SignInPage() {
     try {
       const { error } = await authClient.signIn.passkey();
       if (error) {
+        // The ceremony produced no credential. Don't shout about it — just lead
+        // with the email fallback instead. Only the WebAuthn-layer arm of the
+        // error union carries `code`, hence the `in` narrowing.
+        const code = "code" in error ? error.code : undefined;
+        if (WEBAUTHN_NO_CREDENTIAL_CODES.has(code ?? "")) {
+          setPasskeyUnavailable(true);
+          return;
+        }
         setError(
           error.message ??
             "Passkey sign-in failed. Try emailing yourself a code instead.",
@@ -199,6 +224,7 @@ export default function SignInPage() {
               setMode(value as Mode);
               setShowEmailFlow(false);
               setError(null);
+              setPasskeyUnavailable(false);
             }}
           >
             <form className="contents" onSubmit={handleStart}>
@@ -223,7 +249,9 @@ export default function SignInPage() {
               <CardContent className="grid gap-y-4">
                 {mode === "sign-in" && !showEmailFlow && (
                   <p className="text-sm text-muted-foreground">
-                    Sign in with your face, fingerprint, or device PIN.
+                    {passkeyUnavailable
+                      ? "No passkey was used on this device. Email yourself a code instead — you can add a passkey afterwards."
+                      : "Sign in with your face, fingerprint, or device PIN."}
                   </p>
                 )}
                 {(mode === "sign-up" || showEmailFlow) && (
@@ -263,6 +291,7 @@ export default function SignInPage() {
                     <>
                       <Button
                         type="button"
+                        variant={passkeyUnavailable ? "outline" : "default"}
                         disabled={busy}
                         onClick={handlePasskey}
                       >
@@ -280,7 +309,7 @@ export default function SignInPage() {
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={passkeyUnavailable ? "default" : "outline"}
                         disabled={busy}
                         onClick={() => {
                           setShowEmailFlow(true);
