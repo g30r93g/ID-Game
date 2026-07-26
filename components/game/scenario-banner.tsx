@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -9,9 +10,22 @@ import { cn } from "@/lib/utils";
 export default function ScenarioBanner({
   scenario,
   className,
+  contentClassName,
+  contentStyle,
 }: {
   scenario: string;
   className?: string;
+  /**
+   * Applied to the text alone. Lets a caller blur the scenario without also
+   * softening the banner's border and background.
+   */
+  contentClassName?: string;
+  /**
+   * Inline styles for the text alone. `filter` is set this way rather than with
+   * Tailwind's `blur-*` utilities because those compose the shorthand out of a
+   * `--tw-blur` custom property, which did not apply in Safari.
+   */
+  contentStyle?: CSSProperties;
 }) {
   return (
     <div
@@ -20,7 +34,9 @@ export default function ScenarioBanner({
         className,
       )}
     >
-      {scenario}
+      <span className={cn("block", contentClassName)} style={contentStyle}>
+        {scenario}
+      </span>
     </div>
   );
 }
