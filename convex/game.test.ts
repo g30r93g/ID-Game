@@ -488,6 +488,158 @@ test("transitionRoundPhase still rejects every other rewind", async () => {
   ).rejects.toThrow(/Illegal phase transition/);
 });
 
+// A round mid-guessing: three non-host players, three scenarios, two guesses
+// already cast (one on the answer, one on a decoy) and one scenario untouched.
+async function seedGuessingRound(t: TestConvex<typeof schema>) {
+  return t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "TAL001",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "host",
+      startedAt: 1000,
+    });
+    const hostPlayerId = await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Host",
+      lastAlive: 0,
+    });
+    const alice = await ctx.db.insert("players", {
+      userId: "alice",
+      gameId,
+      displayName: "Alice",
+      lastAlive: 0,
+    });
+    const bob = await ctx.db.insert("players", {
+      userId: "bob",
+      gameId,
+      displayName: "Bob",
+      lastAlive: 0,
+    });
+    await ctx.db.insert("players", {
+      userId: "cara",
+      gameId,
+      displayName: "Cara",
+      lastAlive: 0,
+    });
+    const roundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 1,
+      hostPlayerId,
+      phase: "guess-scenario",
+    });
+
+    const scenarioIds = await Promise.all(
+      ["Answer", "Decoy", "Untouched"].map((description) =>
+        ctx.db.insert("scenarios", { description, category: "General" }),
+      ),
+    );
+    const [answer, decoy] = await Promise.all(
+      scenarioIds.map((scenarioId, index) =>
+        ctx.db.insert("gameRoundScenarios", {
+          gameId,
+          roundId,
+          scenarioId,
+          selected: index === 0,
+        }),
+      ),
+    );
+
+    await ctx.db.insert("gameRoundGuesses", {
+      gameId,
+      roundId,
+      scenarioId: answer,
+      playerId: alice,
+    });
+    await ctx.db.insert("gameRoundGuesses", {
+      gameId,
+      roundId,
+      scenarioId: decoy,
+      playerId: bob,
+    });
+
+    return { gameId, roundId };
+  });
+}
+
+function tallyByDescription(
+  tally: { description: string; count: number }[] | null,
+) {
+  return Object.fromEntries((tally ?? []).map((row) => [row.description, row.count]));
+}
+
+test("getGuessesStatusForRound gives the host a full tally", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const status = await t
+    .withIdentity({ subject: "host" })
+    .query(api.game.getGuessesStatusForRound, { roundId });
+
+  expect(status.tally).not.toBeNull();
+  expect(tallyByDescription(status.tally)).toEqual({
+    Answer: 1,
+    Decoy: 1,
+    Untouched: 0,
+  });
+});
+
+test("getGuessesStatusForRound gives the tally to a player who already guessed", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const status = await t
+    .withIdentity({ subject: "alice" })
+    .query(api.game.getGuessesStatusForRound, { roundId });
+
+  expect(status.viewerHasGuessed).toBe(true);
+  expect(
+    (status.tally ?? []).reduce((sum, row) => sum + row.count, 0),
+  ).toBe(2);
+});
+
+test("getGuessesStatusForRound withholds the tally from a player still to guess", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const status = await t
+    .withIdentity({ subject: "cara" })
+    .query(api.game.getGuessesStatusForRound, { roundId });
+
+  expect(status.viewerHasGuessed).toBe(false);
+  expect(status.tally).toBeNull();
+  // The per-player checklist is still returned — only the counts are withheld.
+  expect(status.playerGuesses).toHaveLength(3);
+});
+
+test("getGuessesStatusForRound withholds the tally from an unauthenticated caller", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const status = await t.query(api.game.getGuessesStatusForRound, { roundId });
+
+  expect(status.tally).toBeNull();
+  expect(status.viewerHasGuessed).toBe(false);
+});
+
+test("getGuessesStatusForRound keeps the tally in draw order", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const status = await t
+    .withIdentity({ subject: "host" })
+    .query(api.game.getGuessesStatusForRound, { roundId });
+
+  // Draw order, not vote order — rows must not jump around as votes land.
+  expect((status.tally ?? []).map((row) => row.description)).toEqual([
+    "Answer",
+    "Decoy",
+    "Untouched",
+  ]);
+});
+
 test("selectGameRoundScenario increments the scenario's timesSelected", async () => {
   const t = convexTest(schema, modules);
   const { gameRoundScenarioId, roundId, scenarioId } = await t.run(async (ctx) => {

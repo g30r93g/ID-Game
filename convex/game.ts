@@ -981,7 +981,57 @@ export const getGuessesStatusForRound = query({
         guesses.some((g) => g.playerId === playerId),
       );
 
-    return { guessingCompleteByAllUsers, playerGuesses };
+    // Work out who is asking. This query used to need no identity at all, so a
+    // missing one is treated as "not entitled to the tally" rather than an error
+    // — the per-player checklist stays available to every caller as before.
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const viewer = userId
+      ? players.find((player) => player.userId === userId)
+      : undefined;
+    const viewerIsHost = viewer?._id === gameRound.hostPlayerId;
+    const viewerHasGuessed = viewer
+      ? guesses.some((guess) => guess.playerId === viewer._id)
+      : false;
+
+    // The tally goes only to callers who can no longer act on it: the host, who
+    // knows the answer anyway, and guessers who have already committed. Anyone
+    // still to guess would otherwise just copy the room.
+    if (!viewerIsHost && !viewerHasGuessed) {
+      return {
+        guessingCompleteByAllUsers,
+        playerGuesses,
+        viewerHasGuessed,
+        tally: null,
+      };
+    }
+
+    const roundScenarios = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
+      .collect();
+    const scenarioDocs = await Promise.all(
+      roundScenarios.map((roundScenario) =>
+        ctx.db.get(roundScenario.scenarioId),
+      ),
+    );
+
+    // Every scenario is included, zero-count ones too, so rows never pop into
+    // the list and shift it as votes land. Left in draw order — the same order
+    // the guessers were shown — rather than sorted by count, which would make
+    // rows jump on every vote and be harder to follow than the bars moving.
+    const tally = roundScenarios.map((roundScenario, index) => ({
+      scenarioId: roundScenario._id,
+      description: scenarioDocs[index]?.description ?? "Unknown Scenario",
+      count: guesses.filter((guess) => guess.scenarioId === roundScenario._id)
+        .length,
+    }));
+
+    return {
+      guessingCompleteByAllUsers,
+      playerGuesses,
+      viewerHasGuessed,
+      tally,
+    };
   },
 });
 
