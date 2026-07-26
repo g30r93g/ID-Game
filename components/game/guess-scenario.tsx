@@ -31,6 +31,7 @@ export default function GuessScenarioGamePhase({
   const scenarios = useQuery(api.game.gameRoundScenarios, {
     gameRound: roundId,
   });
+  const guessStatus = useQuery(api.game.getGuessesStatusForRound, { roundId });
   const makeGuess = useMutation(api.game.makeGuessForRound);
 
   const [view, setView] = useState<"scenarios" | "rankings">("rankings");
@@ -38,7 +39,12 @@ export default function GuessScenarioGamePhase({
     Id<"gameRoundScenarios"> | undefined
   >(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [hasGuessed, setHasGuessed] = useState<boolean>(false);
+  // Optimistic overlay only, so the switch to the waiting view is instant. The
+  // server value is what survives a refresh — holding this in component state
+  // alone meant reloading mid-phase dropped you back into the guessing UI with
+  // your guess already recorded.
+  const [locallyGuessed, setLocallyGuessed] = useState<boolean>(false);
+  const hasGuessed = locallyGuessed || guessStatus?.viewerHasGuessed === true;
 
   if (hasGuessed) {
     return <AwaitGuessesGamePhase gameRoundId={roundId} isHost={false} />;
@@ -54,7 +60,7 @@ export default function GuessScenarioGamePhase({
         gameRound: roundId,
         scenario: selectedScenario,
       });
-      setHasGuessed(true);
+      setLocallyGuessed(true);
     } catch (e) {
       console.error(e);
     } finally {
