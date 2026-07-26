@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import ScenarioBanner from "@/components/game/scenario-banner";
+import GuessTally from "@/components/game/guess-tally";
 
 interface AwaitGuessesGamePhaseProps {
   gameRoundId: Id<"gameRounds">;
@@ -68,7 +69,9 @@ export default function AwaitGuessesGamePhase({
     return <p className="text-center text-gray-500">Loading...</p>;
   }
 
-  const { playerGuesses } = guessStatus;
+  // `tally` is null for anyone still to guess — the server decides, so there is
+  // nothing to gate here.
+  const { playerGuesses, tally } = guessStatus;
 
   return (
     <>
@@ -87,6 +90,7 @@ export default function AwaitGuessesGamePhase({
           </Button>
         </div>
       )}
+      {tally && <GuessTally rows={tally} />}
       <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
         <div className="grid grid-cols-1 gap-2">
           {playerGuesses.map((playerGuess) => (
