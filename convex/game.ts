@@ -530,6 +530,32 @@ export const selectScenariosForGameRound = mutation({
     category: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to draw round scenarios.");
+    }
+
+    // Get game round referenced
+    const gameRound = await ctx.db.get(args.gameRound);
+    if (!gameRound) {
+      throw new Error("Game round does not exist");
+    }
+
+    // Ensure current user is the round host. This matters more now than it did
+    // when the mutation only inserted: it deletes any previous draw, so without
+    // the check any player could wipe the host's scenarios mid-round.
+    const gameRoundHostPlayer = await ctx.db.get(gameRound.hostPlayerId);
+    if (!gameRoundHostPlayer) {
+      throw new Error("Game round host does not exist");
+    }
+
+    if (userId !== gameRoundHostPlayer.userId) {
+      throw new Error(
+        "Only the game round host can draw the round's scenarios",
+      );
+    }
+
     // Fetch scenarios, leveraging index if a category is specified
     const query = args.category
       ? ctx.db
@@ -539,11 +565,26 @@ export const selectScenariosForGameRound = mutation({
 
     const scenarios = await query.collect();
 
+    // Checked before anything is deleted, so a re-draw into a category that
+    // turns out to be too small leaves the existing draw intact.
     if (scenarios.length < 10) {
       throw new Error(
         "Not enough scenarios available in the selected category.",
       );
     }
+
+    // A re-draw replaces the previous category's scenarios rather than adding to
+    // them. Once the host has locked one in the category can no longer change:
+    // selectGameRoundScenario has already incremented scenarios.timesSelected,
+    // and unwinding that is out of scope.
+    const existingDraw = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRound", (q) => q.eq("roundId", args.gameRound))
+      .collect();
+    if (existingDraw.some((row) => row.selected)) {
+      throw new Error("A scenario has already been selected.");
+    }
+    await Promise.all(existingDraw.map((row) => ctx.db.delete(row._id)));
 
     // Shuffle and pick 10 scenarios
     const shuffledScenarios = scenarios.sort(() => Math.random() - 0.5);
