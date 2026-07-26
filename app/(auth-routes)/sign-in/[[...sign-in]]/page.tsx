@@ -25,6 +25,10 @@ import { Fingerprint, Mail } from "lucide-react";
 
 type Step = "start" | "otp" | "add-passkey";
 type Mode = "sign-in" | "sign-up";
+// Which auth action is in flight. A single boolean can't distinguish "waiting on
+// the OS passkey sheet" (which can sit open for many seconds) from "verifying
+// your code", so every button would show the same bare spinner.
+type AuthAction = null | "passkey" | "send-code" | "verify" | "add-passkey";
 
 const RESEND_SECONDS = 30;
 
@@ -47,8 +51,12 @@ export default function SignInPage() {
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  const [action, setAction] = React.useState<AuthAction>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
+
+  // Any action in flight still disables every control, so the existing
+  // `disabled={busy}` props keep their meaning.
+  const busy = action !== null;
 
   React.useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -85,7 +93,7 @@ export default function SignInPage() {
 
   const handlePasskey = async () => {
     setError(null);
-    setBusy(true);
+    setAction("passkey");
     try {
       const { error } = await authClient.signIn.passkey();
       if (error) {
@@ -97,13 +105,13 @@ export default function SignInPage() {
       }
       router.push(nextPath);
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
   const sendCode = async () => {
     setError(null);
-    setBusy(true);
+    setAction("send-code");
     try {
       const { error } = await authClient.emailOtp.sendVerificationOtp({
         email: email.trim().toLowerCase(),
@@ -120,7 +128,7 @@ export default function SignInPage() {
       setResendCountdown(RESEND_SECONDS);
       setStep("otp");
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -131,7 +139,7 @@ export default function SignInPage() {
 
   const verifyCode = async (value: string) => {
     setError(null);
-    setBusy(true);
+    setAction("verify");
     try {
       const trimmedName = name.trim();
       const { error } = await authClient.signIn.emailOtp({
@@ -154,7 +162,7 @@ export default function SignInPage() {
         router.push(nextPath);
       }
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -165,7 +173,7 @@ export default function SignInPage() {
 
   const handleAddPasskey = async () => {
     setError(null);
-    setBusy(true);
+    setAction("add-passkey");
     try {
       const result = await authClient.passkey.addPasskey();
       if (result?.error) {
@@ -176,7 +184,7 @@ export default function SignInPage() {
       }
       router.push(nextPath);
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -258,8 +266,11 @@ export default function SignInPage() {
                         disabled={busy}
                         onClick={handlePasskey}
                       >
-                        {busy ? (
-                          <Icons.spinner className="size-4 animate-spin" />
+                        {action === "passkey" ? (
+                          <>
+                            <Icons.spinner className="mr-2 size-4 animate-spin" />
+                            Waiting for your device…
+                          </>
                         ) : (
                           <>
                             <Fingerprint className="mr-2 size-4" />
@@ -283,8 +294,11 @@ export default function SignInPage() {
                   )}
                   {(mode === "sign-up" || showEmailFlow) && (
                     <Button type="submit" disabled={busy}>
-                      {busy ? (
-                        <Icons.spinner className="size-4 animate-spin" />
+                      {action === "send-code" ? (
+                        <>
+                          <Icons.spinner className="mr-2 size-4 animate-spin" />
+                          Sending…
+                        </>
                       ) : mode === "sign-up" ? (
                         <>
                           <Mail className="mr-2 size-4" />
@@ -367,7 +381,9 @@ export default function SignInPage() {
                     disabled={busy}
                     onClick={sendCode}
                   >
-                    Didn&apos;t receive a code? Resend
+                    {action === "send-code"
+                      ? "Sending…"
+                      : "Didn't receive a code? Resend"}
                   </Button>
                 )}
               </div>
@@ -375,8 +391,11 @@ export default function SignInPage() {
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={busy}>
-                  {busy ? (
-                    <Icons.spinner className="size-4 animate-spin" />
+                  {action === "verify" ? (
+                    <>
+                      <Icons.spinner className="mr-2 size-4 animate-spin" />
+                      Verifying…
+                    </>
                   ) : (
                     "Continue"
                   )}
@@ -413,8 +432,11 @@ export default function SignInPage() {
           <CardFooter>
             <div className="grid w-full gap-y-4">
               <Button type="button" disabled={busy} onClick={handleAddPasskey}>
-                {busy ? (
-                  <Icons.spinner className="size-4 animate-spin" />
+                {action === "add-passkey" ? (
+                  <>
+                    <Icons.spinner className="mr-2 size-4 animate-spin" />
+                    Waiting for your device…
+                  </>
                 ) : (
                   <>
                     <Fingerprint className="mr-2 size-4" />
