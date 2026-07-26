@@ -328,6 +328,10 @@ export function Game({ preloadedGame }: GameProps) {
             gameRoundId={currentRound._id}
             isHost={userIsHost()}
             advanceGame={userIsHost() ? advanceGame : undefined}
+            scenario={
+              currentRoundScenarios.find((x) => x.selected)?.scenarioDetails
+                ?.description
+            }
           />
         ) : (
           <GuessScenarioGamePhase
