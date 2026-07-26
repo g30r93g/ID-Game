@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,68 +10,58 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, ArrowRight, CircleHelp, Lightbulb } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ArrowLeft, ArrowRight, CircleHelp, Lightbulb } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import * as React from "react";
 
-type Slide = { title: string; body: string; kind: "step" | "tip" };
+type Slide = {
+  title: string;
+  body: string;
+  tip?: { title: string; body: string };
+};
 
 // One idea per slide. The tip used to be a <Card> sitting directly inside the
-// <ol>, which is invalid markup — as its own slide it is both valid and harder
-// to skim past.
+// <ol>, which is invalid markup — it now rides along with the step it applies
+// to rather than interrupting the sequence as a slide of its own.
 const SLIDES: Slide[] = [
   {
-    kind: "step",
     title: "Share the code",
     body: "Share the join code and wait for your friends to join.",
   },
   {
-    kind: "step",
     title: "A host each round",
     body: "One player hosts each round, and the role moves on afterwards.",
   },
   {
-    kind: "step",
     title: "Pick a category",
     body: "The host chooses the category the round's scenarios come from.",
   },
   {
-    kind: "step",
     title: "Pick a scenario",
     body: "The game generates 10 scenarios. The host picks one to secretly judge everyone on.",
   },
   {
-    kind: "step",
     title: "Rank everyone",
     body: "The host ranks the players from most to least likely to match the chosen scenario.",
   },
   {
-    kind: "step",
     title: "Everyone guesses",
     body: "Once the ranking is in, everyone else guesses which scenario the host picked, going on what they know about the group.",
+    tip: {
+      title: "Raise the stakes",
+      body: "Add a forfeit for everyone that guesses incorrectly!",
+    },
   },
   {
-    kind: "tip",
-    title: "Raise the stakes",
-    body: "Add a forfeit for everyone that guesses incorrectly!",
-  },
-  {
-    kind: "step",
     title: "The reveal",
     body: "The correct scenario is revealed along with the host's ranking and each player's guess.",
   },
   {
-    kind: "step",
     title: "Play on",
     body: "The game continues, with a new host each round.",
   },
 ];
-
-const STEP_NUMBERS = (() => {
-  let step = 0;
-  return SLIDES.map((slide) => (slide.kind === "step" ? ++step : null));
-})();
-const STEP_COUNT = STEP_NUMBERS.filter((n) => n !== null).length;
 
 export default function GameInstructions() {
   const [open, setOpen] = React.useState(false);
@@ -100,7 +90,6 @@ export default function GameInstructions() {
   };
 
   const slide = SLIDES[index];
-  const stepNumber = STEP_NUMBERS[index];
   const offset = reduceMotion ? 0 : 24;
 
   return (
@@ -121,9 +110,9 @@ export default function GameInstructions() {
           <DialogTitle>How to play</DialogTitle>
         </DialogHeader>
 
-        {/* Fixed minimum height so the dialog doesn't resize as slides of
-            different lengths swap in. */}
-        <div className="min-h-36">
+        {/* Sized to the tallest slide — the one carrying the tip — so the
+            dialog holds its height as slides swap in. */}
+        <div className="min-h-56">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={index}
@@ -133,16 +122,18 @@ export default function GameInstructions() {
               transition={{ duration: 0.18, ease: "easeOut" }}
               className="flex flex-col gap-2"
             >
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {slide.kind === "tip" ? (
-                  <Lightbulb className="size-3.5" />
-                ) : null}
-                {slide.kind === "tip"
-                  ? "Tip"
-                  : `Step ${stepNumber} of ${STEP_COUNT}`}
+              <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {`Step ${index + 1} of ${SLIDES.length}`}
               </span>
               <h3 className="text-lg font-semibold">{slide.title}</h3>
               <p className="text-sm text-muted-foreground">{slide.body}</p>
+              {slide.tip ? (
+                <Alert variant="warning" className="mt-2">
+                  <Lightbulb />
+                  <AlertTitle>{slide.tip.title}</AlertTitle>
+                  <AlertDescription>{slide.tip.body}</AlertDescription>
+                </Alert>
+              ) : null}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -159,10 +150,10 @@ export default function GameInstructions() {
           ))}
         </div>
 
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="gap-2 sm:justify-between grid grid-cols-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             disabled={isFirst}
             onClick={() => go(-1)}
           >
