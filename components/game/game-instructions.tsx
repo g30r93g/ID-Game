@@ -52,7 +52,7 @@ const SLIDES: Slide[] = [
   },
   {
     kind: "tip",
-    title: "Tip",
+    title: "Raise the stakes",
     body: "Add a forfeit for everyone that guesses incorrectly!",
   },
   {
