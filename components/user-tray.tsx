@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { LogOut } from "lucide-react";
+import { Fingerprint, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
+import { clearPasskeyNudge } from "@/lib/passkey-nudge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,30 @@ export function UserTray({ className }: { className?: string }) {
   const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Passkey enrolment lives here so it is reachable at any time, not only in the
+  // one-shot prompt right after an email-code sign-in.
+  const { data: passkeys, isPending: passkeysPending } =
+    authClient.useListPasskeys();
+  const [addingPasskey, setAddingPasskey] = React.useState(false);
+  const hasNoPasskey = !passkeysPending && (passkeys?.length ?? 0) === 0;
+
+  const addPasskey = async () => {
+    setAddingPasskey(true);
+    try {
+      const result = await authClient.passkey.addPasskey();
+      if (result?.error) {
+        toast.error(
+          result.error.message ?? "Could not create a passkey on this device.",
+        );
+        return;
+      }
+      clearPasskeyNudge();
+      toast.success("Passkey added");
+    } finally {
+      setAddingPasskey(false);
+    }
+  };
 
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const email = user?.email;
@@ -123,6 +148,50 @@ export function UserTray({ className }: { className?: string }) {
               />
               {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
+            <div className="space-y-2">
+              <Label>Passkeys</Label>
+              {passkeysPending ? (
+                <p className="text-sm text-muted-foreground">Checking…</p>
+              ) : hasNoPasskey ? (
+                <p className="text-sm text-muted-foreground">
+                  None yet. Add one to sign in with your fingerprint, face, or
+                  device PIN instead of waiting on an emailed code.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {passkeys?.map((passkey) => (
+                    <li
+                      key={passkey.id}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">
+                        {passkey.name ?? "Passkey"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={addingPasskey}
+                onClick={() => void addPasskey()}
+              >
+                {addingPasskey ? (
+                  <>
+                    <Icons.spinner className="mr-2 size-4 animate-spin" />
+                    Waiting for your device…
+                  </>
+                ) : (
+                  <>
+                    <Fingerprint className="mr-2 size-4" />
+                    {hasNoPasskey ? "Add a passkey" : "Add another passkey"}
+                  </>
+                )}
+              </Button>
+            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -143,23 +212,42 @@ export function UserTray({ className }: { className?: string }) {
           </form>
         </DialogContent>
       </Dialog>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="shrink-0 text-muted-foreground"
-        onClick={() => {
-          void authClient.signOut({
-            fetchOptions: {
-              onSuccess: () => {
-                window.location.href = "/sign-in";
+      <div className="flex shrink-0 items-center gap-1">
+        {user && hasNoPasskey && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={addingPasskey}
+            title="Sign in faster next time"
+            onClick={() => void addPasskey()}
+          >
+            {addingPasskey ? (
+              <Icons.spinner className="size-4 animate-spin" />
+            ) : (
+              <Fingerprint />
+            )}
+            <span className="hidden sm:inline">Add passkey</span>
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => {
+            void authClient.signOut({
+              fetchOptions: {
+                onSuccess: () => {
+                  window.location.href = "/sign-in";
+                },
               },
-            },
-          });
-        }}
-      >
-        <LogOut />
-        Sign out
-      </Button>
+            });
+          }}
+        >
+          <LogOut />
+          Sign out
+        </Button>
+      </div>
     </div>
   );
 }

@@ -22,11 +22,38 @@ import {
 } from "@/components/ui/input-otp";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Fingerprint, Mail } from "lucide-react";
+import {
+  clearPasskeyNudge,
+  dismissPasskeyNudge,
+  isPasskeyNudgeDue,
+} from "@/lib/passkey-nudge";
 
-type Step = "start" | "otp" | "add-passkey";
+// "redirecting" covers the window between a credential being accepted and the
+// destination painting. It is not cosmetic: `proxy.ts` gates /game on session
+// cookie presence alone, so the route is reachable a beat before the Convex
+// client holds a token, and without this the app looks stalled.
+type Step = "start" | "otp" | "add-passkey" | "redirecting";
 type Mode = "sign-in" | "sign-up";
+// Which auth action is in flight. A single boolean can't distinguish "waiting on
+// the OS passkey sheet" (which can sit open for many seconds) from "verifying
+// your code", so every button would show the same bare spinner.
+type AuthAction = null | "passkey" | "send-code" | "verify" | "add-passkey";
 
 const RESEND_SECONDS = 30;
+
+// Codes the passkey client reports when the WebAuthn ceremony itself never
+// produced a credential: a dismissed OS sheet arrives as NotAllowedError, which
+// SimpleWebAuthn passes through as ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY; an
+// aborted ceremony is ERROR_CEREMONY_ABORTED; anything it can't classify falls
+// back to AUTH_CANCELLED. The client overwrites the message with "Auth
+// cancelled" in every case, so none of them is worth showing as a failure —
+// platforms overload NotAllowedError for "you backed out" and "no usable
+// credential here" alike, and both want the same next step: email a code.
+const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
+  "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY",
+  "ERROR_CEREMONY_ABORTED",
+  "AUTH_CANCELLED",
+]);
 
 export default function SignInPage() {
   const router = useRouter();
@@ -47,8 +74,15 @@ export default function SignInPage() {
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  // Set once a passkey attempt ends without a credential, which flips the email
+  // path to be the primary action rather than the secondary one.
+  const [passkeyUnavailable, setPasskeyUnavailable] = React.useState(false);
+  const [action, setAction] = React.useState<AuthAction>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
+
+  // Any action in flight still disables every control, so the existing
+  // `disabled={busy}` props keep their meaning.
+  const busy = action !== null;
 
   React.useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -60,50 +94,73 @@ export default function SignInPage() {
 
   // Conditional-UI passkey autofill: offer stored passkeys from the email
   // field's autocomplete dropdown on supporting browsers.
+  //
+  // The ceremony can outlive this component and there is no way to abort it from
+  // here: `signIn.passkey` never forwards a signal to navigator.credentials.get()
+  // (`fetchOptions.signal` reaches only the verify request). That is survivable,
+  // because SimpleWebAuthn's WebAuthnAbortService aborts any in-flight ceremony
+  // whenever a new one begins — so pressing "Continue with passkey" supersedes
+  // this autofill on its own. What it cannot prevent is a late autofill success
+  // navigating a component that has already gone away, so `onSuccess` is guarded
+  // too, not just the availability check.
+  const autofillLive = React.useRef(true);
   React.useEffect(() => {
+    autofillLive.current = true;
     if (
       typeof window === "undefined" ||
       !window.PublicKeyCredential?.isConditionalMediationAvailable
     )
       return;
-    let cancelled = false;
     void PublicKeyCredential.isConditionalMediationAvailable().then(
       (available) => {
-        if (!available || cancelled) return;
+        if (!available || !autofillLive.current) return;
         void authClient.signIn.passkey({
           autoFill: true,
           fetchOptions: {
-            onSuccess: () => router.push(nextPath),
+            onSuccess: () => {
+              if (!autofillLive.current) return;
+              setStep("redirecting");
+              router.push(nextPath);
+            },
           },
         });
       },
     );
     return () => {
-      cancelled = true;
+      autofillLive.current = false;
     };
   }, [router, nextPath]);
 
   const handlePasskey = async () => {
     setError(null);
-    setBusy(true);
+    setAction("passkey");
     try {
       const { error } = await authClient.signIn.passkey();
       if (error) {
+        // The ceremony produced no credential. Don't shout about it — just lead
+        // with the email fallback instead. Only the WebAuthn-layer arm of the
+        // error union carries `code`, hence the `in` narrowing.
+        const code = "code" in error ? error.code : undefined;
+        if (WEBAUTHN_NO_CREDENTIAL_CODES.has(code ?? "")) {
+          setPasskeyUnavailable(true);
+          return;
+        }
         setError(
           error.message ??
             "Passkey sign-in failed. Try emailing yourself a code instead.",
         );
         return;
       }
+      setStep("redirecting");
       router.push(nextPath);
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
   const sendCode = async () => {
     setError(null);
-    setBusy(true);
+    setAction("send-code");
     try {
       const { error } = await authClient.emailOtp.sendVerificationOtp({
         email: email.trim().toLowerCase(),
@@ -120,7 +177,7 @@ export default function SignInPage() {
       setResendCountdown(RESEND_SECONDS);
       setStep("otp");
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -131,7 +188,7 @@ export default function SignInPage() {
 
   const verifyCode = async (value: string) => {
     setError(null);
-    setBusy(true);
+    setAction("verify");
     try {
       const trimmedName = name.trim();
       const { error } = await authClient.signIn.emailOtp({
@@ -146,15 +203,17 @@ export default function SignInPage() {
         );
         return;
       }
-      // Signed in — nudge towards a passkey if they don't have one yet.
+      // Signed in — nudge towards a passkey if they don't have one yet and
+      // haven't turned it down recently.
       const { data: passkeys } = await authClient.passkey.listUserPasskeys();
-      if (!passkeys || passkeys.length === 0) {
+      if ((!passkeys || passkeys.length === 0) && isPasskeyNudgeDue()) {
         setStep("add-passkey");
       } else {
+        setStep("redirecting");
         router.push(nextPath);
       }
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -165,7 +224,7 @@ export default function SignInPage() {
 
   const handleAddPasskey = async () => {
     setError(null);
-    setBusy(true);
+    setAction("add-passkey");
     try {
       const result = await authClient.passkey.addPasskey();
       if (result?.error) {
@@ -174,9 +233,12 @@ export default function SignInPage() {
         );
         return;
       }
+      // A passkey exists now; re-arm the prompt in case it is later removed.
+      clearPasskeyNudge();
+      setStep("redirecting");
       router.push(nextPath);
     } finally {
-      setBusy(false);
+      setAction(null);
     }
   };
 
@@ -191,6 +253,7 @@ export default function SignInPage() {
               setMode(value as Mode);
               setShowEmailFlow(false);
               setError(null);
+              setPasskeyUnavailable(false);
             }}
           >
             <form className="contents" onSubmit={handleStart}>
@@ -215,7 +278,9 @@ export default function SignInPage() {
               <CardContent className="grid gap-y-4">
                 {mode === "sign-in" && !showEmailFlow && (
                   <p className="text-sm text-muted-foreground">
-                    Sign in with your face, fingerprint, or device PIN.
+                    {passkeyUnavailable
+                      ? "No passkey was used on this device. Email yourself a code instead — you can add a passkey afterwards."
+                      : "Sign in with your face, fingerprint, or device PIN."}
                   </p>
                 )}
                 {(mode === "sign-up" || showEmailFlow) && (
@@ -255,11 +320,15 @@ export default function SignInPage() {
                     <>
                       <Button
                         type="button"
+                        variant={passkeyUnavailable ? "outline" : "default"}
                         disabled={busy}
                         onClick={handlePasskey}
                       >
-                        {busy ? (
-                          <Icons.spinner className="size-4 animate-spin" />
+                        {action === "passkey" ? (
+                          <>
+                            <Icons.spinner className="mr-2 size-4 animate-spin" />
+                            Waiting for your device…
+                          </>
                         ) : (
                           <>
                             <Fingerprint className="mr-2 size-4" />
@@ -269,7 +338,7 @@ export default function SignInPage() {
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={passkeyUnavailable ? "default" : "outline"}
                         disabled={busy}
                         onClick={() => {
                           setShowEmailFlow(true);
@@ -283,8 +352,11 @@ export default function SignInPage() {
                   )}
                   {(mode === "sign-up" || showEmailFlow) && (
                     <Button type="submit" disabled={busy}>
-                      {busy ? (
-                        <Icons.spinner className="size-4 animate-spin" />
+                      {action === "send-code" ? (
+                        <>
+                          <Icons.spinner className="mr-2 size-4 animate-spin" />
+                          Sending…
+                        </>
                       ) : mode === "sign-up" ? (
                         <>
                           <Mail className="mr-2 size-4" />
@@ -367,7 +439,9 @@ export default function SignInPage() {
                     disabled={busy}
                     onClick={sendCode}
                   >
-                    Didn&apos;t receive a code? Resend
+                    {action === "send-code"
+                      ? "Sending…"
+                      : "Didn't receive a code? Resend"}
                   </Button>
                 )}
               </div>
@@ -375,8 +449,11 @@ export default function SignInPage() {
             <CardFooter>
               <div className="grid w-full gap-y-4">
                 <Button type="submit" disabled={busy}>
-                  {busy ? (
-                    <Icons.spinner className="size-4 animate-spin" />
+                  {action === "verify" ? (
+                    <>
+                      <Icons.spinner className="mr-2 size-4 animate-spin" />
+                      Verifying…
+                    </>
                   ) : (
                     "Continue"
                   )}
@@ -401,10 +478,11 @@ export default function SignInPage() {
       {step === "add-passkey" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
-            <CardTitle>Add a passkey</CardTitle>
+            <CardTitle>Skip the code next time</CardTitle>
             <CardDescription>
-              Sign in next time with your fingerprint, face, or device PIN — no
-              codes needed.
+              Add a passkey and you&apos;ll sign straight in with your
+              fingerprint, face, or device PIN — no waiting on an email, nothing
+              to type.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-y-4">
@@ -413,8 +491,11 @@ export default function SignInPage() {
           <CardFooter>
             <div className="grid w-full gap-y-4">
               <Button type="button" disabled={busy} onClick={handleAddPasskey}>
-                {busy ? (
-                  <Icons.spinner className="size-4 animate-spin" />
+                {action === "add-passkey" ? (
+                  <>
+                    <Icons.spinner className="mr-2 size-4 animate-spin" />
+                    Waiting for your device…
+                  </>
                 ) : (
                   <>
                     <Fingerprint className="mr-2 size-4" />
@@ -426,12 +507,30 @@ export default function SignInPage() {
                 type="button"
                 size="sm"
                 variant="link"
-                onClick={() => router.push(nextPath)}
+                onClick={() => {
+                  dismissPasskeyNudge();
+                  setStep("redirecting");
+                  router.push(nextPath);
+                }}
               >
                 Maybe later
               </Button>
             </div>
           </CardFooter>
+        </Card>
+      )}
+
+      {step === "redirecting" && (
+        <Card className="w-full sm:w-96">
+          <CardHeader>
+            <CardTitle>Signing you in…</CardTitle>
+            <CardDescription>
+              You&apos;re all set — getting your games ready.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center py-4">
+            <Icons.spinner className="size-6 animate-spin text-muted-foreground" />
+          </CardContent>
         </Card>
       )}
     </div>
