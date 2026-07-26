@@ -15,6 +15,9 @@ import {
 import { FaFlagCheckered } from "react-icons/fa6";
 import { LoadingButton } from "@/components/ui/loading-button";
 import Link from "next/link";
+import GuessTally, { GuessTallyRow } from "@/components/game/guess-tally";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface DisplayResultsGamePhaseProps {
   joinCode: string;
@@ -53,6 +56,52 @@ export default function DisplayResultsGamePhase({
     }
   }, [isHost, performGuessMarking]);
 
+  // Folded out of the per-player results rather than fetched separately:
+  // `getGuessesForRound` already hands every caller at this phase the full
+  // breakdown, so a second query would only restate it. Scenarios nobody picked
+  // are absent by construction — during guessing the tally keeps them so rows
+  // never shift as votes land, but nothing moves here and an empty bar says
+  // little at the reveal.
+  const tallyRows: GuessTallyRow[] = [];
+  for (const result of results) {
+    const existing = tallyRows.find(
+      (row) => row.scenarioId === result.scenarioId,
+    );
+    if (existing) {
+      existing.count += 1;
+    } else {
+      tallyRows.push({
+        scenarioId: result.scenarioId,
+        description: result.guessedScenarioDescription,
+        count: 1,
+        correct: result.isCorrect === true,
+      });
+    }
+  }
+
+  const playerBreakdown = (
+    <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+      <div className={"flex flex-col gap-2"}>
+        {results?.map((r) => (
+          <Card
+            key={r._id}
+            className={"p-4 items-center grid grid-cols-[1fr_auto] gap-2"}
+          >
+            <CardHeader>
+              <CardTitle>{r.playerDisplayName}</CardTitle>
+              <CardDescription>{r.guessedScenarioDescription}</CardDescription>
+            </CardHeader>
+            {r.isCorrect ? (
+              <Check className={"text-green-500"} />
+            ) : (
+              <X className={"text-red-500"} />
+            )}
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+
   return (
     <div className={"flex flex-col gap-4"}>
       {correctAnswer && (
@@ -64,22 +113,23 @@ export default function DisplayResultsGamePhase({
           {correctAnswer}
         </div>
       )}
-      {results?.map((r) => (
-        <Card
-          key={r._id}
-          className={"p-4 items-center grid grid-cols-[1fr_auto] gap-2"}
-        >
-          <CardHeader>
-            <CardTitle>{r.playerDisplayName}</CardTitle>
-            <CardDescription>{r.guessedScenarioDescription}</CardDescription>
-          </CardHeader>
-          {r.isCorrect ? (
-            <Check className={"text-green-500"} />
-          ) : (
-            <X className={"text-red-500"} />
-          )}
-        </Card>
-      ))}
+      {/* Same split as the guessing phase: who voted what, and how the votes
+          stacked up. Nobody has guessed on a round with no results yet, so
+          there is nothing to tab between. */}
+      {results.length > 0 ? (
+        <Tabs defaultValue="players" className="gap-3">
+          <TabsList className="w-full">
+            <TabsTrigger value="players">Players</TabsTrigger>
+            <TabsTrigger value="tally">Guesses</TabsTrigger>
+          </TabsList>
+          <TabsContent value="players">{playerBreakdown}</TabsContent>
+          <TabsContent value="tally">
+            <GuessTally rows={tallyRows} heading="How the room guessed" />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        playerBreakdown
+      )}
       {isGameFinished() && (
         <Link href={`/game/${joinCode}/rate`} replace={true}>
           <Button className={"w-full"}>

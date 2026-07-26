@@ -4,6 +4,7 @@ import GuessTally from "@/components/game/guess-tally";
 import ScenarioBanner from "@/components/game/scenario-banner";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { clsx } from "clsx";
@@ -73,6 +74,34 @@ export default function AwaitGuessesGamePhase({
   // `tally` is null for anyone still to guess — the server decides, so there is
   // nothing to gate here.
   const { playerGuesses, tally } = guessStatus;
+  const guessedCount = playerGuesses.filter(
+    (playerGuess) => playerGuess.hasGuessed,
+  ).length;
+
+  const playerChecklist = (
+    <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+      <div className="grid grid-cols-1 gap-2">
+        {playerGuesses.map((playerGuess) => (
+          <Card
+            key={playerGuess.player}
+            className={clsx(
+              "p-4 flex flex-row items-center justify-between transition-opacity",
+              {
+                "opacity-50": !!playerGuess.hasGuessed,
+              },
+            )}
+          >
+            <CardTitle>{playerGuess.displayName}</CardTitle>
+            {playerGuess.hasGuessed ? (
+              <Check className="text-green-500" />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+            )}
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
+  );
 
   return (
     <>
@@ -111,29 +140,28 @@ export default function AwaitGuessesGamePhase({
           </span>
         </button>
       )}
-      {tally && <GuessTally rows={tally} />}
-      <ScrollArea className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-        <div className="grid grid-cols-1 gap-2">
-          {playerGuesses.map((playerGuess) => (
-            <Card
-              key={playerGuess.player}
-              className={clsx(
-                "p-4 flex flex-row items-center justify-between transition-opacity",
-                {
-                  "opacity-50": !!playerGuess.hasGuessed,
-                },
-              )}
-            >
-              <CardTitle>{playerGuess.displayName}</CardTitle>
-              {playerGuess.hasGuessed ? (
-                <Check className="text-green-500" />
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
-              )}
-            </Card>
-          ))}
-        </div>
-      </ScrollArea>
+      {/* Both views compete for the same space on a phone, so they share it
+          behind tabs rather than stacking. Without a tally there is only one
+          view, and a single tab would be noise. */}
+      {tally ? (
+        <Tabs defaultValue="tally" className="gap-3">
+          <TabsList className="w-full">
+            <TabsTrigger value="tally">Guesses</TabsTrigger>
+            <TabsTrigger value="players">
+              Players
+              <span className="font-normal text-muted-foreground tabular-nums">
+                {guessedCount}/{playerGuesses.length}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="tally">
+            <GuessTally rows={tally} />
+          </TabsContent>
+          <TabsContent value="players">{playerChecklist}</TabsContent>
+        </Tabs>
+      ) : (
+        playerChecklist
+      )}
     </>
   );
 }
