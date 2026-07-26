@@ -346,6 +346,7 @@ export function Game({ preloadedGame }: GameProps) {
             joinCode={game!.joinCode}
             roundId={currentRound._id}
             isHost={userIsHost()}
+            hostDisplayName={currentRoundHost?.displayName}
             isGameFinished={isGameFinished}
             advanceGame={advanceGame}
           />

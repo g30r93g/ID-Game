@@ -20,6 +20,8 @@ interface DisplayResultsGamePhaseProps {
   joinCode: string;
   roundId: Id<"gameRounds">;
   isHost: boolean;
+  /** Undefined until the host player query resolves; falls back to "the host". */
+  hostDisplayName?: string;
   isGameFinished: () => boolean;
   advanceGame: () => void;
 }
@@ -28,6 +30,7 @@ export default function DisplayResultsGamePhase({
   joinCode,
   roundId,
   isHost,
+  hostDisplayName,
   isGameFinished,
   advanceGame,
 }: DisplayResultsGamePhaseProps) {
@@ -105,7 +108,7 @@ export default function DisplayResultsGamePhase({
       {!isGameFinished() && !isHost && (
         <span className={"inline-flex gap-2 items-center justify-center"}>
           <Loader2 className={"animate-spin"} />
-          Waiting for next round...
+          Waiting for {hostDisplayName ?? "the host"} to complete round
         </span>
       )}
     </div>
