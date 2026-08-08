@@ -5,6 +5,8 @@ import { Fingerprint, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { clearPasskeyNudge } from "@/lib/passkey-nudge";
+import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
+import { useSaveDisplayName } from "@/lib/use-display-name";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +36,7 @@ export function UserTray({ className }: { className?: string }) {
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
 
+  const saveDisplayName = useSaveDisplayName();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -86,9 +89,9 @@ export function UserTray({ className }: { className?: string }) {
     setError(null);
     setSaving(true);
     try {
-      const { error } = await authClient.updateUser({ name: trimmed });
-      if (error) {
-        setError(error.message ?? "Could not update your name. Try again.");
+      const message = await saveDisplayName(trimmed);
+      if (message) {
+        setError(message);
         return;
       }
       setDialogOpen(false);
@@ -131,8 +134,8 @@ export function UserTray({ className }: { className?: string }) {
             <DialogHeader>
               <DialogTitle>Change your display name</DialogTitle>
               <DialogDescription>
-                This is the name other players see. It applies to games you
-                create or join from now on.
+                This is the name other players see, in the games you&apos;re
+                already in as well as any you create or join later.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
@@ -143,6 +146,7 @@ export function UserTray({ className }: { className?: string }) {
                 autoComplete="name"
                 autoFocus
                 required
+                maxLength={MAX_DISPLAY_NAME_LENGTH}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
               />
