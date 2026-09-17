@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,15 @@ import {
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
 // cookie presence alone, so the route is reachable a beat before the Convex
 // client holds a token, and without this the app looks stalled.
+//
+// Every success path leaves with a full document load, never `router.push`.
+// The app router caches proxy redirects as route structure: an unauthenticated
+// client-side visit to /game (the Play link) is remembered for five minutes as
+// "/game renders /sign-in?next=/game", and a soft navigation to /game after
+// signing in replays that entry without touching the network, so this page
+// stays mounted on the "redirecting" card forever. A hard navigation bypasses
+// the router cache and also re-runs the (auth-routes) layout, which seeds the
+// Convex client with a server-fetched token.
 type Step = "start" | "otp" | "add-passkey" | "redirecting";
 type Mode = "sign-in" | "sign-up";
 // Which auth action is in flight. A single boolean can't distinguish "waiting on
@@ -56,13 +65,15 @@ const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
 ]);
 
 export default function SignInPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
   const nextPath =
     nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
       : "/game";
+  const leave = React.useCallback(() => {
+    window.location.assign(nextPath);
+  }, [nextPath]);
 
   const [step, setStep] = React.useState<Step>("start");
   const [mode, setMode] = React.useState<Mode>(
@@ -120,7 +131,7 @@ export default function SignInPage() {
             onSuccess: () => {
               if (!autofillLive.current) return;
               setStep("redirecting");
-              router.push(nextPath);
+              leave();
             },
           },
         });
@@ -129,7 +140,7 @@ export default function SignInPage() {
     return () => {
       autofillLive.current = false;
     };
-  }, [router, nextPath]);
+  }, [leave]);
 
   const handlePasskey = async () => {
     setError(null);
@@ -152,7 +163,7 @@ export default function SignInPage() {
         return;
       }
       setStep("redirecting");
-      router.push(nextPath);
+      leave();
     } finally {
       setAction(null);
     }
@@ -210,7 +221,7 @@ export default function SignInPage() {
         setStep("add-passkey");
       } else {
         setStep("redirecting");
-        router.push(nextPath);
+        leave();
       }
     } finally {
       setAction(null);
@@ -236,7 +247,7 @@ export default function SignInPage() {
       // A passkey exists now; re-arm the prompt in case it is later removed.
       clearPasskeyNudge();
       setStep("redirecting");
-      router.push(nextPath);
+      leave();
     } finally {
       setAction(null);
     }
@@ -510,7 +521,7 @@ export default function SignInPage() {
                 onClick={() => {
                   dismissPasskeyNudge();
                   setStep("redirecting");
-                  router.push(nextPath);
+                  leave();
                 }}
               >
                 Maybe later
