@@ -71,11 +71,32 @@ export default function SignInPage() {
     nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
       : "/game";
+  // Idempotent: a passkey sign-in resolves the session store a beat before
+  // its own handler runs, so the already-signed-in effect below and the
+  // handler can both ask to leave.
+  const leaving = React.useRef(false);
   const leave = React.useCallback(() => {
+    if (leaving.current) return;
+    leaving.current = true;
     window.location.assign(nextPath);
   }, [nextPath]);
 
   const [step, setStep] = React.useState<Step>("start");
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const signedIn = !sessionPending && Boolean(session?.user);
+
+  // Already signed in — a reload of a stalled sign-in page, a bookmarked
+  // /sign-in, a shared link opened while logged in — goes straight to the
+  // destination instead of asking for credentials again. Only from the
+  // initial step: a sign-in that is mid-flow (the passkey nudge after an
+  // emailed code) keeps its own exit.
+  const bounce = step === "start" && signedIn;
+  // What the card shows. Derived rather than set, so the bounce paints the
+  // interstitial in the same render that notices the session.
+  const view: Step = bounce ? "redirecting" : step;
+  React.useEffect(() => {
+    if (bounce) leave();
+  }, [bounce, leave]);
   const [mode, setMode] = React.useState<Mode>(
     searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in",
   );
@@ -255,7 +276,7 @@ export default function SignInPage() {
 
   return (
     <div className="grid w-full grow items-center px-4 sm:justify-center">
-      {step === "start" && (
+      {view === "start" && (
         <Card className="w-full sm:w-96">
           <Tabs
             className="contents"
@@ -399,7 +420,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "otp" && (
+      {view === "otp" && (
         <Card className="w-full sm:w-96">
           <form className="contents" onSubmit={handleCodeSubmit}>
             <CardHeader>
@@ -486,7 +507,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "add-passkey" && (
+      {view === "add-passkey" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
             <CardTitle>Skip the code next time</CardTitle>
@@ -531,7 +552,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "redirecting" && (
+      {view === "redirecting" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
             <CardTitle>Signing you in…</CardTitle>
