@@ -69,19 +69,33 @@ export default async function GamePage({
   // Ensure the current user is a player, otherwise join them. Whoever created
   // the game is already one, so this whole branch is skipped on the create path.
   if (!isPlayer) {
-    try {
-      const posthog = PostHogClient();
-      if (posthog) {
-        posthog.capture({
-          distinctId: user.id,
-          event: "game_join",
-          properties: {
-            joinCode,
-          },
-        });
-      }
+    // `distinctId` is the Better Auth user ID, which is what the browser
+    // identifies as too (see providers/Posthog.tsx), so this lands on the same
+    // person as the rest of the session.
+    const posthog = PostHogClient();
+    posthog.capture({
+      distinctId: user.id,
+      event: "game_join",
+      properties: {
+        joinCode,
+      },
+    });
 
-      await fetchAuthMutation(api.game.joinGame, { joinCode });
+    // A serverless invocation can be frozen the moment the response is sent,
+    // leaving the event queued and unsent, so the flush has to be awaited —
+    // but alongside the join rather than in front of it, since this path is
+    // down to a single round trip and analytics should not cost another one.
+    // Its failure is logged, never thrown: it must not keep someone out of a
+    // game they are joining.
+    const flush = posthog.shutdown().catch((error) => {
+      console.error("Could not record game_join in PostHog", error);
+    });
+
+    try {
+      await Promise.all([
+        fetchAuthMutation(api.game.joinGame, { joinCode }),
+        flush,
+      ]);
     } catch {
       redirect("/game");
     }
