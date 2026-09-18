@@ -25,7 +25,7 @@ export default function PlayerCard({
   active,
 }: PlayerCardProps) {
   const { data: session } = authClient.useSession();
-  const saveDisplayName = useSaveDisplayName();
+  const { save: saveDisplayName, ready } = useSaveDisplayName();
 
   // What is being typed, tagged with the server value it was typed over. The
   // tag is what keeps this honest: the moment `playerName` moves — a save
@@ -67,7 +67,8 @@ export default function PlayerCard({
       // card lies about what everyone else can see. Drop it and say so.
       setDraft(null);
       toast.warning("Display name updated", {
-        description: "This card may still show the old name. Try again shortly.",
+        description:
+          "This card may still show the old name. Try again shortly.",
       });
     } finally {
       setSaving(false);
@@ -87,7 +88,7 @@ export default function PlayerCard({
               }
               onSubmit={(next) => void submitName(next)}
               onCancel={() => setDraft(null)}
-              disabled={saving}
+              disabled={saving || !ready}
               className="flex flex-1 flex-row items-center gap-1.5"
             >
               <Editable.Area className="flex-1">

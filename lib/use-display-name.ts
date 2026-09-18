@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
@@ -17,6 +17,16 @@ import { authClient } from "@/lib/auth-client";
 export type SaveDisplayNameResult =
   | { ok: false; message: string }
   | { ok: true; propagated: boolean };
+
+export type SaveDisplayName = {
+  /** Saves the name, resolving to what actually landed. */
+  save: (name: string) => Promise<SaveDisplayNameResult>;
+  /**
+   * False while the session or the Convex connection is still settling, which
+   * is when a save cannot land. Callers disable their submit on it.
+   */
+  ready: boolean;
+};
 
 /**
  * Reports a display-name failure to PostHog.
@@ -42,17 +52,37 @@ const reportFailure = (error: unknown, stage: "account" | "propagate") => {
  * players rows hold a snapshot taken when the game was created or joined, so a
  * rename that stopped at the account would leave an "Unknown Player" card on
  * screen for everyone else in the lobby.
+ *
+ * Both steps need a settled session, and they need different halves of it:
+ * `updateUser` needs a session cookie the auth routes will accept, while
+ * `syncDisplayName` needs the Convex client to have exchanged that cookie for a
+ * token. Straight after sign-in the socket is briefly unauthenticated, and a
+ * save dispatched into that window cannot land — so `ready` reports it and the
+ * callback refuses rather than burning the attempt.
  */
-export function useSaveDisplayName() {
+export function useSaveDisplayName(): SaveDisplayName {
   const syncDisplayName = useMutation(api.game.syncDisplayName);
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { data: session, isPending } = authClient.useSession();
 
-  return React.useCallback(
+  const ready = !isLoading && isAuthenticated && !isPending && !!session?.user;
+
+  const save = React.useCallback(
     async (name: string): Promise<SaveDisplayNameResult> => {
       const trimmed = name.trim();
       if (!trimmed) {
         return {
           ok: false,
           message: "Enter a name so other players know who you are.",
+        };
+      }
+
+      // Reachable even with the submit disabled: the form still submits on
+      // Enter, and the connection can drop between the keystroke and here.
+      if (!ready) {
+        return {
+          ok: false,
+          message: "Still connecting — try that again in a moment.",
         };
       }
 
@@ -79,6 +109,8 @@ export function useSaveDisplayName() {
 
       return { ok: true, propagated: true };
     },
-    [syncDisplayName],
+    [ready, syncDisplayName],
   );
+
+  return { save, ready };
 }

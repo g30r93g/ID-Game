@@ -36,7 +36,7 @@ export function UserTray({ className }: { className?: string }) {
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
 
-  const saveDisplayName = useSaveDisplayName();
+  const { save: saveDisplayName, ready } = useSaveDisplayName();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -161,6 +161,11 @@ export function UserTray({ className }: { className?: string }) {
                 onChange={(event) => setName(event.target.value)}
               />
               {error && <p className="text-sm text-destructive">{error}</p>}
+              {!ready && (
+                <p className="text-sm text-muted-foreground">
+                  Waiting for your session — Save unlocks in a second.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Passkeys</Label>
@@ -215,7 +220,7 @@ export function UserTray({ className }: { className?: string }) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || !ready}>
                 {saving ? (
                   <Icons.spinner className="size-4 animate-spin" />
                 ) : (
