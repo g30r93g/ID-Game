@@ -817,3 +817,71 @@ test("syncDisplayName requires an authenticated caller", async () => {
     /must be authenticated/,
   );
 });
+
+// The game page used to spend two round trips answering one question: what is
+// this game, and is the caller already in it? `fetchGameAndMembership` answers
+// both from a single subscription so the page pays one network hop, not two.
+test("fetchGameAndMembership returns the game and membership together", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "MEM001",
+      totalRounds: 4,
+      isOpen: true,
+      createdBy: "member",
+    });
+    await ctx.db.insert("players", {
+      userId: "member",
+      gameId,
+      displayName: "Member",
+      lastAlive: 0,
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "member" })
+    .query(api.game.fetchGameAndMembership, { joinCode: "MEM001" });
+
+  expect(result.game?.joinCode).toBe("MEM001");
+  expect(result.isPlayer).toBe(true);
+});
+
+test("fetchGameAndMembership reports a non-member as not a player", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("games", {
+      joinCode: "MEM002",
+      totalRounds: 4,
+      isOpen: true,
+      createdBy: "owner",
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "stranger" })
+    .query(api.game.fetchGameAndMembership, { joinCode: "MEM002" });
+
+  expect(result.game?.joinCode).toBe("MEM002");
+  expect(result.isPlayer).toBe(false);
+});
+
+// An unknown join code comes back as data, not an exception. The page redirects
+// on a null game; `isUserPlayer` threw here, which surfaced a server error.
+test("fetchGameAndMembership returns a null game for an unknown join code", async () => {
+  const t = convexTest(schema, modules);
+
+  const result = await t
+    .withIdentity({ subject: "member" })
+    .query(api.game.fetchGameAndMembership, { joinCode: "NOPE01" });
+
+  expect(result.game).toBeNull();
+  expect(result.isPlayer).toBe(false);
+});
+
+test("fetchGameAndMembership requires an authenticated caller", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.query(api.game.fetchGameAndMembership, { joinCode: "MEM001" }),
+  ).rejects.toThrow(/must be authenticated/);
+});

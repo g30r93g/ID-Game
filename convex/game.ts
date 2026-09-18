@@ -95,6 +95,14 @@ export const sendHeartbeat = mutation({
   },
 });
 
+/**
+ * @deprecated Superseded by {@link fetchGameAndMembership}, which answers this
+ * and returns the game in the same round trip. Nothing calls this any more.
+ *
+ * Kept for one deploy cycle only: a browser tab loaded before the deploy still
+ * holds a live subscription to the old pair, and Convex resolves subscriptions
+ * by name. Delete both once no pre-deploy tabs can still be open.
+ */
 export const isUserPlayer = query({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
@@ -125,6 +133,10 @@ export const isUserPlayer = query({
   },
 });
 
+/**
+ * @deprecated Superseded by {@link fetchGameAndMembership}. See the note on
+ * {@link isUserPlayer} for why this is still exported.
+ */
 export const fetchGameByJoinCode = query({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
@@ -139,6 +151,46 @@ export const fetchGameByJoinCode = query({
     }
 
     return game;
+  },
+});
+
+/**
+ * The game page's single read: the game behind a join code, plus whether the
+ * caller is already one of its players.
+ *
+ * Both facts used to come from separate calls — `fetchGameByJoinCode` and
+ * `isUserPlayer` — which cost the page two sequential network round trips and
+ * looked the same game up twice. The page blocks on this before it can render,
+ * so the second trip was dead time on every navigation into a game.
+ *
+ * An unknown join code is returned as `game: null` rather than thrown, so the
+ * page can redirect; `isUserPlayer` threw, which surfaced a server error screen.
+ */
+export const fetchGameAndMembership = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to load a game.");
+    }
+
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .unique();
+
+    if (!game) {
+      return { game: null, isPlayer: false };
+    }
+
+    const userPlayer = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
+      .first();
+
+    return { game, isPlayer: !!userPlayer };
   },
 });
 
