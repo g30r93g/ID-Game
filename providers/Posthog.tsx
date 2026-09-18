@@ -16,6 +16,12 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well
       capture_pageview: false, // Disable automatic pageview capture, as we capture manually
       capture_pageleave: true,
+      // Client-side failures used to end at a console.error on someone else's
+      // device: a mutation that never reaches Convex leaves no server log at
+      // all, so there was nothing to look at afterwards. Autocapture covers
+      // unhandled errors and rejections; deliberate reports go through
+      // posthog.captureException (see lib/use-display-name.ts).
+      capture_exceptions: true,
     });
   }, []);
 

@@ -66,13 +66,20 @@ export function DisplayNamePrompt() {
     setError(null);
     setSaving(true);
     try {
-      const message = await saveDisplayName(trimmed);
-      if (message) {
-        setError(message);
+      const result = await saveDisplayName(trimmed);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
       setSaved(true);
-      toast.success(`You're playing as ${trimmed}`);
+      if (result.propagated) {
+        toast.success(`You're playing as ${trimmed}`);
+      } else {
+        toast.warning(`You're playing as ${trimmed}`, {
+          description:
+            'Games you have already joined may still show you as "Unknown Player".',
+        });
+      }
     } finally {
       setSaving(false);
     }
