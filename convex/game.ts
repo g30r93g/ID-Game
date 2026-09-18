@@ -237,6 +237,48 @@ export const joinGame = mutation({
   },
 });
 
+/**
+ * Copies the caller's account display name onto every players row they own.
+ *
+ * A players row snapshots the display name at create/join time, so anyone who
+ * ended up without a name on their account — signing in with a fresh email via
+ * the OTP tab creates the account with an empty `name` — is stamped
+ * "Unknown Player" in every game they have already touched. Following an invite
+ * link joins them server-side before any UI can ask for a name, so a rename has
+ * to reach backwards; the naming prompt calls this straight after saving.
+ *
+ * Returns the number of rows brought up to date.
+ */
+export const syncDisplayName = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to sync their display name.");
+    }
+
+    // Read the name from the account rather than taking it as an argument, so
+    // a player's card can never drift from the name on their account.
+    const authUser = await authComponent.safeGetAuthUser(ctx);
+    const displayName = authUser?.name?.trim();
+    // Nothing to propagate. Leave the rows alone rather than overwriting names
+    // that are already there with the placeholder.
+    if (!displayName) return 0;
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byUser", (q) => q.eq("userId", user.subject))
+      .collect();
+    const stale = players.filter((player) => player.displayName !== displayName);
+
+    await Promise.all(
+      stale.map((player) => ctx.db.patch(player._id, { displayName })),
+    );
+
+    return stale.length;
+  },
+});
+
 export const leaveGame = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {

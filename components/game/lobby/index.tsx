@@ -110,7 +110,6 @@ export default function LobbyGamePhase({
               return (
                 <PlayerCard
                   key={id}
-                  playerId={id}
                   playerUserId={userId}
                   playerName={name}
                   lastAlive={lastAlive}

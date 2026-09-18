@@ -27,6 +27,7 @@ import {
   dismissPasskeyNudge,
   isPasskeyNudgeDue,
 } from "@/lib/passkey-nudge";
+import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 
 // "redirecting" covers the window between a credential being accepted and the
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
@@ -183,6 +184,12 @@ export default function SignInPage() {
 
   const handleStart = async (event: React.FormEvent) => {
     event.preventDefault();
+    // `required` accepts a field of spaces, and a blank name is exactly what
+    // leaves someone showing up as "Unknown Player" later on.
+    if (mode === "sign-up" && !name.trim()) {
+      setError("Enter the name you want other players to see.");
+      return;
+    }
     await sendCode();
   };
 
@@ -305,6 +312,7 @@ export default function SignInPage() {
                       type="text"
                       autoComplete="name"
                       required
+                      maxLength={MAX_DISPLAY_NAME_LENGTH}
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                     />

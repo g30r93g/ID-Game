@@ -1,10 +1,12 @@
 import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, components } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import betterAuthSchema from "./betterAuth/schema";
 
 const modules = import.meta.glob("./**/*.*s");
+const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
 
 test("startNewGameRound sets startedAt on round 1", async () => {
   const t = convexTest(schema, modules);
@@ -685,4 +687,133 @@ test("selectGameRoundScenario increments the scenario's timesSelected", async ()
 
   const scenario = await t.run((ctx) => ctx.db.get(scenarioId));
   expect(scenario?.timesSelected).toBe(1);
+});
+
+// Stands up a Better Auth user and an unexpired session for them inside the
+// registered component, and hands back the identity fields
+// `authComponent.safeGetAuthUser` looks the pair up by: the session's document
+// id as `sessionId`, the user's as `subject`.
+async function seedAuthUser(
+  t: TestConvex<typeof schema>,
+  name: string,
+): Promise<{ subject: string; sessionId: string }> {
+  const now = Date.now();
+  return t.run(async (ctx) => {
+    const user = await ctx.runMutation(components.betterAuth.adapter.create, {
+      input: {
+        model: "user",
+        data: {
+          name,
+          email: `${name || "nameless"}@example.com`,
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    });
+    const session = await ctx.runMutation(components.betterAuth.adapter.create, {
+      input: {
+        model: "session",
+        data: {
+          userId: user._id,
+          token: `token-${user._id}`,
+          expiresAt: now + 60 * 60_000,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    });
+    return { subject: user._id, sessionId: session._id };
+  });
+}
+
+test("syncDisplayName renames the caller's players rows across their games", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+
+  const identity = await seedAuthUser(t, "Ada");
+  const otherPlayerId = await t.run(async (ctx) => {
+    const first = await ctx.db.insert("games", {
+      joinCode: "SYN001",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: identity.subject,
+    });
+    const second = await ctx.db.insert("games", {
+      joinCode: "SYN002",
+      totalRounds: 3,
+      isOpen: false,
+      createdBy: "someone-else",
+    });
+    for (const gameId of [first, second]) {
+      await ctx.db.insert("players", {
+        userId: identity.subject,
+        gameId,
+        displayName: "Unknown Player",
+        lastAlive: 0,
+      });
+    }
+    // Another player in one of the same games must be left alone.
+    return ctx.db.insert("players", {
+      userId: "someone-else",
+      gameId: second,
+      displayName: "Unknown Player",
+      lastAlive: 0,
+    });
+  });
+
+  const updated = await t
+    .withIdentity(identity)
+    .mutation(api.game.syncDisplayName, {});
+  expect(updated).toBe(2);
+
+  const names = await t.run(async (ctx) => {
+    const mine = await ctx.db
+      .query("players")
+      .withIndex("byUser", (q) => q.eq("userId", identity.subject))
+      .collect();
+    const other = await ctx.db.get(otherPlayerId);
+    return { mine: mine.map((p) => p.displayName), other: other?.displayName };
+  });
+  expect(names.mine).toEqual(["Ada", "Ada"]);
+  expect(names.other).toBe("Unknown Player");
+
+  // Nothing left to do the second time around.
+  expect(
+    await t.withIdentity(identity).mutation(api.game.syncDisplayName, {}),
+  ).toBe(0);
+});
+
+test("syncDisplayName leaves rows alone when the account has no name", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+
+  const identity = await seedAuthUser(t, "");
+  await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "SYN003",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: identity.subject,
+    });
+    await ctx.db.insert("players", {
+      userId: identity.subject,
+      gameId,
+      displayName: "Unknown Player",
+      lastAlive: 0,
+    });
+  });
+
+  expect(
+    await t.withIdentity(identity).mutation(api.game.syncDisplayName, {}),
+  ).toBe(0);
+});
+
+test("syncDisplayName requires an authenticated caller", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+
+  await expect(t.mutation(api.game.syncDisplayName, {})).rejects.toThrow(
+    /must be authenticated/,
+  );
 });
