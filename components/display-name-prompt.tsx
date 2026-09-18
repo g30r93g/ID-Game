@@ -37,7 +37,7 @@ import { Icons } from "@/components/ui/icons";
 export function DisplayNamePrompt() {
   const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
-  const saveDisplayName = useSaveDisplayName();
+  const { save: saveDisplayName, ready } = useSaveDisplayName();
 
   const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -116,9 +116,14 @@ export function DisplayNamePrompt() {
               onChange={(event) => setName(event.target.value)}
             />
             {error && <p className="text-sm text-destructive">{error}</p>}
+            {!ready && (
+              <p className="text-sm text-muted-foreground">
+                Waiting for your session — this unlocks in a second.
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={saving || !name.trim()}>
+            <Button type="submit" disabled={saving || !ready || !name.trim()}>
               {saving ? (
                 <Icons.spinner className="size-4 animate-spin" />
               ) : (
