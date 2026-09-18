@@ -67,7 +67,9 @@ function PostHogIdentity() {
 
     if (action === "none") return;
     if (action === "reset" || action === "reidentify") posthog.reset();
-    if (action === "identify" || action === "reidentify") {
+    // `userId` is always set for these two actions; the re-check is what lets
+    // TypeScript see it, since the narrowing happens inside nextIdentityAction.
+    if ((action === "identify" || action === "reidentify") && userId) {
       // This ID must match the server-side `game_join` capture, which uses the
       // Better Auth user document ID from api.auth.getCurrentUser.
       posthog.identify(userId, { email, name });
