@@ -34,11 +34,13 @@ import { usePostHog } from "posthog-js/react";
 import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 
 interface GameProps {
-  preloadedGame: Preloaded<typeof api.game.fetchGameByJoinCode>;
+  preloadedGame: Preloaded<typeof api.game.fetchGameAndMembership>;
 }
 
 export function Game({ preloadedGame }: GameProps) {
-  const game = usePreloadedQuery(preloadedGame);
+  // The page preloads the game and the caller's membership in one query; only
+  // the game is needed here, but the subscription stays live for both.
+  const { game } = usePreloadedQuery(preloadedGame);
   const players =
     useQuery(api.game.getPlayersForGame, game ? { game: game._id } : "skip") ??
     [];
