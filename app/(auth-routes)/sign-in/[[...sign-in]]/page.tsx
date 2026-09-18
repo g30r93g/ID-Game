@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,15 @@ import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
 // cookie presence alone, so the route is reachable a beat before the Convex
 // client holds a token, and without this the app looks stalled.
+//
+// Every success path leaves with a full document load, never `router.push`.
+// The app router caches proxy redirects as route structure: an unauthenticated
+// client-side visit to /game (the Play link) is remembered for five minutes as
+// "/game renders /sign-in?next=/game", and a soft navigation to /game after
+// signing in replays that entry without touching the network, so this page
+// stays mounted on the "redirecting" card forever. A hard navigation bypasses
+// the router cache and also re-runs the (auth-routes) layout, which seeds the
+// Convex client with a server-fetched token.
 type Step = "start" | "otp" | "add-passkey" | "redirecting";
 type Mode = "sign-in" | "sign-up";
 // Which auth action is in flight. A single boolean can't distinguish "waiting on
@@ -57,15 +66,38 @@ const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
 ]);
 
 export default function SignInPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
   const nextPath =
     nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
       : "/game";
+  // Idempotent: a passkey sign-in resolves the session store a beat before
+  // its own handler runs, so the already-signed-in effect below and the
+  // handler can both ask to leave.
+  const leaving = React.useRef(false);
+  const leave = React.useCallback(() => {
+    if (leaving.current) return;
+    leaving.current = true;
+    window.location.assign(nextPath);
+  }, [nextPath]);
 
   const [step, setStep] = React.useState<Step>("start");
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const signedIn = !sessionPending && Boolean(session?.user);
+
+  // Already signed in — a reload of a stalled sign-in page, a bookmarked
+  // /sign-in, a shared link opened while logged in — goes straight to the
+  // destination instead of asking for credentials again. Only from the
+  // initial step: a sign-in that is mid-flow (the passkey nudge after an
+  // emailed code) keeps its own exit.
+  const bounce = step === "start" && signedIn;
+  // What the card shows. Derived rather than set, so the bounce paints the
+  // interstitial in the same render that notices the session.
+  const view: Step = bounce ? "redirecting" : step;
+  React.useEffect(() => {
+    if (bounce) leave();
+  }, [bounce, leave]);
   const [mode, setMode] = React.useState<Mode>(
     searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in",
   );
@@ -121,7 +153,7 @@ export default function SignInPage() {
             onSuccess: () => {
               if (!autofillLive.current) return;
               setStep("redirecting");
-              router.push(nextPath);
+              leave();
             },
           },
         });
@@ -130,7 +162,7 @@ export default function SignInPage() {
     return () => {
       autofillLive.current = false;
     };
-  }, [router, nextPath]);
+  }, [leave]);
 
   const handlePasskey = async () => {
     setError(null);
@@ -153,7 +185,7 @@ export default function SignInPage() {
         return;
       }
       setStep("redirecting");
-      router.push(nextPath);
+      leave();
     } finally {
       setAction(null);
     }
@@ -217,7 +249,7 @@ export default function SignInPage() {
         setStep("add-passkey");
       } else {
         setStep("redirecting");
-        router.push(nextPath);
+        leave();
       }
     } finally {
       setAction(null);
@@ -243,7 +275,7 @@ export default function SignInPage() {
       // A passkey exists now; re-arm the prompt in case it is later removed.
       clearPasskeyNudge();
       setStep("redirecting");
-      router.push(nextPath);
+      leave();
     } finally {
       setAction(null);
     }
@@ -251,7 +283,7 @@ export default function SignInPage() {
 
   return (
     <div className="grid w-full grow items-center px-4 sm:justify-center">
-      {step === "start" && (
+      {view === "start" && (
         <Card className="w-full sm:w-96">
           <Tabs
             className="contents"
@@ -396,7 +428,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "otp" && (
+      {view === "otp" && (
         <Card className="w-full sm:w-96">
           <form className="contents" onSubmit={handleCodeSubmit}>
             <CardHeader>
@@ -483,7 +515,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "add-passkey" && (
+      {view === "add-passkey" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
             <CardTitle>Skip the code next time</CardTitle>
@@ -518,7 +550,7 @@ export default function SignInPage() {
                 onClick={() => {
                   dismissPasskeyNudge();
                   setStep("redirecting");
-                  router.push(nextPath);
+                  leave();
                 }}
               >
                 Maybe later
@@ -528,7 +560,7 @@ export default function SignInPage() {
         </Card>
       )}
 
-      {step === "redirecting" && (
+      {view === "redirecting" && (
         <Card className="w-full sm:w-96">
           <CardHeader>
             <CardTitle>Signing you in…</CardTitle>
