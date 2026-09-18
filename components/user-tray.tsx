@@ -89,13 +89,23 @@ export function UserTray({ className }: { className?: string }) {
     setError(null);
     setSaving(true);
     try {
-      const message = await saveDisplayName(trimmed);
-      if (message) {
-        setError(message);
+      const result = await saveDisplayName(trimmed);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
       setDialogOpen(false);
-      toast.success("Display name updated");
+      if (result.propagated) {
+        toast.success("Display name updated");
+      } else {
+        // The account has the new name, so this is not a failure to retype —
+        // but the cards in the games they are already in are still the old one,
+        // and saying nothing would leave them to find that out from a friend.
+        toast.warning("Display name updated", {
+          description:
+            "Games you're already in may still show the old name. Save again to retry.",
+        });
+      }
     } finally {
       setSaving(false);
     }

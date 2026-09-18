@@ -50,15 +50,25 @@ export default function PlayerCard({
     }
     setSaving(true);
     try {
-      const message = await saveDisplayName(trimmed);
-      if (message) {
+      const result = await saveDisplayName(trimmed);
+      if (!result.ok) {
         // Put the card back to the name everyone else is still seeing rather
         // than leaving a name on screen that was never saved.
         setDraft(null);
-        toast.error(message);
+        toast.error(result.message);
         return;
       }
-      toast.success("Display name updated");
+      if (result.propagated) {
+        toast.success("Display name updated");
+        return;
+      }
+      // The account took the name but this row didn't, and the draft would sit
+      // here showing it anyway until the next reload — the one state where this
+      // card lies about what everyone else can see. Drop it and say so.
+      setDraft(null);
+      toast.warning("Display name updated", {
+        description: "This card may still show the old name. Try again shortly.",
+      });
     } finally {
       setSaving(false);
     }
