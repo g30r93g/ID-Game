@@ -2,6 +2,7 @@ import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
+import { dash } from "@better-auth/infra";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { admin, emailOTP } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
@@ -79,6 +80,15 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         rpName: "The ID Game",
         origin: siteUrl,
       }),
+      // Better Auth Dash. Reads its credential from BETTER_AUTH_API_KEY on
+      // the Convex deployment (npx convex env set BETTER_AUTH_API_KEY <key>);
+      // a missing key resolves to "" rather than throwing, which is what
+      // keeps env-less module analysis and `npx auth generate` working.
+      // Left unconfigured deliberately: `activityTracking` and
+      // `managedDirectorySync` both default to false, and both are the only
+      // options that contribute plugin schema — so enabling either one means
+      // regenerating convex/betterAuth/generatedSchema.ts.
+      dash(),
       convex({ authConfig }),
     ],
   } satisfies BetterAuthOptions;
