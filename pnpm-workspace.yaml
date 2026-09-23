@@ -1,0 +1,7 @@
+# pnpm 12 refuses to install unless every package with a build script is
+# explicitly allowed or denied. These three were already being skipped
+# silently under pnpm 9, so keep them off.
+allowBuilds:
+  '@clerk/shared': false
+  core-js: false
+  esbuild: false
