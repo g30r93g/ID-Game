@@ -1,6 +1,8 @@
 import { v } from "convex/values";
+import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { evaluateContinuity } from "../lib/continuable";
+import { canDeleteGuest, GUEST_GRACE_PERIOD_MS } from "../lib/guest";
 
 /**
  * Games inspected per run. The candidate set is only games that are neither
@@ -61,5 +63,109 @@ export const markAbandonedGames = internalMutation({
     }
 
     return { inspected: candidates.length, marked };
+  },
+});
+
+/**
+ * Guests inspected per transaction. Each costs a session lookup plus, when
+ * deleted, a couple of writes, so this stays well inside Convex's limits; a
+ * backlog carries on in a follow-up run rather than one oversized mutation.
+ */
+const GUEST_BATCH_SIZE = 100;
+
+/**
+ * Deletes guest (anonymous) accounts nobody can use any more: older than the
+ * grace period and with every session expired. A guest has no credential to
+ * sign back in with, so once its sessions lapse it is unreachable for good.
+ * Guests who sign up are already deleted by the anonymous plugin when their
+ * seats move to the new account (see `onLinkAccount` in convex/auth.ts).
+ *
+ * Reads and writes the Better Auth component's tables through its adapter
+ * functions, the same ones Better Auth itself uses. Guests are listed on the
+ * user table's `isAnonymous` index, oldest first, so a run stops at the first
+ * guest still inside the grace period: everything after it is newer. A full
+ * page continues in a follow-up run from where this one stopped, so a guest
+ * kept for a live session is never read twice in one sweep.
+ *
+ * `players` rows are left alone: game history refers to them by user id, and
+ * nothing requires that user to still exist.
+ */
+export const deleteExpiredGuests = internalMutation({
+  args: {
+    // Set only on a continuation, which keeps the first run's cutoff so the
+    // sweep stays one consistent query.
+    cursor: v.optional(v.string()),
+    cutoff: v.optional(v.number()),
+  },
+  returns: v.object({
+    inspected: v.number(),
+    deleted: v.number(),
+    continued: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const cutoff = args.cutoff ?? now - GUEST_GRACE_PERIOD_MS;
+
+    const guests = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      where: [{ field: "isAnonymous", value: true }],
+      paginationOpts: {
+        cursor: args.cursor ?? null,
+        numItems: GUEST_BATCH_SIZE,
+      },
+    });
+
+    let inspected = 0;
+    let deleted = 0;
+    let reachedGracePeriod = false;
+    for (const guest of guests.page as { _id: string; createdAt: number }[]) {
+      if (guest.createdAt >= cutoff) {
+        reachedGracePeriod = true;
+        break;
+      }
+      inspected += 1;
+
+      const sessions = await ctx.runQuery(
+        components.betterAuth.adapter.findMany,
+        {
+          model: "session",
+          where: [{ field: "userId", value: guest._id }],
+          paginationOpts: { cursor: null, numItems: 100 },
+        },
+      );
+      const expiries = (sessions.page as { expiresAt: number }[]).map(
+        (session) => session.expiresAt,
+      );
+      // Kept for a session that is still live: whoever holds it can play on.
+      if (!canDeleteGuest(guest.createdAt, expiries, now)) continue;
+      // A session can't be live here, but expired rows still belong to the
+      // guest, and the anonymous plugin removes them the same way.
+      if (sessions.page.length > 0) {
+        await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
+          input: {
+            model: "session",
+            where: [{ field: "userId", value: guest._id }],
+          },
+          paginationOpts: { cursor: null, numItems: 100 },
+        });
+      }
+      await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
+        input: {
+          model: "user",
+          where: [{ field: "_id", value: guest._id }],
+        },
+      });
+      deleted += 1;
+    }
+
+    const continued = !reachedGracePeriod && !guests.isDone;
+    if (continued) {
+      await ctx.scheduler.runAfter(0, internal.cleanup.deleteExpiredGuests, {
+        cursor: guests.continueCursor,
+        cutoff,
+      });
+    }
+
+    return { inspected, deleted, continued };
   },
 });

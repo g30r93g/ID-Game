@@ -111,6 +111,8 @@ sequenceDiagram
 
 If the account already has its own seat in one of those games, the account's seat wins and the guest's is retired (`active: false`), the same way consensus removal retires a player.
 
+Guests who never sign up are cleaned up by the daily `delete expired guests` Convex cron (`deleteExpiredGuests` in `convex/cleanup.ts`): once a guest is 30 days old and every one of its sessions has expired, nobody can sign in as it again, so the user and its sessions are deleted. Its `players` rows stay, as game history. The admin users page counts guests separately from accounts.
+
 ## Local development
 
 Assumes you know Convex and Next. From a fresh clone:

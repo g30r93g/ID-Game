@@ -20,6 +20,11 @@ const schema = defineSchema({
   // The rate limiter prunes expired windows by lastRequest (the generated
   // schema already indexes key for the per-request lookups).
   rateLimit: tables.rateLimit.index("lastRequest", ["lastRequest"]),
+  // The guest cleanup (convex/cleanup.ts) lists guests oldest first. Guests
+  // and accounts share the user table, so without this it would scan every
+  // account to find them; the adapter orders an index by _creationTime after
+  // its fields, which gives the oldest-first order for free.
+  user: tables.user.index("isAnonymous", ["isAnonymous"]),
 });
 
 export default schema;

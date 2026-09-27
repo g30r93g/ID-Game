@@ -74,9 +74,19 @@ export const userStats = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    const listed = await auth.api.listUsers({ headers, query: { limit: 1 } });
+    const [listed, guests] = await Promise.all([
+      auth.api.listUsers({ headers, query: { limit: 1 } }),
+      // Counted on the user table's `isAnonymous` index. `deleteExpiredGuests`
+      // removes guests nobody can use any more, so this stays small.
+      auth.api.listUsers({
+        headers,
+        query: { limit: 1, filterField: "isAnonymous", filterValue: true },
+      }),
+    ]);
     return {
-      totalUsers: listed.total,
+      // Guests share the user table but aren't sign-ups; count them apart.
+      totalUsers: listed.total - guests.total,
+      guests: guests.total,
       activePlayers14d: await activePlayers14dCore(ctx, Date.now()),
     };
   },

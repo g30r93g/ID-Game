@@ -35,3 +35,24 @@ export function isGuestPlaceholderName(name: string): boolean {
 export function upgradePath(next: string): string {
   return `/sign-in?tab=sign-up&next=${encodeURIComponent(next)}`;
 }
+
+/**
+ * How long a guest account is kept before the cleanup may delete it. Long
+ * enough that nobody loses a guest mid-game; the live-session check in
+ * `canDeleteGuest` covers anyone still playing past it.
+ */
+export const GUEST_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * Whether a guest account can be deleted: past the grace period, with no
+ * session that could still sign it in. Once every session has expired the
+ * account is unreachable — guests have no credential to sign back in with.
+ */
+export function canDeleteGuest(
+  createdAt: number,
+  sessionExpiresAt: readonly number[],
+  now: number,
+): boolean {
+  if (now - createdAt < GUEST_GRACE_PERIOD_MS) return false;
+  return sessionExpiresAt.every((expiresAt) => expiresAt <= now);
+}
