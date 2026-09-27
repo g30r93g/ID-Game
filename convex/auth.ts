@@ -12,7 +12,7 @@ import { admin, anonymous, emailOTP } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
 import { components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
-import { query } from "./_generated/server";
+import { internalAction, query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 import { countUser, recountUser, uncountUser } from "./userCounts";
@@ -159,7 +159,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       // options that contribute plugin schema — so enabling either one means
       // regenerating convex/betterAuth/generatedSchema.ts.
       dash(),
-      convex({ authConfig }),
+      // With JWKS set, tokens are signed with that key rather than one read
+      // from the jwks table on every mint. Must match auth.config.ts, which
+      // reads the same variable; unset, both go back to the table (the config
+      // through the /api/auth/convex/jwks endpoint).
+      convex({ authConfig, jwks: process.env.JWKS }),
     ],
   } satisfies BetterAuthOptions;
 };
@@ -172,6 +176,25 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
   }
   return betterAuth(createAuthOptions(ctx));
 };
+
+/**
+ * The newest signing key in the jwks table (creating one if there is none),
+ * shaped for the JWKS env var. It reuses the existing key rather than rotating,
+ * so tokens already issued keep verifying once the static keys go live:
+ *
+ *   npx convex run auth:getLatestJwks --prod | npx convex env set JWKS --prod
+ *
+ * then redeploy so auth.config.ts picks it up. The output includes the
+ * PRIVATE key: pipe it straight into `env set`, never log or commit it.
+ * Internal, so only someone with deploy access can run it.
+ */
+export const getLatestJwks = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const auth = createAuth(ctx);
+    return await auth.api.getLatestJwks();
+  },
+});
 
 export const getCurrentUser = query({
   args: {},

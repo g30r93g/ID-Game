@@ -62,6 +62,14 @@ export default function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // The following matcher runs middleware on all routes except static assets.
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+  // Every page and API route except:
+  // - `_next/` and anything with a file extension (static assets);
+  // - `ingest/`, the PostHog proxy: every capture, flag and replay POST would
+  //   otherwise cost a proxy run, and their paths carry no extension (the
+  //   rule only sees the pathname, never `?ver=1.2.3`), so it misses them;
+  // - `api/auth/`, Better Auth's own routes, which authenticate themselves.
+  // Those two now skip the maintenance gate too, which is harmless: analytics
+  // and session checks don't touch the game. `api/admin/` and every page, `/`
+  // included, still go through it. proxy.test.ts pins this down.
+  matcher: ["/((?!_next/|ingest/|api/auth/|.*\\..*).*)"],
 };

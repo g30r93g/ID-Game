@@ -4,25 +4,41 @@ import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import { countUser, userCounts } from "./userCounts";
+import { groupTimesSelected } from "../lib/admin/metrics";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
 /**
  * Exact backfill: count selected gameRoundScenarios per scenario and store it.
+ * `selectGameRoundScenario` keeps the count current, so this only matters for
+ * scenarios picked before the counter existed; it is safe to re-run.
+ *
+ * One pass over each table in a single transaction, rather than a migration
+ * over scenarios that scanned every round scenario once per scenario. Being
+ * one transaction, it can't race a selection made while it runs. It is not a
+ * `migrations.define` migration, so `runAll` no longer includes it: run it
+ * directly with `npx convex run migrations:backfillTimesSelected`.
  */
-export const backfillTimesSelected = migrations.define({
-  table: "scenarios",
-  migrateOne: async (ctx, scenario) => {
-    const selectedRows = await ctx.db
-      .query("gameRoundScenarios")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("scenarioId"), scenario._id),
-          q.eq(q.field("selected"), true),
-        ),
-      )
-      .collect();
-    return { timesSelected: selectedRows.length };
+export const backfillTimesSelected = internalMutation({
+  args: {},
+  returns: v.object({ scenarios: v.number(), updated: v.number() }),
+  handler: async (ctx) => {
+    // No index leads with `selected`, so this reads the whole table once.
+    const roundScenarios = await ctx.db.query("gameRoundScenarios").collect();
+    const counts = groupTimesSelected(
+      roundScenarios.filter((row) => row.selected),
+    );
+
+    const scenarios = await ctx.db.query("scenarios").collect();
+    let updated = 0;
+    for (const scenario of scenarios) {
+      const timesSelected = counts.get(scenario._id) ?? 0;
+      if (scenario.timesSelected === timesSelected) continue;
+      await ctx.db.patch(scenario._id, { timesSelected });
+      updated += 1;
+    }
+
+    return { scenarios: scenarios.length, updated };
   },
 });
 
@@ -54,12 +70,11 @@ export const backfillGameTimestamps = migrations.define({
 // Deviation from brief: `Migrations#runner` types its argument as
 // `MigrationFunctionReference | MigrationFunctionReference[]` (actual function
 // references), not migration name strings — passing string literals like
-// "migrations:backfillTimesSelected" fails `tsc`. Use the real function
+// "migrations:backfillGameTimestamps" fails `tsc`. Use the real function
 // references from `internal.migrations` instead; behavior is identical (see
 // the installed @convex-dev/migrations@0.3.5 type at
 // node_modules/@convex-dev/migrations/dist/client/index.d.ts:137).
 export const runAll = migrations.runner([
-  internal.migrations.backfillTimesSelected,
   internal.migrations.backfillGameTimestamps,
 ]);
 

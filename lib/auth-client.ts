@@ -9,6 +9,14 @@ import { dashClient } from "@better-auth/infra/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 
 export const authClient = createAuthClient({
+  sessionOptions: {
+    // Better Auth refetches the session on every window focus by default. On a
+    // phone that is every app switch or unlock, and each one costs a proxy run,
+    // a Next function, a Convex HTTP action and a JWT re-sign. Convex rejects
+    // expired tokens on its own and other tabs still sync over
+    // BroadcastChannel, so focus isn't worth the round trip.
+    refetchOnWindowFocus: false,
+  },
   plugins: [
     convexClient(),
     emailOTPClient(),

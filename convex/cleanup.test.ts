@@ -121,7 +121,66 @@ test("markAbandonedGames skips games it has already marked", async () => {
   });
 
   const result = await t.mutation(internal.cleanup.markAbandonedGames, {});
-  expect(result).toEqual({ inspected: 0, marked: 0 });
+  expect(result).toEqual({ inspected: 0, marked: 0, continued: false });
+});
+
+test("markAbandonedGames reaches an abandoned game behind a batch of live ones", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    await t.run(async (ctx) => {
+      // More than one batch of live games, all older than the abandoned one,
+      // so they fill the front of the candidate range.
+      for (let i = 0; i < 30; i++) {
+        const live = await ctx.db.insert("games", {
+          joinCode: `LIV${String(i).padStart(3, "0")}`,
+          totalRounds: 5,
+          currentRound: 1,
+          isOpen: false,
+          createdBy: "me",
+          startedAt: now - 60 * 60_000,
+        });
+        await ctx.db.insert("players", {
+          userId: `player${i}`,
+          gameId: live,
+          displayName: "Player",
+          lastAlive: now - 60_000,
+        });
+      }
+
+      const stale = await ctx.db.insert("games", {
+        joinCode: "STL001",
+        totalRounds: 5,
+        currentRound: 2,
+        isOpen: false,
+        createdBy: "me",
+        startedAt: now - 5 * 60 * 60_000,
+      });
+      await ctx.db.insert("players", {
+        userId: "me",
+        gameId: stale,
+        displayName: "Me",
+        lastAlive: now - 4 * 60 * 60_000,
+      });
+    });
+
+    const first = await t.mutation(internal.cleanup.markAbandonedGames, {});
+    expect(first).toEqual({ inspected: 25, marked: 0, continued: true });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const marked = await t.run(async (ctx) => {
+      const games = await ctx.db.query("games").collect();
+      return games
+        .filter((g) => g.abandonedAt !== undefined)
+        .map((g) => g.joinCode);
+    });
+    expect(marked).toEqual(["STL001"]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a heartbeat clears the abandoned mark and restores the game", async () => {

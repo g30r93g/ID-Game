@@ -427,6 +427,14 @@ export const getPlayersForGame = query({
   },
 });
 
+/**
+ * Seats `getMyActiveGames` looks at, newest first. A game only stays
+ * continuable for a couple of hours after its last heartbeat
+ * (lib/continuable.ts), so in practice a live game is among a user's most
+ * recent seats; reading every seat they have ever had grows without bound.
+ */
+export const MAX_ACTIVE_SEATS = 25;
+
 export const getMyActiveGames = query({
   handler: async (ctx) => {
     const userId = (await ctx.auth.getUserIdentity())?.subject;
@@ -436,62 +444,67 @@ export const getMyActiveGames = query({
 
     const now = Date.now();
 
+    // Newest seat first, which is also the order returned. It only changes
+    // when the user joins a game, so a co-player's heartbeat never reorders
+    // the list and re-pushes it to the join screen.
     const myPlayerRows = await ctx.db
       .query("players")
       .withIndex("byUser", (q) => q.eq("userId", userId))
-      .collect();
+      .order("desc")
+      .take(MAX_ACTIVE_SEATS);
 
-    const results = [];
-    for (const myPlayer of myPlayerRows) {
-      // Skip games this user was removed from.
-      if (myPlayer.active === false) continue;
+    const results = await Promise.all(
+      myPlayerRows.map(async (myPlayer) => {
+        // Skip games this user was removed from.
+        if (myPlayer.active === false) return null;
 
-      const game = await ctx.db.get(myPlayer.gameId);
-      // Skip missing, finished, or already-marked games. The rules are still
-      // evaluated below: the mark is only an hourly snapshot of them, so a
-      // game can break the rules before the cron has seen it.
-      if (!game || game.completedAt !== undefined) continue;
-      if (game.abandonedAt !== undefined) continue;
+        const game = await ctx.db.get(myPlayer.gameId);
+        // Skip missing, finished, or already-marked games. The rules are still
+        // evaluated below: the mark is only an hourly snapshot of them, so a
+        // game can break the rules before the cron has seen it.
+        if (!game || game.completedAt !== undefined) return null;
+        if (game.abandonedAt !== undefined) return null;
 
-      const players = await ctx.db
-        .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", game._id))
-        .collect();
-      const activePlayers = players.filter((p) => p.active !== false);
-      // Others, not everyone: the caller is sitting on the join screen, where
-      // no heartbeat is sent, so counting themselves would be misleading.
-      const othersOnline = activePlayers.filter(
-        (p) => p._id !== myPlayer._id && isConnected(p.lastAlive, now),
-      ).length;
-      const lastActivityAt = activePlayers.reduce(
-        (newest, p) => Math.max(newest, p.lastAlive),
-        0,
-      );
+        const players = await ctx.db
+          .query("players")
+          .withIndex("byGame", (q) => q.eq("gameId", game._id))
+          .collect();
+        const activePlayers = players.filter((p) => p.active !== false);
+        // Others, not everyone: the caller is sitting on the join screen, where
+        // no heartbeat is sent, so counting themselves would be misleading.
+        const othersOnline = activePlayers.filter(
+          (p) => p._id !== myPlayer._id && isConnected(p.lastAlive, now),
+        ).length;
+        const lastActivityAt = activePlayers.reduce(
+          (newest, p) => Math.max(newest, p.lastAlive),
+          0,
+        );
 
-      // Hide games that have been abandoned rather than merely left.
-      const continuity = evaluateContinuity(
-        {
-          startedAt: game.startedAt,
-          lastActivityAt,
-          activePlayerCount: activePlayers.length,
-        },
-        now,
-      );
-      if (!continuity.continuable) continue;
+        // Hide games that have been abandoned rather than merely left.
+        const continuity = evaluateContinuity(
+          {
+            startedAt: game.startedAt,
+            lastActivityAt,
+            activePlayerCount: activePlayers.length,
+          },
+          now,
+        );
+        if (!continuity.continuable) return null;
 
-      results.push({
-        gameId: game._id,
-        joinCode: game.joinCode,
-        isOpen: game.isOpen,
-        currentRound: game.currentRound ?? 0,
-        totalRounds: game.totalRounds,
-        othersOnline,
-        lastActivityAt,
-      });
-    }
+        // No activity time in the result: it moves on every heartbeat, so
+        // returning it would re-push this query to the client on each beat.
+        return {
+          gameId: game._id,
+          joinCode: game.joinCode,
+          isOpen: game.isOpen,
+          currentRound: game.currentRound ?? 0,
+          totalRounds: game.totalRounds,
+          othersOnline,
+        };
+      }),
+    );
 
-    // Most recently active first, so the game just left sits at the top.
-    return results.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+    return results.filter((result) => result !== null);
   },
 });
 
