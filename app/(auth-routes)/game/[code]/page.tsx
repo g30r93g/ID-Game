@@ -81,9 +81,9 @@ export default async function GamePage({
     // is sent: `after` keeps the invocation alive until the flush finishes, so
     // the event isn't lost to a frozen function, and a slow PostHog no longer
     // holds up the page. `distinctId` is the Better Auth user ID, which is what
-    // the browser identifies as too (see providers/Posthog.tsx), so this lands
-    // on the same person as the rest of the session. A failure is logged, never
-    // thrown.
+    // the browser identifies as too (see providers/PostHogIdentity.tsx), so
+    // this lands on the same person as the rest of the session. A failure is
+    // logged, never thrown.
     after(async () => {
       const posthog = PostHogClient();
       posthog.capture({
