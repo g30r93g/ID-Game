@@ -7,6 +7,20 @@ jiti("./app/env");
 
 const nextConfig: NextConfig = {
   /* config options here */
+  async redirects() {
+    return [
+      {
+        // Sign-up and sign-in are one page; deep-link to its sign-up tab.
+        // A config redirect answers from the edge, where a page would run
+        // the (auth-routes) layout just to send a 307. Next carries any
+        // incoming query (e.g. ?next=) over to the destination. Not
+        // permanent, in case sign-up becomes its own page again.
+        source: "/sign-up",
+        destination: "/sign-in?tab=sign-up",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
@@ -16,10 +30,6 @@ const nextConfig: NextConfig = {
       {
         source: "/ingest/:path*",
         destination: "https://eu.i.posthog.com/:path*",
-      },
-      {
-        source: "/ingest/decide",
-        destination: "https://eu.i.posthog.com/decide",
       },
     ];
   },

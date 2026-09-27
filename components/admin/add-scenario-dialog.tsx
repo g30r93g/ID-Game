@@ -7,8 +7,7 @@ import { z } from "zod";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
-import { Loader2, X } from "lucide-react";
-import { RiGrokAiFill } from "react-icons/ri";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -192,7 +191,7 @@ export function AddScenarioDialog() {
         {/* AI generation (xAI Grok) */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <RiGrokAiFill className="size-4 text-muted-foreground" />
+            <Sparkles className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">Generate with Grok</span>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -235,7 +234,7 @@ export function AddScenarioDialog() {
                 </>
               ) : (
                 <>
-                  <RiGrokAiFill className="size-4" /> Generate
+                  <Sparkles className="size-4" /> Generate
                 </>
               )}
             </Button>

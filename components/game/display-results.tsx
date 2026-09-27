@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Check, Loader2, X } from "lucide-react";
+import { ArrowRight, Check, Flag, Loader2, X } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState } from "react";
@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FaFlagCheckered } from "react-icons/fa6";
 import { LoadingButton } from "@/components/ui/loading-button";
 import Link from "next/link";
 import GuessTally, { GuessTallyRow } from "@/components/game/guess-tally";
@@ -131,7 +130,7 @@ export default function DisplayResultsGamePhase({
         <Link href={`/game/${joinCode}/rate`} replace={true}>
           <Button className={"w-full"}>
             Finish Game
-            <FaFlagCheckered />
+            <Flag />
           </Button>
         </Link>
       )}
