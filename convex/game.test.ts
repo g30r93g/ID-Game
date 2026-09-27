@@ -903,6 +903,68 @@ test("selectScenariosForGameRound is host-only", async () => {
   ).rejects.toThrow(/host/);
 });
 
+test("selectScenariosForGameRound draws all 10 from a category of exactly 10", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedCategoryRound(t);
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 10; i++) {
+      await ctx.db.insert("scenarios", {
+        description: `exact ${i}`,
+        category: "Exact",
+      });
+    }
+  });
+
+  await t.withIdentity({ subject: "host" }).mutation(
+    api.game.selectScenariosForGameRound,
+    { game: gameId, gameRound: roundId, category: "Exact" },
+  );
+
+  const drawn = await t.run(async (ctx) => {
+    const rows = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRound", (q) => q.eq("roundId", roundId))
+      .collect();
+    return Promise.all(rows.map((row) => ctx.db.get(row.scenarioId)));
+  });
+  const descriptions = drawn.map((scenario) => scenario?.description);
+  expect(new Set(descriptions).size).toBe(10);
+  expect(new Set(descriptions)).toEqual(
+    new Set(Array.from({ length: 10 }, (_, i) => `exact ${i}`)),
+  );
+});
+
+test("selectScenariosForGameRound refuses a small category and keeps the draw", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedCategoryRound(t);
+  const asHost = t.withIdentity({ subject: "host" });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 9; i++) {
+      await ctx.db.insert("scenarios", {
+        description: `small ${i}`,
+        category: "Small",
+      });
+    }
+  });
+
+  await asHost.mutation(api.game.selectScenariosForGameRound, {
+    game: gameId,
+    gameRound: roundId,
+    category: "Spicy",
+  });
+  await expect(
+    asHost.mutation(api.game.selectScenariosForGameRound, {
+      game: gameId,
+      gameRound: roundId,
+      category: "Small",
+    }),
+  ).rejects.toThrow(/Not enough scenarios/);
+
+  const categories = await drawnCategories(t, roundId);
+  expect(categories).toHaveLength(10);
+  expect(new Set(categories)).toEqual(new Set(["Spicy"]));
+});
+
 test("scenarioCategories lists each category with scenarios once, sorted", async () => {
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {

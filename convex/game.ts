@@ -853,7 +853,7 @@ export const selectScenariosForGameRound = mutation({
   args: {
     game: v.id("games"),
     gameRound: v.id("gameRounds"),
-    category: v.optional(v.string()),
+    category: v.string(),
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
@@ -882,14 +882,12 @@ export const selectScenariosForGameRound = mutation({
       );
     }
 
-    // Fetch scenarios, leveraging index if a category is specified
-    const query = args.category
-      ? ctx.db
-          .query("scenarios")
-          .withIndex("byCategory", (q) => q.eq("category", args.category!))
-      : ctx.db.query("scenarios");
-
-    const scenarios = await query.collect();
+    // A category is required, so this is always an indexed read of one
+    // category and never the whole table.
+    const scenarios = await ctx.db
+      .query("scenarios")
+      .withIndex("byCategory", (q) => q.eq("category", args.category))
+      .collect();
 
     // Checked before anything is deleted, so a re-draw into a category that
     // turns out to be too small leaves the existing draw intact.
@@ -912,9 +910,15 @@ export const selectScenariosForGameRound = mutation({
     }
     await Promise.all(existingDraw.map((row) => ctx.db.delete(row._id)));
 
-    // Shuffle and pick 10 scenarios
-    const shuffledScenarios = scenarios.sort(() => Math.random() - 0.5);
-    const selectedScenarios = shuffledScenarios.slice(0, 10);
+    // Pick 10 uniformly at random with a partial Fisher–Yates shuffle: only
+    // the first 10 slots are settled, so it's O(10) swaps rather than a full
+    // sort, and unlike a random sort comparator it isn't biased.
+    const picks = Math.min(10, scenarios.length);
+    for (let i = 0; i < picks; i++) {
+      const j = i + Math.floor(Math.random() * (scenarios.length - i));
+      [scenarios[i], scenarios[j]] = [scenarios[j], scenarios[i]];
+    }
+    const selectedScenarios = scenarios.slice(0, picks);
 
     // Insert gameRoundScenarios entries for the selected scenarios
     await Promise.all(
