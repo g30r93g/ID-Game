@@ -23,8 +23,16 @@ interface DisplayResultsGamePhaseProps {
   joinCode: string;
   roundId: Id<"gameRounds">;
   isHost: boolean;
-  /** Undefined until the host player query resolves; falls back to "the host". */
+  /**
+   * Undefined until the player list resolves, or if the host has left; falls
+   * back to "the host".
+   */
   hostDisplayName?: string;
+  /**
+   * The scenario the host picked, from the parent's `gameRoundScenarios`
+   * subscription. Undefined until that resolves; the banner waits for it.
+   */
+  correctAnswer?: string;
   isGameFinished: () => boolean;
   advanceGame: () => void;
 }
@@ -34,15 +42,13 @@ export default function DisplayResultsGamePhase({
   roundId,
   isHost,
   hostDisplayName,
+  correctAnswer,
   isGameFinished,
   advanceGame,
 }: DisplayResultsGamePhaseProps) {
   const markGuessesForRound = useMutation(api.game.markGuessesForRound);
   const results =
     useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
-  const correctAnswer = useQuery(api.game.getCorrectAnswer, {
-    roundId: roundId,
-  });
 
   const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
 
@@ -138,7 +144,7 @@ export default function DisplayResultsGamePhase({
           </Button>
         </Link>
       )}
-      {isHost && results.length && !isGameFinished() && (
+      {isHost && results.length > 0 && !isGameFinished() && (
         <LoadingButton
           loading={isAdvancingGame}
           disabled={isAdvancingGame}
