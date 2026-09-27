@@ -73,7 +73,7 @@ flowchart TD
     signin["/sign-in?next=…<br/>passkey or email code"] -- "full page load<br/>to next" --> gamePage
 
     gamePage{"Which page?"}
-    gamePage -- "/game/CODE" --> join["Server: fetchGameAndMembership,<br/>then joinGame if not a player"]
+    gamePage -- "/game/CODE" --> join["Server: isPlayerInGame,<br/>then joinGame if not a player"]
     gamePage -- "/game" --> lobby["Create / join screen"]
     lobby -- "Create New Game" --> isGuest{"Guest?"}
     isGuest -- no --> create["createGame mutation<br/>(rejects isAnonymous)"]

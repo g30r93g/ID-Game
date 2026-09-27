@@ -5,3 +5,12 @@ allowBuilds:
   '@clerk/shared': false
   core-js: false
   esbuild: false
+
+overrides:
+  # @better-auth/infra 0.4.10+ pins @better-fetch/fetch 1.3.2 (built for
+  # better-auth 1.7), while better-auth 1.6.x and @better-auth/passkey pin
+  # 1.3.1. Two copies make dashClient()'s BetterFetch type incompatible with
+  # the client's, which collapses createAuthClient's plugin inference. 1.3.2
+  # only changed the bundler (tsup -> tsdown), so share one copy. Drop this
+  # when moving to better-auth 1.7.
+  '@better-auth/infra>@better-fetch/fetch': 1.3.1
