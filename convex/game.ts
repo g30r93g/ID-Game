@@ -413,6 +413,20 @@ export const leaveGame = mutation({
 export const closeGameToNewPlayers = mutation({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to close a game.");
+    }
+
+    // Only the creator runs the lobby, so only they may close it. Game ids
+    // reach every client, so without this anyone could shut someone else's.
+    const game = await ctx.db.get(args.game);
+    if (!game) throw new Error("Game not found.");
+    if (game.createdBy !== userId) {
+      throw new Error("Only the game's creator can close it to new players.");
+    }
+
     await ctx.db.patch(args.game, { isOpen: false });
   },
 });
@@ -594,9 +608,27 @@ export const getCurrentGameRoundHostPlayer = query({
 export const startNewGameRound = mutation({
   args: { game: v.id("games"), player: v.optional(v.id("players")) },
   handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to start a round.");
+    }
+
     // Fetch current game to get the latest round number
     const game = await ctx.db.get(args.game);
     if (!game) throw new Error("Game not found.");
+
+    // Only active players in the game may move it on. Game ids reach every
+    // client, so without this anyone could skip rounds or pick the next host.
+    const caller = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", args.game).eq("userId", userId),
+      )
+      .first();
+    if (!caller || caller.active === false) {
+      throw new Error("Only active players in the game can start a round.");
+    }
 
     // define the variable to hold the player
     let player: Id<"players"> | undefined;
@@ -607,6 +639,29 @@ export const startNewGameRound = mutation({
     // No rounds left — the game is over (round counts are always >= 1, enforced in createGame).
     if (newRoundNumber > game.totalRounds) {
       return null;
+    }
+
+    // Round 1 is the creator's to start, the same as closing the lobby. After
+    // that the current round must have finished: only its host can move it to
+    // "finished" (see transitionRoundPhase), and any player may then start the
+    // next one, so a host who drops between the two calls doesn't strand the
+    // game.
+    if (newRoundNumber === 1) {
+      if (game.createdBy !== userId) {
+        throw new Error("Only the game's creator can start the first round.");
+      }
+    } else {
+      const currentRound = await ctx.db
+        .query("gameRounds")
+        .withIndex("byGameRound", (q) =>
+          q.eq("gameId", args.game).eq("roundNumber", newRoundNumber - 1),
+        )
+        .unique();
+      if (currentRound?.phase !== "finished") {
+        throw new Error(
+          "The current round must finish before the next one starts.",
+        );
+      }
     }
 
     // If player is manually provided, use it directly
