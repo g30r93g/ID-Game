@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, LogIn } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ArrowRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import {
   firstName,
@@ -11,15 +12,16 @@ import {
 } from "@/lib/remembered-account";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardFooter } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Icons } from "@/components/ui/icons";
+
+// Only a visitor with a remembered account and no session can ever see this
+// modal, and the remembered account is read from localStorage after hydration,
+// so it is loaded on demand and never server-rendered: the invite page's
+// first load doesn't carry the dialog code for everyone else.
+const WelcomeBackDialog = dynamic(
+  () => import("@/components/welcome-back-dialog"),
+  { ssr: false },
+);
 
 // Signing in anonymously from a session that is already a guest's is refused
 // by the plugin. It means this browser is already set up to play, so it is
@@ -152,48 +154,23 @@ export function GuestJoin({
         </CardFooter>
       </form>
 
-      <Dialog
-        open={promptOpen}
-        onOpenChange={(open) => setPromptDismissed(!open)}
-      >
-        <DialogContent
-          className="sm:max-w-sm"
-          // Dismissing lands on the invite card; focus its main action.
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            joinButton.current?.focus();
+      {/* Mounted for as long as it could show, not just while open, so
+          dismissing it still plays the close animation and hands focus back
+          to the join button. */}
+      {remembered !== null && !hasSession && (
+        <WelcomeBackDialog
+          open={promptOpen}
+          onOpenChange={(open) => setPromptDismissed(!open)}
+          greetingName={greetingName}
+          joining={joining}
+          onJoinAsGuest={() => {
+            setPromptDismissed(true);
+            void joinAsGuest();
           }}
-        >
-          <DialogHeader>
-            <DialogTitle>
-              {greetingName ? `Welcome back, ${greetingName}` : "Welcome back"}
-            </DialogTitle>
-            <DialogDescription>
-              You&apos;ve played with an account on this device. Sign in to join
-              with it, so this game sits alongside your others — or join as a
-              guest just this once.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              disabled={joining}
-              onClick={() => {
-                setPromptDismissed(true);
-                void joinAsGuest();
-              }}
-            >
-              Join as a guest
-            </Button>
-            <Button asChild>
-              <Link href={signInHref}>
-                <LogIn />
-                Sign in
-              </Link>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          signInHref={signInHref}
+          returnFocusRef={joinButton}
+        />
+      )}
     </>
   );
 }

@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
 import Link from "next/link";
-import GuessTally, { GuessTallyRow } from "@/components/game/guess-tally";
+import GuessTally from "@/components/game/guess-tally-lazy";
+import type { GuessTallyRow } from "@/components/game/guess-tally";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
