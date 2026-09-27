@@ -1,3 +1,5 @@
+import { dash } from "@better-auth/infra";
+import { passkey } from "@better-auth/passkey";
 import {
   createClient,
   type AuthFunctions,
@@ -6,21 +8,19 @@ import {
 import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
-import { dash } from "@better-auth/infra";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { admin, anonymous, emailOTP } from "better-auth/plugins";
-import { passkey } from "@better-auth/passkey";
+import {
+  GUEST_EMAIL_DOMAIN,
+  guestPlaceholderName,
+  isGuestPlaceholderName,
+} from "../lib/guest";
 import { components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
 import { internalAction, query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 import { countUser, recountUser, uncountUser } from "./userCounts";
-import {
-  GUEST_EMAIL_DOMAIN,
-  guestPlaceholderName,
-  isGuestPlaceholderName,
-} from "../lib/guest";
 
 export const resend = new Resend(components.resend, { testMode: false });
 
@@ -94,6 +94,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         // for them. Loose enough for a group joining from one venue's Wi-Fi.
         "/sign-in/anonymous": { window: 60, max: 10 },
       },
+    },
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ["x-vercel-forwarded-for", "x-forwarded-for"],
+      }
     },
     plugins: [
       admin(),

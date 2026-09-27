@@ -807,9 +807,9 @@ test("sendHeartbeat cancels votes targeting the reconnecting player", async () =
   expect(presence?.lastAlive).toBeGreaterThan(0);
 });
 
-test("startNewGameRound skips removed players when choosing a host", async () => {
+test("finishRoundAndStartNext skips removed players when choosing a host", async () => {
   const t = convexTest(schema, modules);
-  const { gameId, p1 } = await t.run(async (ctx) => {
+  const { gameId, p1, round1 } = await t.run(async (ctx) => {
     const gameId = await ctx.db.insert("games", {
       joinCode: "SNR001",
       totalRounds: 3,
@@ -831,18 +831,18 @@ test("startNewGameRound skips removed players when choosing a host", async () =>
       active: false,
     });
     // P1 has hosted round 1 already.
-    await ctx.db.insert("gameRounds", {
+    const round1 = await ctx.db.insert("gameRounds", {
       gameId,
       roundNumber: 1,
       hostPlayerId: p1,
       phase: "finished",
     });
-    return { gameId, p1 };
+    return { gameId, p1, round1 };
   });
 
   await t
     .withIdentity({ subject: "p1" })
-    .mutation(api.game.startNewGameRound, { game: gameId });
+    .mutation(api.game.finishRoundAndStartNext, { round: round1 });
 
   const newRound = await t.run((ctx) =>
     ctx.db
