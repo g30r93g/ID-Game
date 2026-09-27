@@ -47,7 +47,7 @@ Browser ── /api/auth/* (Next.js catch-all route) ──▶ Convex HTTP actio
 - Convex functions authorise with `ctx.auth.getUserIdentity()` — `identity.subject` **is** the Better Auth user id, and is what `players.userId` / `games.createdBy` store. The JWT also carries the user row's fields, so `identity.isAnonymous` tells guests apart without a lookup.
 - `proxy.ts` gates `/game*` on session-cookie presence (optimistic, fast); guests and accounts have the same cookie, so the authoritative checks are in the Convex functions.
 
-Key auth files: `convex/auth.ts` (Better Auth config + plugins), `convex/http.ts` (route registration), `lib/auth-client.ts` / `lib/auth-server.ts` (client/server helpers), `app/(auth-routes)/sign-in/` (the single auth page), `components/guest-join.tsx` (the invite page's guest form), `convex/guests.ts` (moves a guest's seats onto their new account).
+Key auth files: `convex/auth.ts` (Better Auth config + plugins), `convex/http.ts` (route registration), `lib/auth-client.ts` / `lib/auth-server.ts` (client/server helpers), `app/(auth-pages)/sign-in/` (the single auth page, static and without the Convex client), `components/guest-join.tsx` (the invite page's guest form), `convex/guests.ts` (moves a guest's seats onto their new account).
 
 ### Getting into a game
 
