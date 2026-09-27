@@ -1,8 +1,13 @@
 import { v } from "convex/values";
-import { paginationOptsValidator, type PaginationOptions } from "convex/server";
+import {
+  paginationOptsValidator,
+  type PaginationOptions,
+  type PaginationResult,
+} from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { authComponent, createAuthOptions, createAuth } from "./auth";
+import { components } from "./_generated/api";
+import { authComponent, createAuthOptions } from "./auth";
 import { requireAdmin } from "./adminAuth";
 import {
   FOURTEEN_DAYS_MS,
@@ -78,56 +83,89 @@ export async function activePlayers14dCore(ctx: QueryCtx, now: number) {
   return activePlayerCount(players, now);
 }
 
+/** Rows per `findMany` call while counting users. */
+const COUNT_PAGE_SIZE = 500;
+
+/**
+ * Counts user rows by paging through the Better Auth component's `findMany`,
+ * reading ids only. Still O(users), but without building Better Auth or
+ * re-running its admin middleware, which `auth.api.listUsers` did per call.
+ */
+async function countUsers(
+  ctx: QueryCtx,
+  where?: { field: string; value: boolean }[],
+) {
+  let count = 0;
+  let cursor: string | null = null;
+  for (;;) {
+    const result: PaginationResult<unknown> = await ctx.runQuery(
+      components.betterAuth.adapter.findMany,
+      {
+        model: "user",
+        where,
+        select: ["_id"],
+        paginationOpts: { cursor, numItems: COUNT_PAGE_SIZE },
+      },
+    );
+    count += result.page.length;
+    if (result.isDone) return count;
+    cursor = result.continueCursor;
+  }
+}
+
 export const userStats = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    const [listed, guests] = await Promise.all([
-      auth.api.listUsers({ headers, query: { limit: 1 } }),
+    const [all, guests] = await Promise.all([
+      countUsers(ctx),
       // Counted on the user table's `isAnonymous` index. `deleteExpiredGuests`
       // removes guests nobody can use any more, so this stays small.
-      auth.api.listUsers({
-        headers,
-        query: { limit: 1, filterField: "isAnonymous", filterValue: true },
-      }),
+      countUsers(ctx, [{ field: "isAnonymous", value: true }]),
     ]);
     return {
       // Guests share the user table but aren't sign-ups; count them apart.
-      totalUsers: listed.total - guests.total,
-      guests: guests.total,
+      totalUsers: all - guests,
+      guests,
       activePlayers14d: await activePlayers14dCore(ctx, Date.now()),
     };
   },
 });
 
+type AuthUserRow = {
+  _id: string;
+  name?: string | null;
+  email: string;
+  createdAt: number;
+  isAnonymous?: boolean | null;
+};
+
+/**
+ * One page of users, newest first. Reads the component's user table directly:
+ * `auth.api.listUsers` built Better Auth, re-checked the admin session and
+ * counted the whole table on every call. The component maps a `createdAt`
+ * sort onto the built-in `by_creation_time` index, so a page reads only its
+ * own rows.
+ */
 export const listUsers = query({
-  args: { limit: v.number(), offset: v.number() },
-  handler: async (ctx, { limit, offset }) => {
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
     await requireAdmin(ctx);
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    // The Convex Better Auth adapter's findMany throws on any nonzero offset,
-    // and better-auth's listUsers route swallows that into an empty result.
-    // So we fetch a bounded window (capped at 1000 users - a known limitation
-    // of this admin view) with offset 0, then sort/page in memory instead of
-    // passing the requested offset through to the adapter.
-    const listed = await auth.api.listUsers({
-      headers,
-      query: { limit: 1000 },
+    const result = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      sortBy: { field: "createdAt", direction: "desc" },
+      paginationOpts,
     });
-    const sorted = [...listed.users].sort(
-      (a, b) => Number(b.createdAt) - Number(a.createdAt),
-    );
-    const page = sorted.slice(offset, offset + limit);
     return {
-      total: listed.total,
-      users: page.map((u) => ({
-        id: u.id,
+      page: (result.page as AuthUserRow[]).map((u) => ({
+        id: u._id,
         name: u.name ?? "",
         email: u.email,
         createdAt: Number(u.createdAt),
-        isGuest: (u as { isAnonymous?: boolean | null }).isAnonymous === true,
+        isGuest: u.isAnonymous === true,
       })),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
     };
   },
 });

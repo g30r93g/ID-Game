@@ -1,5 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, vi } from "vitest";
+import type { FunctionReturnType } from "convex/server";
 import schema from "./schema";
 import betterAuthSchema from "./betterAuth/schema";
 import { api, components } from "./_generated/api";
@@ -191,7 +192,7 @@ test("setCategoryBriefCore upserts a trimmed brief", async () => {
 });
 
 // Guests (anonymous users) share the user table with accounts; the users page
-// reports them apart, through Better Auth's own listUsers filter.
+// reports them apart, counting guests on the user table's `isAnonymous` index.
 test("userStats counts guests apart from accounts", async () => {
   vi.stubEnv("SITE_URL", "http://localhost:3000");
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-test-secret-test-secret");
@@ -248,4 +249,93 @@ test("userStats counts guests apart from accounts", async () => {
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+/**
+ * Creates `users` in order through the component's adapter and signs in as
+ * the first one. Returns that identity and every user id, oldest first.
+ */
+async function seedUsersSignedInAsFirst(
+  t: ReturnType<typeof convexTest>,
+  users: Record<string, unknown>[],
+) {
+  return t.run(async (ctx) => {
+    const now = Date.now();
+    const ids: string[] = [];
+    for (const data of users) {
+      const user = await ctx.runMutation(components.betterAuth.adapter.create, {
+        input: {
+          model: "user",
+          data: { emailVerified: true, createdAt: now, updatedAt: now, ...data } as never,
+        },
+      });
+      ids.push(user._id);
+    }
+    const session = await ctx.runMutation(components.betterAuth.adapter.create, {
+      input: {
+        model: "session",
+        data: {
+          userId: ids[0],
+          token: "first-user-token",
+          expiresAt: now + 7 * 24 * 60 * 60_000,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    });
+    return { identity: { subject: ids[0], sessionId: session._id }, ids };
+  });
+}
+
+type UsersPage = FunctionReturnType<typeof api.admin.listUsers>;
+
+test("listUsers pages newest first with no gaps or repeats", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+  const users = [
+    { name: "Admin", email: "admin@example.com", role: "admin" },
+    { name: "Ada", email: "ada@example.com" },
+    { name: "Guest 1", email: "g1@guests.invalid", isAnonymous: true },
+    { name: "Bea", email: "bea@example.com" },
+    { name: "Guest 2", email: "g2@guests.invalid", isAnonymous: true },
+    { name: "Cy", email: "cy@example.com" },
+    { name: "Guest 3", email: "g3@guests.invalid", isAnonymous: true },
+  ];
+  const { identity, ids } = await seedUsersSignedInAsFirst(t, users);
+  const asAdmin = t.withIdentity(identity);
+
+  // Seven users in pages of three: 3, 3, then the last 1.
+  const pages: UsersPage[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const result: UsersPage = await asAdmin.query(api.admin.listUsers, {
+      paginationOpts: { numItems: 3, cursor },
+    });
+    pages.push(result);
+    if (result.isDone) break;
+    cursor = result.continueCursor;
+    expect(pages.length).toBeLessThan(5);
+  }
+  expect(pages.map((p) => p.page.length)).toEqual([3, 3, 1]);
+  expect(pages.map((p) => p.isDone)).toEqual([false, false, true]);
+
+  const listed = pages.flatMap((p) => p.page);
+  expect(listed.map((u) => u.id)).toEqual([...ids].reverse());
+  expect(listed.map((u) => u.isGuest)).toEqual(
+    [...users].reverse().map((u) => u.isAnonymous === true),
+  );
+  expect(listed.at(-1)).toMatchObject({ name: "Admin", email: "admin@example.com" });
+});
+
+test("the user queries reject non-admins", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+  const { identity } = await seedUsersSignedInAsFirst(t, [
+    { name: "Ada", email: "ada@example.com" },
+  ]);
+  const asUser = t.withIdentity(identity);
+  await expect(asUser.query(api.admin.userStats, {})).rejects.toThrow(/Admin access required/);
+  await expect(
+    asUser.query(api.admin.listUsers, { paginationOpts: { numItems: 10, cursor: null } }),
+  ).rejects.toThrow(/Admin access required/);
 });
