@@ -25,7 +25,7 @@ import { useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
 import { usePostHog } from "posthog-js/react";
-import { useState } from "react";
+import { useTransition } from "react";
 
 const formSchema = z.object({
   joinCode: z
@@ -45,28 +45,35 @@ export default function JoinGame({
       joinCode: defaultJoinCode,
     },
   });
-  const [isLoading, setLoading] = useState<boolean>(false);
   const { replace } = useRouter();
   const posthog = usePostHog();
   const performJoinGame = useMutation(api.game.joinGame);
+  // Same reasoning as CreateGame: `replace` returns void, so a flag cleared
+  // after it would re-enable Join while the game page is still loading and
+  // invite a second `joinGame`. The transition stays pending until the new
+  // route takes over.
+  const [isNavigating, startTransition] = useTransition();
 
   async function onSubmit({ joinCode }: z.infer<typeof formSchema>) {
     try {
-      setLoading(true);
-
       if (posthog) {
         posthog.capture("join_game", { joinCode });
       }
 
       await performJoinGame({ joinCode });
 
-      replace(`/game/${joinCode}`);
+      startTransition(() => {
+        replace(`/game/${joinCode}`);
+      });
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoading(false);
     }
   }
+
+  // Covers the join mutation and the navigation after it, so the spinner runs
+  // from the tap through to the game page rendering. A failed join ends the
+  // submit without starting a transition, which re-enables the button.
+  const isBusy = form.formState.isSubmitting || isNavigating;
 
   return (
     <div className={"flex flex-col gap-y-3"}>
@@ -113,11 +120,11 @@ export default function JoinGame({
             variant={"default"}
             className={"w-full"}
             disabled={
-              form.formState.isLoading || !form.formState.isValid || isLoading
+              form.formState.isLoading || !form.formState.isValid || isBusy
             }
-            loading={isLoading}
+            loading={isBusy}
           >
-            {!isLoading && (
+            {!isBusy && (
               <>
                 Join
                 <ArrowRight />
