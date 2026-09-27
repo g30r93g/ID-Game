@@ -2,9 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Check, Loader2, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   Card,
@@ -46,21 +46,12 @@ export default function DisplayResultsGamePhase({
   isGameFinished,
   advanceGame,
 }: DisplayResultsGamePhaseProps) {
-  const markGuessesForRound = useMutation(api.game.markGuessesForRound);
+  // Already marked: the server marks every guess in the same transaction
+  // that moves the round to this phase.
   const results =
     useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
 
   const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
-
-  const performGuessMarking = useCallback(async () => {
-    await markGuessesForRound({ roundId: roundId });
-  }, [markGuessesForRound, roundId]);
-
-  useEffect(() => {
-    if (isHost) {
-      performGuessMarking();
-    }
-  }, [isHost, performGuessMarking]);
 
   // Folded out of the per-player results rather than fetched separately:
   // `getGuessesForRound` already hands every caller at this phase the full
