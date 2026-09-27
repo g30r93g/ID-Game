@@ -545,6 +545,14 @@ export const getCurrentGameRound = query({
   },
 });
 
+/**
+ * @deprecated The game screen now finds the host in the player list it already
+ * subscribes to. This subscription re-pushed the host's document to every
+ * client on each of their heartbeats, only for its display name.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still subscribe to it by name.
+ */
 export const getCurrentGameRoundHostPlayer = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
