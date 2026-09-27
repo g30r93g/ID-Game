@@ -166,7 +166,12 @@ function CategoryRow({
 export function ManageCategoriesDialog() {
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const categories = useQuery(api.admin.listCategoriesWithCounts, {}) ?? [];
+  // Only subscribed while the dialog is open: nothing else on the page needs
+  // the counts.
+  const categories = useQuery(
+    api.admin.listCategoriesWithCounts,
+    open ? {} : "skip",
+  );
   const create = useMutation(api.admin.createCategory);
 
   const onAdd = async () => {
@@ -207,7 +212,11 @@ export function ManageCategoriesDialog() {
           </Button>
         </div>
         <div className="space-y-2">
-          {categories.length === 0 ? (
+          {categories === undefined ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Loading categories…
+            </p>
+          ) : categories.length === 0 ? (
             <p className="text-sm text-muted-foreground">No categories yet.</p>
           ) : (
             categories.map((c) => (

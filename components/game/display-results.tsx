@@ -2,9 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Check, Loader2, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   Card,
@@ -23,8 +23,16 @@ interface DisplayResultsGamePhaseProps {
   joinCode: string;
   roundId: Id<"gameRounds">;
   isHost: boolean;
-  /** Undefined until the host player query resolves; falls back to "the host". */
+  /**
+   * Undefined until the player list resolves, or if the host has left; falls
+   * back to "the host".
+   */
   hostDisplayName?: string;
+  /**
+   * The scenario the host picked, from the parent's `gameRoundScenarios`
+   * subscription. Undefined until that resolves; the banner waits for it.
+   */
+  correctAnswer?: string;
   isGameFinished: () => boolean;
   advanceGame: () => void;
 }
@@ -34,27 +42,16 @@ export default function DisplayResultsGamePhase({
   roundId,
   isHost,
   hostDisplayName,
+  correctAnswer,
   isGameFinished,
   advanceGame,
 }: DisplayResultsGamePhaseProps) {
-  const markGuessesForRound = useMutation(api.game.markGuessesForRound);
+  // Already marked: the server marks every guess in the same transaction
+  // that moves the round to this phase.
   const results =
     useQuery(api.game.getGuessesForRound, { roundId: roundId }) ?? [];
-  const correctAnswer = useQuery(api.game.getCorrectAnswer, {
-    roundId: roundId,
-  });
 
   const [isAdvancingGame, setIsAdvancingGame] = useState<boolean>(false);
-
-  const performGuessMarking = useCallback(async () => {
-    await markGuessesForRound({ roundId: roundId });
-  }, [markGuessesForRound, roundId]);
-
-  useEffect(() => {
-    if (isHost) {
-      performGuessMarking();
-    }
-  }, [isHost, performGuessMarking]);
 
   // Folded out of the per-player results rather than fetched separately:
   // `getGuessesForRound` already hands every caller at this phase the full
@@ -138,7 +135,7 @@ export default function DisplayResultsGamePhase({
           </Button>
         </Link>
       )}
-      {isHost && results.length && !isGameFinished() && (
+      {isHost && results.length > 0 && !isGameFinished() && (
         <LoadingButton
           loading={isAdvancingGame}
           disabled={isAdvancingGame}
