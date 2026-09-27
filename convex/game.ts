@@ -656,18 +656,14 @@ export const startNewGameRound = mutation({
 export const scenarioCategories = query({
   handler: async (ctx) => {
     const categories: string[] = [];
-    let last: string | undefined;
-    for (;;) {
-      const after = last;
-      const next = await ctx.db
+    let next = await ctx.db.query("scenarios").withIndex("byCategory").first();
+    while (next) {
+      const category = next.category;
+      categories.push(category);
+      next = await ctx.db
         .query("scenarios")
-        .withIndex("byCategory", (q) =>
-          after === undefined ? q : q.gt("category", after),
-        )
+        .withIndex("byCategory", (q) => q.gt("category", category))
         .first();
-      if (!next) break;
-      categories.push(next.category);
-      last = next.category;
     }
     return categories;
   },
