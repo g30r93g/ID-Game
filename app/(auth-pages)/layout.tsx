@@ -1,5 +1,6 @@
 import { env } from "@/app/env";
 import { PostHogIdentity } from "@/providers/PostHogIdentity";
+import { SiteFooter } from "@/components/site-footer";
 
 // Signed-out pages that talk to Better Auth only: /sign-in. Unlike
 // (auth-routes) there is no Convex client, token lookup or display-name
@@ -12,8 +13,11 @@ export default function AuthPagesLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className={"min-h-svh max-h-svh flex items-center justify-center"}>
-      {children}
+    <div className={"min-h-svh max-h-svh flex flex-col"}>
+      <div className={"flex flex-1 min-h-0 items-center justify-center"}>
+        {children}
+      </div>
+      <SiteFooter />
       {/* Sign-out lands on /sign-in, and this is what resets PostHog's
           identity there. Production only, like PostHogProvider. */}
       {env.NODE_ENV === "production" && <PostHogIdentity />}

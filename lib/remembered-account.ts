@@ -7,6 +7,13 @@
 // browser, not account state. Signing out leaves it in place, because "has an
 // account here" is exactly what the invite page wants to know. Only a first
 // name is kept, for the greeting; never the email.
+//
+// It is a convenience rather than something the visitor asked for, so it is
+// in the "functional" cookie category: nothing is read or written without
+// that consent (see lib/consent.ts). Without it the invite page just leads
+// with the guest form, which still links to sign-in.
+
+import { hasFunctionalConsent } from "@/lib/consent";
 
 const STORAGE_KEY = "id-game:remembered-account";
 
@@ -40,14 +47,14 @@ export function firstName(name: string | null | undefined): string | null {
 }
 
 // localStorage throws in some privacy modes and does not exist during SSR, so
-// every access is guarded.
+// every access is guarded. Each one also checks consent first.
 
 /**
  * The raw stored value. A string rather than the parsed object so it can be a
  * `useSyncExternalStore` snapshot, which must compare equal between reads.
  */
 export function rememberedAccountSnapshot(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !hasFunctionalConsent()) return null;
   try {
     return window.localStorage.getItem(STORAGE_KEY);
   } catch {
@@ -56,7 +63,7 @@ export function rememberedAccountSnapshot(): string | null {
 }
 
 export function rememberAccount(name: string | null | undefined): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !hasFunctionalConsent()) return;
   const value = JSON.stringify({ name: firstName(name) });
   try {
     // Runs on every session change; skip the write when nothing changed.
@@ -64,5 +71,15 @@ export function rememberAccount(name: string | null | undefined): void {
     window.localStorage.setItem(STORAGE_KEY, value);
   } catch {
     // Nothing to do — the invite page just leads with the guest form.
+  }
+}
+
+/** Deletes the remembered account: functional consent refused or withdrawn. */
+export function forgetRememberedAccount(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Nothing was stored.
   }
 }

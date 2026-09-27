@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { pageOpenGraph } from "@/lib/metadata";
+import { SiteFooter } from "@/components/site-footer";
 
 const description = "The terms you agree to when you play The ID Game.";
 
@@ -64,8 +65,9 @@ export default function TermsOfServicePage() {
           them.
         </li>
         <li>
-          We use PostHog to collect user analytics, which helps us understand
-          how the Game is used and improve the experience. PostHog may collect
+          If you allow analytics cookies, we use PostHog to collect user
+          analytics, which helps us understand how the Game is used and
+          improve the experience. PostHog may collect
           anonymized usage data in accordance with their{" "}
           <Link
             href="https://posthog.com/privacy"
@@ -121,6 +123,7 @@ export default function TermsOfServicePage() {
         </Link>
         .
       </p>
+      <SiteFooter className="mt-8" />
     </>
   );
 }

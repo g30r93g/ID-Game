@@ -2,7 +2,8 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, Suspense } from "react";
-import { capture, loadAnalytics } from "@/lib/analytics";
+import { capture, setAnalyticsConsent } from "@/lib/analytics";
+import { readConsent, subscribeConsent } from "@/lib/consent";
 
 // Loading and pageviews only. Identity is PostHogIdentity's job, rendered by
 // the layouts that have a session, so that this provider (on every page)
@@ -10,10 +11,14 @@ import { capture, loadAnalytics } from "@/lib/analytics";
 //
 // There is no React context any more: components call lib/analytics.ts
 // directly, which is what keeps posthog-js out of every page's entry chunks.
-// This only starts the lazy load, which waits for the page to finish loading.
+// This only hands it the visitor's cookie choice, now and whenever the banner
+// changes it. With a yes, that starts the lazy load, which waits for the page
+// to finish loading; with no answer yet, it loads nothing.
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    loadAnalytics();
+    const sync = () => setAnalyticsConsent(readConsent()?.analytics ?? null);
+    sync();
+    return subscribeConsent(sync);
   }, []);
 
   return (

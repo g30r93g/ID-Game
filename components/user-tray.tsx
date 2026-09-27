@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fingerprint, LogOut, UserPlus } from "lucide-react";
+import { Cookie, Fingerprint, LogOut, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { clearPasskeyNudge } from "@/lib/passkey-nudge";
@@ -13,6 +13,7 @@ import { useSaveDisplayName } from "@/lib/use-display-name";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CookieSettingsButton } from "@/components/cookie-settings-button";
 import {
   Dialog,
   DialogContent,
@@ -219,6 +220,20 @@ export function UserTray({ className }: { className?: string }) {
         {showPasskeys && (
           <AddPasskeyButton adding={addingPasskey} onAdd={addPasskey} />
         )}
+        {/* The signed-in screens have no footer, so the way to change or
+            withdraw cookie consent lives here. */}
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          title="Cookie settings"
+        >
+          <CookieSettingsButton>
+            <Cookie />
+            <span className="sr-only">Cookie settings</span>
+          </CookieSettingsButton>
+        </Button>
         <Button
           variant="ghost"
           size="sm"

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { authClient } from "@/lib/auth-client";
 import { rememberAccount } from "@/lib/remembered-account";
+import { hasFunctionalConsent, subscribeConsent } from "@/lib/consent";
 
 /**
  * Notes on this device that a real (non-guest) account has been signed in
@@ -18,10 +19,17 @@ export function RememberAccount() {
   const user = session?.user;
   const isAccount = !!user && !user.isAnonymous;
   const name = user?.name;
+  // rememberAccount does nothing without functional consent. Read here too so
+  // a yes given in the cookie banner on this page is acted on straight away.
+  const allowed = React.useSyncExternalStore(
+    subscribeConsent,
+    hasFunctionalConsent,
+    () => false,
+  );
 
   React.useEffect(() => {
-    if (isAccount) rememberAccount(name);
-  }, [isAccount, name]);
+    if (allowed && isAccount) rememberAccount(name);
+  }, [allowed, isAccount, name]);
 
   return null;
 }

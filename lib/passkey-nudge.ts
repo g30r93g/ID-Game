@@ -6,6 +6,13 @@
 // The dismissal is deliberately local-only. It is a UI preference, not account
 // state — losing it on a new device just means being offered a passkey there,
 // which is exactly what we want.
+//
+// Keeping it for 14 days is more than the click asked for, so it is in the
+// "functional" cookie category (see lib/consent.ts). Without that consent the
+// dismissal lives in memory only, which lasts until the next page load: the
+// prompt comes back at the next email-code sign-in.
+
+import { hasFunctionalConsent } from "@/lib/consent";
 
 const STORAGE_KEY = "id-game:passkey-nudge-dismissed-at";
 
@@ -25,8 +32,11 @@ export function isNudgeDue(dismissedAt: number | null, now: number): boolean {
 // every access is guarded. A storage failure resolves to "ask" rather than
 // silently suppressing the prompt forever.
 
+let dismissedInMemory: number | null = null;
+
 export function isPasskeyNudgeDue(now: number = Date.now()): boolean {
   if (typeof window === "undefined") return false;
+  if (!hasFunctionalConsent()) return isNudgeDue(dismissedInMemory, now);
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return isNudgeDue(raw === null ? null : Number(raw), now);
@@ -37,6 +47,10 @@ export function isPasskeyNudgeDue(now: number = Date.now()): boolean {
 
 export function dismissPasskeyNudge(now: number = Date.now()): void {
   if (typeof window === "undefined") return;
+  if (!hasFunctionalConsent()) {
+    dismissedInMemory = now;
+    return;
+  }
   try {
     window.localStorage.setItem(STORAGE_KEY, String(now));
   } catch {
@@ -44,9 +58,13 @@ export function dismissPasskeyNudge(now: number = Date.now()): void {
   }
 }
 
-/** Called once a passkey exists, so a later removal re-arms the prompt. */
+/**
+ * Called once a passkey exists, so a later removal re-arms the prompt, and
+ * when functional consent is refused or withdrawn.
+ */
 export function clearPasskeyNudge(): void {
   if (typeof window === "undefined") return;
+  dismissedInMemory = null;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {

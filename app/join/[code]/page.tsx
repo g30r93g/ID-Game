@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GuestJoin } from "@/components/guest-join";
+import { SiteFooter } from "@/components/site-footer";
 import {
   Card,
   CardContent,
@@ -84,55 +85,58 @@ export default async function JoinPage({ params }: Props) {
   const signIn = `/sign-in?next=${encodeURIComponent(`/game/${code}`)}`;
 
   return (
-    <div className="min-h-svh flex items-center justify-center">
-      <Card className="w-full sm:w-96">
-        <CardHeader>
-          {invite?.status === "open" && (
-            <p className="text-sm font-medium text-warning-foreground dark:text-warning">
-              You’re invited
-            </p>
-          )}
-          <CardTitle className="text-2xl">{title}</CardTitle>
-          <CardDescription>
-            {invite?.status === "open"
-              ? `${roundsLabel(invite.totalRounds)} of calling out friends and guessing the answers.`
-              : invite?.status === "started"
-                ? "It's closed to new players. Already in it? Sign in to jump back in."
-                : "This game has finished, or the code is wrong. Start one of your own instead."}
-          </CardDescription>
-        </CardHeader>
-        {invite && invite.status !== "ended" && (
-          <CardContent>
-            <JoinCode code={invite.joinCode} />
-          </CardContent>
-        )}
-        {invite?.status === "open" ? (
-          <>
-            <GuestJoin joinCode={invite.joinCode} signInHref={signIn} />
-            {/* Identifies the guest this page signs in, as the signed-in
-                layouts do. Production only, like PostHogProvider. */}
-            {env.NODE_ENV === "production" && <PostHogIdentity />}
-          </>
-        ) : (
-          <CardFooter className="flex flex-col gap-2">
-            {invite?.status === "started" ? (
-              <Button asChild className="w-full">
-                <Link href={signIn}>
-                  Sign in
-                  <ArrowRight />
-                </Link>
-              </Button>
-            ) : (
-              <Button asChild className="w-full">
-                <Link href="/game">
-                  Start a new game
-                  <ArrowRight />
-                </Link>
-              </Button>
+    <div className="min-h-svh flex flex-col">
+      <div className="flex flex-1 items-center justify-center">
+        <Card className="w-full sm:w-96">
+          <CardHeader>
+            {invite?.status === "open" && (
+              <p className="text-sm font-medium text-warning-foreground dark:text-warning">
+                You’re invited
+              </p>
             )}
-          </CardFooter>
-        )}
-      </Card>
+            <CardTitle className="text-2xl">{title}</CardTitle>
+            <CardDescription>
+              {invite?.status === "open"
+                ? `${roundsLabel(invite.totalRounds)} of calling out friends and guessing the answers.`
+                : invite?.status === "started"
+                  ? "It's closed to new players. Already in it? Sign in to jump back in."
+                  : "This game has finished, or the code is wrong. Start one of your own instead."}
+            </CardDescription>
+          </CardHeader>
+          {invite && invite.status !== "ended" && (
+            <CardContent>
+              <JoinCode code={invite.joinCode} />
+            </CardContent>
+          )}
+          {invite?.status === "open" ? (
+            <>
+              <GuestJoin joinCode={invite.joinCode} signInHref={signIn} />
+              {/* Identifies the guest this page signs in, as the signed-in
+                  layouts do. Production only, like PostHogProvider. */}
+              {env.NODE_ENV === "production" && <PostHogIdentity />}
+            </>
+          ) : (
+            <CardFooter className="flex flex-col gap-2">
+              {invite?.status === "started" ? (
+                <Button asChild className="w-full">
+                  <Link href={signIn}>
+                    Sign in
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/game">
+                    Start a new game
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              )}
+            </CardFooter>
+          )}
+        </Card>
+      </div>
+      <SiteFooter />
     </div>
   );
 }
