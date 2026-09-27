@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MockLanguageModelV4, convertArrayToReadableStream } from "ai/test";
+import { ConvexError } from "convex/values";
+import { ADMIN_ACCESS_REQUIRED } from "@/lib/admin/access";
 import { readNdjson } from "@/lib/ndjson";
 
 // The provider package isn't a direct dependency, so take its stream part type
@@ -11,11 +13,19 @@ type LanguageModelV4StreamPart =
 
 const auth = vi.hoisted(() => ({
   user: { role: "admin" } as { role: string } | null,
+  // Set to make getCategoryBrief fail for a reason other than access.
+  failure: undefined as Error | undefined,
 }));
+// The route's only Convex call is getCategoryBrief, whose requireAdmin is
+// also the admin check; this mimics its refusal (see convex/adminAuth.ts).
 vi.mock("@/lib/auth-server", () => ({
-  fetchAuthQuery: vi.fn(async (_query: unknown, args: { name?: string }) =>
-    args.name === undefined ? auth.user : { brief: "" },
-  ),
+  fetchAuthQuery: vi.fn(async () => {
+    if (auth.failure) throw auth.failure;
+    if (auth.user?.role !== "admin") {
+      throw new ConvexError(ADMIN_ACCESS_REQUIRED);
+    }
+    return { brief: "" };
+  }),
 }));
 
 // Swap the gateway model id for a scripted one; everything else about the
@@ -88,6 +98,7 @@ async function lines(res: Response) {
 
 beforeEach(() => {
   auth.user = { role: "admin" };
+  auth.failure = undefined;
 });
 
 describe("POST /api/admin/generate-scenarios", () => {
@@ -140,6 +151,24 @@ describe("POST /api/admin/generate-scenarios", () => {
 
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Admin access required." });
+  });
+
+  test("rejects a signed-out caller with 403 JSON", async () => {
+    auth.user = null;
+    scriptModel([]);
+    const res = await post({ category: "Silly", count: 5 });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Admin access required." });
+  });
+
+  test("doesn't turn other brief failures into a 403", async () => {
+    auth.failure = new Error("[Request ID: abc] Server Error");
+    scriptModel([]);
+
+    await expect(post({ category: "Silly", count: 5 })).rejects.toThrow(
+      "Server Error",
+    );
   });
 
   test("rejects a bad body with 400 JSON", async () => {

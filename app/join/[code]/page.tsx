@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { getSessionCookie } from "better-auth/cookies";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GuestJoin } from "@/components/guest-join";
@@ -15,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { env } from "@/app/env";
-import { getToken } from "@/lib/auth-server";
+import { getSessionToken } from "@/lib/auth-server";
 import { getInvite, inviteTitle, roundsLabel, type Invite } from "@/lib/invite";
 import { invitePath, normaliseJoinCode } from "@/lib/join-code";
 import { pageOpenGraph, SITE_DESCRIPTION } from "@/lib/metadata";
@@ -72,17 +70,14 @@ export default async function JoinPage({ params }: Props) {
   if (!code) notFound();
 
   // Signed in, guest or account: the game page joins whoever arrives, so go
-  // straight there.
-  // `getToken` always asks Convex, so it's only called when there's a session
-  // cookie to check — crawlers, and most people opening an invite, have none.
-  // If the check fails, the invite still renders and sign-in sorts it out.
-  if (getSessionCookie(await headers())) {
-    const token = await getToken().catch((error) => {
-      console.error("Could not check the session on an invite", error);
-      return undefined;
-    });
-    if (token) redirect(`/game/${code}`);
-  }
+  // straight there. Crawlers, and most people opening an invite, have no
+  // session and skip the check. If the check fails, the invite still renders
+  // and sign-in sorts it out.
+  const token = await getSessionToken().catch((error) => {
+    console.error("Could not check the session on an invite", error);
+    return undefined;
+  });
+  if (token) redirect(`/game/${code}`);
 
   const invite = await getInvite(code);
   const title = inviteTitle(invite);
