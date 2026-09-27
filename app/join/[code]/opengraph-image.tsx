@@ -18,28 +18,30 @@ import {
 export const dynamic = "force-dynamic";
 
 // Through generateImageMetadata rather than a static `alt`, so the alt text
-// can name the host and spell out the code for screen readers.
-export async function generateImageMetadata({
+// can spell out the code for screen readers. It is built from the URL alone:
+// React `cache` doesn't carry over from here to the image below, so reading
+// the invite here cost a second Convex query on every crawler hit, just to
+// put the host's name in the alt.
+export function generateImageMetadata({
   params,
 }: {
   params: { code: string };
 }) {
   const code = normaliseJoinCode(params.code);
-  const invite = code ? await getInvite(code) : null;
   return [
     {
       id: "invite",
       size: OG_SIZE,
       contentType: "image/png",
-      alt: invite && invite.status !== "ended" ? inviteAlt(invite) : BRAND_ALT,
+      alt: code ? inviteAlt(code) : BRAND_ALT,
     },
   ];
 }
 
-function inviteAlt(invite: Invite) {
+function inviteAlt(joinCode: string) {
   // Spaced out so screen readers spell the code rather than read it as a word.
-  const code = invite.joinCode.split("").join(" ");
-  return `The ID Game: ${inviteTitle(invite)}. Join code ${code}.`;
+  const code = joinCode.split("").join(" ");
+  return `An invite to The ID Game. Join code ${code}.`;
 }
 
 export default async function Image({

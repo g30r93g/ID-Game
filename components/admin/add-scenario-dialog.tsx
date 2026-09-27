@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { readNdjson } from "@/lib/ndjson";
 
 const schema = z.object({
   description: z.string().trim().min(1, "Scenario text is required"),
@@ -81,19 +82,28 @@ export function AddScenarioDialog() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ instructions, category, count }),
       });
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
         throw new Error(body?.error || `Request failed (${res.status})`);
       }
-      const { scenarios } = (await res.json()) as {
-        scenarios: { description: string }[];
-      };
-      setCandidates(
-        scenarios.map((r) => ({ description: r.description, include: true })),
-      );
-      if (scenarios.length === 0) toast.message("Grok returned no scenarios");
+      // The route streams one NDJSON line per scenario as the model finishes
+      // it, so each candidate shows up as soon as it exists rather than after
+      // the whole batch. A failure part-way arrives as a final error line.
+      setCandidates([]);
+      let received = 0;
+      for await (const line of readNdjson(res.body)) {
+        const { description, error } = line as {
+          description?: string;
+          error?: string;
+        };
+        if (error !== undefined) throw new Error(error);
+        if (!description) continue;
+        received++;
+        setCandidates((prev) => [...prev, { description, include: true }]);
+      }
+      if (received === 0) toast.message("Grok returned no scenarios");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
@@ -276,7 +286,9 @@ export function AddScenarioDialog() {
               <Button
                 type="button"
                 onClick={onAddCandidates}
-                disabled={selectedCount === 0}
+                // Not mid-stream: that would insert half a batch, and the
+                // rest would arrive after the list had been cleared.
+                disabled={selectedCount === 0 || generating}
               >
                 Add {selectedCount} scenario{selectedCount === 1 ? "" : "s"}
               </Button>

@@ -51,12 +51,11 @@ export function UserTray({ className }: { className?: string }) {
   const [error, setError] = React.useState<string | null>(null);
 
   // Passkey enrolment lives here so it is reachable at any time, not only in the
-  // one-shot prompt right after an email-code sign-in.
-  const { data: passkeys, isPending: passkeysPending } =
-    authClient.useListPasskeys();
+  // one-shot prompt right after an email-code sign-in. The passkey list itself
+  // is read by the two components below, which only render for account users,
+  // so a guest never makes the request.
   const [addingPasskey, setAddingPasskey] = React.useState(false);
-  const hasNoPasskey =
-    !isGuest && !passkeysPending && (passkeys?.length ?? 0) === 0;
+  const showPasskeys = !!user && !isGuest;
 
   const addPasskey = async () => {
     setAddingPasskey(true);
@@ -179,51 +178,8 @@ export function UserTray({ className }: { className?: string }) {
                 </p>
               )}
             </div>
-            {!isGuest && (
-              <div className="space-y-2">
-                <Label>Passkeys</Label>
-                {passkeysPending ? (
-                  <p className="text-sm text-muted-foreground">Checking…</p>
-                ) : hasNoPasskey ? (
-                  <p className="text-sm text-muted-foreground">
-                    None yet. Add one to sign in with your fingerprint, face, or
-                    device PIN instead of waiting on an emailed code.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {passkeys?.map((passkey) => (
-                      <li
-                        key={passkey.id}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate">
-                          {passkey.name ?? "Passkey"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={addingPasskey}
-                  onClick={() => void addPasskey()}
-                >
-                  {addingPasskey ? (
-                    <>
-                      <Icons.spinner className="mr-2 size-4 animate-spin" />
-                      Waiting for your device…
-                    </>
-                  ) : (
-                    <>
-                      <Fingerprint className="mr-2 size-4" />
-                      {hasNoPasskey ? "Add a passkey" : "Add another passkey"}
-                    </>
-                  )}
-                </Button>
-              </div>
+            {showPasskeys && (
+              <PasskeySettings adding={addingPasskey} onAdd={addPasskey} />
             )}
             <DialogFooter>
               <Button
@@ -260,22 +216,8 @@ export function UserTray({ className }: { className?: string }) {
             </Link>
           </Button>
         )}
-        {user && hasNoPasskey && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            disabled={addingPasskey}
-            title="Sign in faster next time"
-            onClick={() => void addPasskey()}
-          >
-            {addingPasskey ? (
-              <Icons.spinner className="size-4 animate-spin" />
-            ) : (
-              <Fingerprint />
-            )}
-            <span className="hidden sm:inline">Add passkey</span>
-          </Button>
+        {showPasskeys && (
+          <AddPasskeyButton adding={addingPasskey} onAdd={addPasskey} />
         )}
         <Button
           variant="ghost"
@@ -296,5 +238,88 @@ export function UserTray({ className }: { className?: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+type PasskeyControlProps = { adding: boolean; onAdd: () => Promise<void> };
+
+/**
+ * The signed-in account's passkeys. Better Auth keeps one list store per
+ * client, so the two components below share a single fetch.
+ */
+function usePasskeys() {
+  const { data: passkeys, isPending } = authClient.useListPasskeys();
+  const hasNoPasskey = !isPending && (passkeys?.length ?? 0) === 0;
+  return { passkeys, isPending, hasNoPasskey };
+}
+
+/** The passkey list and "Add a passkey" button in the display-name dialog. */
+function PasskeySettings({ adding, onAdd }: PasskeyControlProps) {
+  const { passkeys, isPending, hasNoPasskey } = usePasskeys();
+
+  return (
+    <div className="space-y-2">
+      <Label>Passkeys</Label>
+      {isPending ? (
+        <p className="text-sm text-muted-foreground">Checking…</p>
+      ) : hasNoPasskey ? (
+        <p className="text-sm text-muted-foreground">
+          None yet. Add one to sign in with your fingerprint, face, or device
+          PIN instead of waiting on an emailed code.
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {passkeys?.map((passkey) => (
+            <li key={passkey.id} className="flex items-center gap-2 text-sm">
+              <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{passkey.name ?? "Passkey"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={adding}
+        onClick={() => void onAdd()}
+      >
+        {adding ? (
+          <>
+            <Icons.spinner className="mr-2 size-4 animate-spin" />
+            Waiting for your device…
+          </>
+        ) : (
+          <>
+            <Fingerprint className="mr-2 size-4" />
+            {hasNoPasskey ? "Add a passkey" : "Add another passkey"}
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+/** The tray's "Add passkey" shortcut, shown only until the account has one. */
+function AddPasskeyButton({ adding, onAdd }: PasskeyControlProps) {
+  const { hasNoPasskey } = usePasskeys();
+  if (!hasNoPasskey) return null;
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground"
+      disabled={adding}
+      title="Sign in faster next time"
+      onClick={() => void onAdd()}
+    >
+      {adding ? (
+        <Icons.spinner className="size-4 animate-spin" />
+      ) : (
+        <Fingerprint />
+      )}
+      <span className="hidden sm:inline">Add passkey</span>
+    </Button>
   );
 }

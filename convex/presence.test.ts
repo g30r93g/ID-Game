@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
-import { pickHost } from "./game";
+import { MAX_ACTIVE_SEATS, pickHost } from "./game";
 import { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.*s");
@@ -247,10 +247,57 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
     .withIdentity({ subject: "me" })
     .query(api.game.getMyActiveGames, {});
 
-  // Sorted by most recent activity: the live game first.
+  // Newest seat first: the live game was joined last.
   expect(result.map((g) => g.joinCode)).toEqual(["LIV004", "EMP003"]);
   expect(result[0].othersOnline).toBe(1);
   expect(result[1].othersOnline).toBe(0);
+});
+
+test("getMyActiveGames finds a live game behind a long history of finished ones", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+
+  await t.run(async (ctx) => {
+    // More finished seats than the query looks at, all older than the live one.
+    for (let i = 0; i <= MAX_ACTIVE_SEATS; i++) {
+      const finished = await ctx.db.insert("games", {
+        joinCode: `FIN${String(i).padStart(3, "0")}`,
+        totalRounds: 3,
+        currentRound: 3,
+        isOpen: false,
+        createdBy: "me",
+        startedAt: now - 60 * 60_000,
+        completedAt: now - 30 * 60_000,
+      });
+      await ctx.db.insert("players", {
+        userId: "me",
+        gameId: finished,
+        displayName: "Me",
+        lastAlive: now - 30 * 60_000,
+      });
+    }
+
+    const live = await ctx.db.insert("games", {
+      joinCode: "LIV001",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: live,
+      displayName: "Me",
+      lastAlive: now,
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "me" })
+    .query(api.game.getMyActiveGames, {});
+
+  expect(result.map((g) => g.joinCode)).toEqual(["LIV001"]);
 });
 
 test("pickHost returns the least-hosted candidate", async () => {
