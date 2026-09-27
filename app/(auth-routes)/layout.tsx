@@ -23,8 +23,7 @@ export default async function GameLayout({
         <DisplayNamePrompt />
         <RememberAccount />
       </ConvexClientProvider>
-      {/* Production only, like PostHogProvider in the root layout. Sign-out
-          lands on /sign-in, in this group, which is where identity resets. */}
+      {/* Production only, like PostHogProvider in the root layout. */}
       {env.NODE_ENV === "production" && <PostHogIdentity />}
       <Toaster />
     </div>

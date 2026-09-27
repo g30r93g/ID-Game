@@ -66,7 +66,7 @@ const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
   "AUTH_CANCELLED",
 ]);
 
-export default function SignInPage() {
+export function SignInCard() {
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
   const nextPath =
