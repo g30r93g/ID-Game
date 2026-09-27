@@ -32,6 +32,24 @@ import GameInstructions from "@/components/game/game-instructions";
 import PlayersDialog from "@/components/game/players-dialog";
 import { usePostHog } from "posthog-js/react";
 import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
+import GameShellSkeleton from "@/components/game/game-shell-skeleton";
+import { HEARTBEAT_INTERVAL_MS } from "@/lib/presence";
+import { Doc } from "@/convex/_generated/dataModel";
+
+type RoundPhase = Doc<"gameRounds">["phase"];
+
+// The phase steps the host sees straight away, before the server confirms
+// them. Only plain forward steps within a round; the server's own rules
+// (transitionRoundPhase) still decide, and a rejected step rolls back.
+// Leaving guessing for the results is not one of them: the server marks the
+// guesses in that transition, so showing the results early would show them
+// unmarked, and a rollback would re-arm the host's auto-advance. A new round
+// is never faked either, since only the server knows its id.
+const OPTIMISTIC_NEXT_PHASE: Partial<Record<RoundPhase, RoundPhase>> = {
+  "create-scenarios": "pick-scenario",
+  "pick-scenario": "rank-players",
+  "rank-players": "guess-scenario",
+};
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameAndMembership>;
@@ -52,19 +70,67 @@ export function Game({ preloadedGame }: GameProps) {
     api.game.getCurrentGameRound,
     game ? { game: game._id } : "skip",
   );
-  const currentRoundHost = useQuery(
-    api.game.getCurrentGameRoundHostPlayer,
-    game ? { game: game._id } : "skip",
+
+  // Undefined until everything needed to answer has loaded, so no control is
+  // drawn for the wrong person in the meantime: the lobby is the creator's, a
+  // round is its host's. A closed game with no round yet is the gap between
+  // closing the lobby and round 1 existing, so it stays undefined there too.
+  let isHost: boolean | undefined;
+  if (game && userPlayer !== undefined) {
+    if (game.isOpen) {
+      isHost = game.createdBy === userPlayer?.userId;
+    } else if (currentRound) {
+      isHost = currentRound.hostPlayerId === userPlayer?._id;
+    }
+  }
+
+  // Only for the host's display name, so it comes out of the player list this
+  // screen already holds rather than a subscription of its own. The list keeps
+  // inactive players, so a host who was voted out still resolves.
+  const currentRoundHost = players.find(
+    (p) => p._id === currentRound?.hostPlayerId,
   );
+
+  // Read here only where the parent itself uses the draw: the host's rank and
+  // await-guesses screens, and the reveal. The phase components that need it
+  // otherwise subscribe themselves with identical args. Skipping it elsewhere
+  // matters because it re-runs on every host heartbeat.
+  const needsRoundScenarios =
+    currentRound?.phase === "display-results" ||
+    (isHost === true &&
+      (currentRound?.phase === "rank-players" ||
+        currentRound?.phase === "guess-scenario"));
   const currentRoundScenarios =
     useQuery(
       api.game.gameRoundScenarios,
-      currentRound ? { gameRound: currentRound._id } : "skip",
+      currentRound && needsRoundScenarios
+        ? { gameRound: currentRound._id }
+        : "skip",
     ) ?? [];
+  const selectedScenarioDescription = currentRoundScenarios.find(
+    (x) => x.selected,
+  )?.scenarioDetails?.description;
 
-  const closeGameToNewPlayers = useMutation(api.game.closeGameToNewPlayers);
-  const startNewGameRound = useMutation(api.game.startNewGameRound);
-  const transitionRoundPhase = useMutation(api.game.transitionRoundPhase);
+  const startGame = useMutation(api.game.startGame);
+  const finishRoundAndStartNext = useMutation(api.game.finishRoundAndStartNext);
+  const transitionRoundPhase = useMutation(
+    api.game.transitionRoundPhase,
+  ).withOptimisticUpdate((localStore, { gameRoundId, toPhase }) => {
+    // Phase only, on the cached current round this step is about.
+    for (const { args, value } of localStore.getAllQueries(
+      api.game.getCurrentGameRound,
+    )) {
+      if (
+        value?._id === gameRoundId &&
+        OPTIMISTIC_NEXT_PHASE[value.phase] === toPhase
+      ) {
+        localStore.setQuery(api.game.getCurrentGameRound, args, {
+          ...value,
+          phase: toPhase,
+        });
+      }
+    }
+  });
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
   const leaveGameFn = useMutation(api.game.leaveGame);
 
@@ -78,16 +144,35 @@ export function Game({ preloadedGame }: GameProps) {
     null,
   );
 
+  // Keyed on the id, not the document: `game` is re-pushed on every change to
+  // it, and each push used to reset the timer. Beats straight away on mount, on
+  // returning to the tab and on reconnecting, since otherwise a returning
+  // player looks stale to everyone else until the next tick. It keeps beating
+  // while the tab is hidden, because players switch apps mid-game.
+  const gameId = game?._id;
   useEffect(() => {
-    if (!game) return;
-    const intervalId = setInterval(() => {
-      sendHeartbeat({ gameId: game._id })
-        .then(() => console.log("Heartbeat sent"))
-        .catch((error) => console.error("Error sending heartbeat:", error));
-    }, 15000);
+    if (!gameId) return;
 
-    return () => clearInterval(intervalId);
-  }, [sendHeartbeat, game]);
+    const beat = () => {
+      sendHeartbeat({ gameId }).catch((error) =>
+        console.error("Error sending heartbeat:", error),
+      );
+    };
+    const beatWhenVisible = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+
+    beat();
+    const intervalId = setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    document.addEventListener("visibilitychange", beatWhenVisible);
+    window.addEventListener("online", beat);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", beatWhenVisible);
+      window.removeEventListener("online", beat);
+    };
+  }, [sendHeartbeat, gameId]);
 
   useEffect(() => {
     if (
@@ -104,23 +189,6 @@ export function Game({ preloadedGame }: GameProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players]);
 
-  const userIsHost = () => {
-    if (game?.isOpen) {
-      // check that the person who created the game is the current user
-      console.log(
-        "game created by",
-        game.createdBy,
-        "player user id",
-        userPlayer?.userId,
-        "isHost?",
-        game.createdBy === userPlayer?.userId,
-      );
-      return game.createdBy === userPlayer?.userId;
-    }
-
-    return currentRound?.hostPlayerId === userPlayer?._id;
-  };
-
   const isGameFinished = useCallback(() => {
     const currentRound = game?.currentRound ?? 0;
     const maxRounds = game?.totalRounds ?? 0;
@@ -135,7 +203,7 @@ export function Game({ preloadedGame }: GameProps) {
       if (posthog) {
         posthog.capture("game_leave", {
           phase: currentRound?.phase,
-          isFinished: isGameFinished,
+          isFinished: isGameFinished(),
         });
       }
 
@@ -148,20 +216,21 @@ export function Game({ preloadedGame }: GameProps) {
     }
   }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace]);
 
+  if (isHost === undefined) {
+    return <GameShellSkeleton />;
+  }
+
   const advanceGame = () => {
     if (!game) {
       throw new Error("No game loaded");
     }
 
     if (game.isOpen) {
-      closeGameToNewPlayers({ game: game._id }).then(() => {
-        console.log("Starting new round. Game is now closed to new players");
-        startNewGameRound({ game: game._id });
-      });
+      startGame({ game: game._id });
       return;
     }
 
-    if (!userIsHost()) {
+    if (!isHost) {
       throw new Error(
         "User is not host. Cannot advance the game if user is not the host.",
       );
@@ -197,12 +266,9 @@ export function Game({ preloadedGame }: GameProps) {
         });
         return;
       case "display-results":
-        transitionRoundPhase({
-          gameRoundId: currentRound._id,
-          toPhase: "finished",
-        }).then(() => {
-          startNewGameRound({ game: game._id });
-        });
+        // Only offered while rounds remain: the final round ends through
+        // "Finish Game" and the rating screen instead.
+        finishRoundAndStartNext({ round: currentRound._id });
         return;
     }
   };
@@ -229,15 +295,17 @@ export function Game({ preloadedGame }: GameProps) {
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        return userIsHost() ? "Pick Scenario Category" : "Wait For Scenarios";
+        return isHost ? "Pick Scenario Category" : "Wait For Scenarios";
       case "pick-scenario":
-        return userIsHost() ? "Pick Scenario" : "Wait For Scenarios";
+        return isHost ? "Pick Scenario" : "Wait For Scenarios";
       case "rank-players":
-        return userIsHost() ? "Rank Players" : "Wait For Scenarios";
+        return isHost ? "Rank Players" : "Wait For Scenarios";
       case "guess-scenario":
-        return userIsHost() ? "Wait For Guesses" : "Guess Scenario";
+        return isHost ? "Wait For Guesses" : "Guess Scenario";
       case "display-results":
         return "Results";
+      case "finished":
+        return "Starting Next Round";
     }
   };
 
@@ -248,19 +316,19 @@ export function Game({ preloadedGame }: GameProps) {
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        return userIsHost()
+        return isHost
           ? "Select the category of your scenarios."
           : `${currentRoundHost?.displayName ?? "Your host"} is selecting a scenario category.`;
       case "pick-scenario":
-        return userIsHost()
+        return isHost
           ? "Choose the scenario you're going to rank everyone on."
           : `${currentRoundHost?.displayName ?? "Your host"} is picking the scenario.`;
       case "rank-players":
-        return userIsHost()
+        return isHost
           ? "Rank the players from most to least likely by dragging their names."
           : `${currentRoundHost?.displayName ?? "Your host"} is ranking everyone based on their selected scenario.`;
       case "guess-scenario":
-        return userIsHost()
+        return isHost
           ? "Wait for the players to guess the scenario you've picked"
           : `See how ${currentRoundHost?.displayName ?? "the host"} ranked the scenario. Then guess which one they picked in the Scenarios tab.`;
       case "display-results":
@@ -283,7 +351,7 @@ export function Game({ preloadedGame }: GameProps) {
               active: p.active,
             };
           })}
-          isHost={userIsHost()}
+          isHost={isHost}
           advanceGame={advanceGame}
         />
       );
@@ -291,7 +359,7 @@ export function Game({ preloadedGame }: GameProps) {
 
     switch (currentRound?.phase) {
       case "create-scenarios":
-        return userIsHost() ? (
+        return isHost ? (
           <CreateScenariosGamePhase
             gameId={game!._id}
             gameRoundId={currentRound._id}
@@ -301,7 +369,7 @@ export function Game({ preloadedGame }: GameProps) {
           <WaitGamePhase />
         );
       case "pick-scenario":
-        return userIsHost() ? (
+        return isHost ? (
           <PickScenarioGamePhase
             gameRound={currentRound._id}
             advanceGame={advanceGame}
@@ -311,29 +379,23 @@ export function Game({ preloadedGame }: GameProps) {
           <WaitGamePhase />
         );
       case "rank-players":
-        return userIsHost() ? (
+        return isHost ? (
           <RankPlayersGamePhase
             gameId={game!._id}
             roundId={currentRound._id}
-            scenario={
-              currentRoundScenarios.find((x) => x.selected)?.scenarioDetails
-                ?.description ?? ""
-            }
+            scenario={selectedScenarioDescription ?? ""}
             advanceGame={advanceGame}
           />
         ) : (
           <WaitGamePhase />
         );
       case "guess-scenario":
-        return userIsHost() ? (
+        return isHost ? (
           <AwaitGuessesGamePhase
             gameRoundId={currentRound._id}
-            isHost={userIsHost()}
-            advanceGame={userIsHost() ? advanceGame : undefined}
-            scenario={
-              currentRoundScenarios.find((x) => x.selected)?.scenarioDetails
-                ?.description
-            }
+            isHost={isHost}
+            advanceGame={advanceGame}
+            scenario={selectedScenarioDescription}
           />
         ) : (
           <GuessScenarioGamePhase
@@ -347,12 +409,16 @@ export function Game({ preloadedGame }: GameProps) {
           <DisplayResultsGamePhase
             joinCode={game!.joinCode}
             roundId={currentRound._id}
-            isHost={userIsHost()}
+            isHost={isHost}
             hostDisplayName={currentRoundHost?.displayName}
+            correctAnswer={selectedScenarioDescription}
             isGameFinished={isGameFinished}
             advanceGame={advanceGame}
           />
         );
+      case "finished":
+        // The moment between this round finishing and the next one existing.
+        return <WaitGamePhase />;
     }
   };
 
@@ -375,7 +441,7 @@ export function Game({ preloadedGame }: GameProps) {
           hostPlayerId={currentRound?.hostPlayerId}
           viewerPlayerId={userPlayer?._id}
         />
-        {!isGameFinished() && !userIsHost() && (
+        {!isGameFinished() && !isHost && (
           <LoadingButton
             className={"bg-red-200 hover:bg-red-500 text-white w-fit"}
             variant={"destructive"}
@@ -400,7 +466,7 @@ export function Game({ preloadedGame }: GameProps) {
           <CardDescription>{gamePhaseDescription()}</CardDescription>
           {!game?.isOpen &&
             currentRound?.phase === "guess-scenario" &&
-            !userIsHost() && (
+            !isHost && (
               <CardAction>
                 <div ref={setGuessSubmitSlot} />
               </CardAction>
