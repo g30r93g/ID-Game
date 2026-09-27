@@ -19,7 +19,7 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { NumberField } from "@/components/ui/number-field";
-import posthog from "posthog-js";
+import { capture } from "@/lib/analytics";
 import { useTransition } from "react";
 
 const formSchema = z.object({
@@ -48,9 +48,7 @@ export default function CreateGame() {
 
   async function onSubmit({ numberOfRounds }: z.output<typeof formSchema>) {
     try {
-      if (posthog) {
-        posthog.capture("new_game");
-      }
+      capture("new_game");
 
       const game = await createGame({ numberOfRounds });
 

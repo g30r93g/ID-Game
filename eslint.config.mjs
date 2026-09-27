@@ -46,6 +46,44 @@ const eslintConfig = [
     },
   },
   {
+    // posthog-js is about 94 KB gz, and lib/analytics.ts loads it lazily after
+    // the page's `load` event. A static import anywhere in the app (including
+    // posthog-js/react, which imports it too) would put it back in every
+    // page's entry chunks. Type-only imports are erased, so they're allowed.
+    // This uses the typescript-eslint variant so it doesn't override the
+    // core no-restricted-imports rule above for the same files.
+    files: ["app/**", "components/**", "providers/**", "lib/**"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "posthog-js",
+              message:
+                "posthog-js must stay out of the entry chunks. Use @/lib/analytics, which loads it after `load`.",
+              allowTypeImports: true,
+            },
+            {
+              name: "posthog-js/react",
+              message:
+                "posthog-js/react imports posthog-js statically. Use @/lib/analytics instead.",
+              allowTypeImports: true,
+            },
+          ],
+          patterns: [
+            {
+              group: ["posthog-js/*"],
+              message:
+                "posthog-js must stay out of the entry chunks. Use @/lib/analytics, which loads it after `load`.",
+              allowTypeImports: true,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     ignores: [".next/**", "convex/_generated/**", "node_modules/**"],
   },
 ];

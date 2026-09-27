@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { authClient } from "@/lib/auth-client";
 import { nextIdentityAction } from "@/lib/posthog-identity";
-import { posthog } from "@/providers/posthog-client";
+import { whenLoaded } from "@/lib/analytics";
 
 /**
  * Ties captured events to the signed-in account.
@@ -31,25 +31,32 @@ export function PostHogIdentity() {
   const name = session?.user?.name;
 
   useEffect(() => {
-    const action = nextIdentityAction({
-      isPending,
-      userId,
-      identifiedAs: posthog._isIdentified() ? posthog.get_distinct_id() : null,
-    });
-
-    if (action === "none") return;
-    if (action === "reset" || action === "reidentify") posthog.reset();
-    // `userId` is always set for these two actions; the re-check is what lets
-    // TypeScript see it, since the narrowing happens inside nextIdentityAction.
-    if ((action === "identify" || action === "reidentify") && userId) {
-      // This ID must match the server-side `game_join` capture, which uses the
-      // Better Auth user document ID from api.auth.getCurrentUser.
-      posthog.identify(userId, {
-        ...(email ? { email } : {}),
-        name,
-        is_guest: isGuest,
+    // The decision reads the live client, so the whole of it waits for
+    // posthog-js to load rather than queueing plain identify/reset calls.
+    // Each render's decision runs in turn, against the state the previous one
+    // left behind.
+    whenLoaded((posthog) => {
+      const action = nextIdentityAction({
+        isPending,
+        userId,
+        identifiedAs: posthog._isIdentified() ? posthog.get_distinct_id() : null,
       });
-    }
+
+      if (action === "none") return;
+      if (action === "reset" || action === "reidentify") posthog.reset();
+      // `userId` is always set for these two actions; the re-check is what
+      // lets TypeScript see it, since the narrowing happens inside
+      // nextIdentityAction.
+      if ((action === "identify" || action === "reidentify") && userId) {
+        // This ID must match the server-side `game_join` capture, which uses
+        // the Better Auth user document ID from api.auth.getCurrentUser.
+        posthog.identify(userId, {
+          ...(email ? { email } : {}),
+          name,
+          is_guest: isGuest,
+        });
+      }
+    });
   }, [isPending, userId, email, name, isGuest]);
 
   return null;

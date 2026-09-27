@@ -2,39 +2,46 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, Suspense } from "react";
-import { usePostHog } from "posthog-js/react";
+import { capture, loadAnalytics } from "@/lib/analytics";
 
-import { PostHogProvider as PHProvider } from "posthog-js/react";
-import { posthog } from "@/providers/posthog-client";
-
-// Init and pageviews only. Identity is PostHogIdentity's job, rendered by the
-// layouts that have a session, so that this provider (on every page) doesn't
-// pull in the Better Auth client.
+// Loading and pageviews only. Identity is PostHogIdentity's job, rendered by
+// the layouts that have a session, so that this provider (on every page)
+// doesn't pull in the Better Auth client.
+//
+// There is no React context any more: components call lib/analytics.ts
+// directly, which is what keeps posthog-js out of every page's entry chunks.
+// This only starts the lazy load, which waits for the page to finish loading.
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
   return (
-    <PHProvider client={posthog}>
+    <>
       <SuspendedPostHogPageView />
       {children}
-    </PHProvider>
+    </>
   );
 }
 
 function PostHogPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const posthog = usePostHog();
 
   // Track pageviews
   useEffect(() => {
-    if (pathname && posthog) {
+    if (pathname) {
       let url = window.origin + pathname;
       if (searchParams.toString()) {
         url = url + "?" + searchParams.toString();
       }
 
-      posthog.capture("$pageview", { $current_url: url });
+      // Both set here rather than left to posthog-js, which reads them off
+      // `location` when the event is sent: the first pageview waits in a queue
+      // until the library loads, and the visitor may have moved on by then.
+      capture("$pageview", { $current_url: url, $pathname: pathname });
     }
-  }, [pathname, searchParams, posthog]);
+  }, [pathname, searchParams]);
 
   return null;
 }
