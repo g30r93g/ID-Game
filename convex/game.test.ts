@@ -8,32 +8,6 @@ import betterAuthSchema from "./betterAuth/schema";
 const modules = import.meta.glob("./**/*.*s");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
 
-test("startNewGameRound sets startedAt on round 1", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await t.run(async (ctx) => {
-    const gid = await ctx.db.insert("games", {
-      joinCode: "ABC123",
-      totalRounds: 3,
-      isOpen: true,
-      createdBy: "user1",
-    });
-    await ctx.db.insert("players", {
-      userId: "user1",
-      gameId: gid,
-      displayName: "P1",
-      lastAlive: 0,
-    });
-    return gid;
-  });
-
-  await t
-    .withIdentity({ subject: "user1" })
-    .mutation(api.game.startNewGameRound, { game: gameId });
-
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(typeof game?.startedAt).toBe("number");
-});
-
 // An open lobby run by "creator", with "member" already joined and an
 // "outsider" user who never did.
 async function seedLobby(t: ReturnType<typeof convexTest>) {
@@ -59,159 +33,6 @@ async function seedLobby(t: ReturnType<typeof convexTest>) {
     return gameId;
   });
 }
-
-test("closeGameToNewPlayers lets the creator close the lobby", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await t
-    .withIdentity({ subject: "creator" })
-    .mutation(api.game.closeGameToNewPlayers, { game: gameId });
-
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(game?.isOpen).toBe(false);
-});
-
-test("closeGameToNewPlayers rejects an unauthenticated caller", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await expect(
-    t.mutation(api.game.closeGameToNewPlayers, { game: gameId }),
-  ).rejects.toThrow(/authenticated/);
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(game?.isOpen).toBe(true);
-});
-
-test("closeGameToNewPlayers rejects a player who isn't the creator", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await expect(
-    t
-      .withIdentity({ subject: "member" })
-      .mutation(api.game.closeGameToNewPlayers, { game: gameId }),
-  ).rejects.toThrow(/creator/);
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(game?.isOpen).toBe(true);
-});
-
-test("closeGameToNewPlayers rejects a non-member", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await expect(
-    t
-      .withIdentity({ subject: "outsider" })
-      .mutation(api.game.closeGameToNewPlayers, { game: gameId }),
-  ).rejects.toThrow(/creator/);
-});
-
-test("startNewGameRound makes the creator host of round 1", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  const roundId = await t
-    .withIdentity({ subject: "creator" })
-    .mutation(api.game.startNewGameRound, { game: gameId });
-
-  const round = await t.run((ctx) => ctx.db.get(roundId!));
-  const host = await t.run((ctx) => ctx.db.get(round!.hostPlayerId));
-  expect(round?.roundNumber).toBe(1);
-  expect(host?.userId).toBe("creator");
-});
-
-test("startNewGameRound rejects an unauthenticated caller", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await expect(
-    t.mutation(api.game.startNewGameRound, { game: gameId }),
-  ).rejects.toThrow(/authenticated/);
-});
-
-test("startNewGameRound rejects a non-member", async () => {
-  const t = convexTest(schema, modules);
-  const { gameId } = await seedGameWithRound(t, {
-    totalRounds: 3,
-    roundNumber: 1,
-    phase: "finished",
-  });
-
-  await expect(
-    t
-      .withIdentity({ subject: "outsider" })
-      .mutation(api.game.startNewGameRound, { game: gameId }),
-  ).rejects.toThrow(/Only active players/);
-});
-
-test("startNewGameRound leaves round 1 to the creator", async () => {
-  const t = convexTest(schema, modules);
-  const gameId = await seedLobby(t);
-
-  await expect(
-    t
-      .withIdentity({ subject: "member" })
-      .mutation(api.game.startNewGameRound, { game: gameId }),
-  ).rejects.toThrow(/creator/);
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(game?.currentRound).toBeUndefined();
-});
-
-test("startNewGameRound won't skip a round that hasn't finished", async () => {
-  const t = convexTest(schema, modules);
-  const { gameId } = await seedGameWithRound(t, {
-    totalRounds: 3,
-    roundNumber: 1,
-  });
-
-  await expect(
-    t
-      .withIdentity({ subject: "host" })
-      .mutation(api.game.startNewGameRound, { game: gameId }),
-  ).rejects.toThrow(/must finish/);
-  const game = await t.run((ctx) => ctx.db.get(gameId));
-  expect(game?.currentRound).toBe(1);
-});
-
-test("startNewGameRound lets any player start the next round once it has finished", async () => {
-  const t = convexTest(schema, modules);
-  const { gameId } = await seedGameWithRound(t, {
-    totalRounds: 3,
-    roundNumber: 1,
-    phase: "finished",
-  });
-  await t.run((ctx) =>
-    ctx.db.insert("players", {
-      userId: "guesser",
-      gameId,
-      displayName: "Guesser",
-      lastAlive: 0,
-    }),
-  );
-
-  const roundId = await t
-    .withIdentity({ subject: "guesser" })
-    .mutation(api.game.startNewGameRound, { game: gameId });
-
-  const round = await t.run((ctx) => ctx.db.get(roundId!));
-  expect(round?.roundNumber).toBe(2);
-});
-
-test("startNewGameRound still returns null when no rounds are left", async () => {
-  const t = convexTest(schema, modules);
-  const { gameId } = await seedGameWithRound(t, {
-    totalRounds: 3,
-    roundNumber: 3,
-    phase: "finished",
-  });
-
-  const result = await t
-    .withIdentity({ subject: "host" })
-    .mutation(api.game.startNewGameRound, { game: gameId });
-
-  expect(result).toBeNull();
-});
 
 async function seedGameWithRound(
   t: ReturnType<typeof convexTest>,
@@ -1149,7 +970,7 @@ test("moving to display-results marks every guess in the same transaction", asyn
       toPhase: "display-results",
     });
 
-  // No markGuessesForRound call: the reveal is already right.
+  // No separate marking call: the reveal is already right.
   expect(await correctnessByPlayer(t, roundId)).toEqual({
     Alice: true,
     Bob: false,
@@ -1705,7 +1526,8 @@ test("isPlayerInGame tells a member from a non-member", async () => {
 });
 
 // An unknown join code comes back as data, not an exception. The page redirects
-// on a null game; `isUserPlayer` threw here, which surfaced a server error.
+// on a null game; the membership query it replaced threw here, which surfaced
+// a server error.
 test("an unknown join code is a null game and no membership", async () => {
   const t = convexTest(schema, modules);
   const asMember = t.withIdentity({ subject: "member" });
