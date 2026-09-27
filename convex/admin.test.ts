@@ -1,6 +1,8 @@
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import schema from "./schema";
+import betterAuthSchema from "./betterAuth/schema";
+import { api, components } from "./_generated/api";
 import {
   activePlayers14dCore,
   createCategoryCore,
@@ -13,6 +15,7 @@ import {
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
 
 const modules = import.meta.glob("./**/*.*s");
+const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
 const NOW = 1_000_000_000_000;
 
 test("activePlayers14dCore dedupes users across recent player rows", async () => {
@@ -135,4 +138,64 @@ test("setCategoryBriefCore upserts a trimmed brief", async () => {
   await t.run((ctx) => setCategoryBriefCore(ctx, "Nightlife", "   "));
   rows = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
   expect(rows[0].brief).toBeUndefined();
+});
+
+// Guests (anonymous users) share the user table with accounts; the users page
+// reports them apart, through Better Auth's own listUsers filter.
+test("userStats counts guests apart from accounts", async () => {
+  vi.stubEnv("SITE_URL", "http://localhost:3000");
+  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-test-secret-test-secret");
+  try {
+    const t = convexTest(schema, modules);
+    t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+    const now = Date.now();
+
+    const admin = await t.run(async (ctx) => {
+      const create = (data: Record<string, unknown>) =>
+        ctx.runMutation(components.betterAuth.adapter.create, {
+          input: { model: "user", data: data as never },
+        });
+      const base = { emailVerified: true, createdAt: now, updatedAt: now };
+      const adminUser = await create({
+        ...base,
+        name: "Admin",
+        email: "admin@example.com",
+        role: "admin",
+      });
+      await create({ ...base, name: "Ada", email: "ada@example.com" });
+      for (const i of [1, 2, 3]) {
+        await create({
+          ...base,
+          emailVerified: false,
+          name: `Guest ${i}`,
+          email: `g${i}@guests.invalid`,
+          isAnonymous: true,
+        });
+      }
+      const session = await ctx.runMutation(
+        components.betterAuth.adapter.create,
+        {
+          input: {
+            model: "session",
+            data: {
+              userId: adminUser._id,
+              token: "admin-token",
+              // A fresh session's lifetime. One close to expiry would make
+              // Better Auth refresh it, which a query can't write.
+              expiresAt: now + 7 * 24 * 60 * 60_000,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+        },
+      );
+      return { subject: adminUser._id, sessionId: session._id };
+    });
+
+    const stats = await t.withIdentity(admin).query(api.admin.userStats, {});
+    expect(stats.totalUsers).toBe(2);
+    expect(stats.guests).toBe(3);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

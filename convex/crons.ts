@@ -13,4 +13,13 @@ crons.interval(
   {},
 );
 
+// Daily is plenty: an unusable guest costs a row, nothing more. A backlog
+// bigger than one batch carries on in follow-up runs straight away.
+crons.daily(
+  "delete expired guests",
+  { hourUTC: 4, minuteUTC: 17 },
+  internal.cleanup.deleteExpiredGuests,
+  {},
+);
+
 export default crons;

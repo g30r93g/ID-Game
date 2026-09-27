@@ -43,8 +43,9 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Users</h1>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Total users" value={stats?.totalUsers ?? "—"} />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Accounts" value={stats?.totalUsers ?? "—"} />
+        <StatCard label="Guests" value={stats?.guests ?? "—"} />
         <StatCard label="Active players (14d)" value={stats?.activePlayers14d ?? "—"} />
       </div>
       <AdminDataTable

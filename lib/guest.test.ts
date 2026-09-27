@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  canDeleteGuest,
+  GUEST_GRACE_PERIOD_MS,
   guestPlaceholderName,
   isGuestPlaceholderName,
   upgradePath,
@@ -30,4 +32,25 @@ test("upgradePath opens the sign-up tab and returns to where they were", () => {
   expect(upgradePath("/game/ABC123")).toBe(
     "/sign-in?tab=sign-up&next=%2Fgame%2FABC123",
   );
+});
+
+describe("canDeleteGuest", () => {
+  const NOW = 1_000_000_000_000;
+  const old = NOW - GUEST_GRACE_PERIOD_MS;
+
+  test("keeps guests inside the grace period", () => {
+    expect(canDeleteGuest(old + 1, [], NOW)).toBe(false);
+  });
+
+  test("deletes old guests with no sessions", () => {
+    expect(canDeleteGuest(old, [], NOW)).toBe(true);
+  });
+
+  test("deletes old guests whose sessions have all expired", () => {
+    expect(canDeleteGuest(old, [NOW - 1, NOW], NOW)).toBe(true);
+  });
+
+  test("keeps old guests with a session still live", () => {
+    expect(canDeleteGuest(old, [NOW - 1, NOW + 1], NOW)).toBe(false);
+  });
 });
