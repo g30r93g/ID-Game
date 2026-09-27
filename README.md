@@ -48,6 +48,91 @@ Browser ── /api/auth/* (Next.js catch-all route) ──▶ Convex HTTP actio
 
 Key auth files: `convex/auth.ts` (Better Auth config + plugins), `convex/http.ts` (route registration), `lib/auth-client.ts` / `lib/auth-server.ts` (client/server helpers), `app/(auth-routes)/sign-in/` (the single auth page).
 
+### Auth flow today
+
+Everyone needs an account, including people who only want to join a friend's game from a shared link.
+
+```mermaid
+flowchart TD
+    link(["Invitee opens shared link /game/CODE"]) --> proxy{"proxy.ts:<br/>session cookie?"}
+    play(["Host clicks Play → /game"]) --> proxy
+
+    proxy -- "no, invite link" --> invite["/join/CODE<br/>public invite page"]
+    proxy -- "no, any other /game path" --> signin
+    proxy -- yes --> gamePage
+
+    invite -- "Join game / Sign in" --> signin["/sign-in?next=…"]
+    signin --> method{"Passkey or<br/>email code?"}
+    method -- passkey --> session["Better Auth session<br/>cookie set"]
+    method -- "email OTP<br/>(first code registers<br/>a new account)" --> session
+    session -- "full page load<br/>to next" --> gamePage
+
+    gamePage{"Which page?"}
+    gamePage -- "/game/CODE" --> join["Server: fetchGameAndMembership,<br/>then joinGame if not a player"]
+    gamePage -- "/game" --> lobby["Create / join screen"]
+    lobby -- "Create New Game" --> create["createGame mutation"]
+    join --> game(["In the game"])
+    create --> game
+```
+
+### Auth flow with guest play (proposed)
+
+Invitees can join as a **guest** via Better Auth's [anonymous plugin](https://better-auth.com/docs/plugins/anonymous): a display name, no email or passkey. Guests can only **join** games; creating (hosting) one still needs a real account, checked in the UI and enforced in the `createGame` mutation (the Convex JWT carries `isAnonymous`). Anyone who has signed in with a real account on this device before is remembered in `localStorage`, and the invite page asks them whether to sign in or carry on as a guest.
+
+```mermaid
+flowchart TD
+    link(["Invitee opens shared link /game/CODE"]) --> proxy{"proxy.ts:<br/>session cookie?<br/>(guest or account)"}
+    play(["Play → /game"]) --> proxy
+
+    proxy -- "no, invite link" --> invite["/join/CODE<br/>public invite page"]
+    proxy -- "no, any other /game path" --> signin
+    proxy -- yes --> gamePage
+
+    invite --> open{"Game still<br/>open?"}
+    open -- "no, started" --> signin
+    open -- yes --> remembered{"localStorage:<br/>signed in here<br/>before?"}
+    remembered -- yes --> modal["'Welcome back' modal"]
+    modal -- "Sign in" --> signin
+    modal -- "Continue as guest" --> guestForm
+    remembered -- no --> guestForm["Guest form:<br/>pick a display name"]
+    guestForm --> anon["POST /sign-in/anonymous<br/>(rate-limited per IP)<br/>→ user with isAnonymous: true"]
+    anon -- "full page load" --> gamePage
+
+    signin["/sign-in?next=…<br/>passkey or email code"] --> remember["Remember account<br/>in localStorage"]
+    remember -- "full page load<br/>to next" --> gamePage
+
+    gamePage{"Which page?"}
+    gamePage -- "/game/CODE" --> join["Server: fetchGameAndMembership,<br/>then joinGame if not a player"]
+    gamePage -- "/game" --> lobby["Create / join screen"]
+    lobby -- "Create New Game" --> isGuest{"Guest?"}
+    isGuest -- no --> create["createGame mutation<br/>(rejects isAnonymous)"]
+    isGuest -- yes --> upsell["'Hosting needs an account'<br/>→ /sign-in?tab=sign-up"]
+    upsell --> signin
+    join --> game(["In the game"])
+    create --> game
+```
+
+A guest who later signs in or signs up keeps their seats. The anonymous plugin's after-hook sees the old guest session on the same request that creates the real one, and the `onLinkAccount` callback moves the guest's `players` rows across before the guest user is deleted:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor G as Guest browser
+    participant N as Next.js /api/auth
+    participant BA as Better Auth (Convex HTTP action)
+    participant DB as Convex DB
+
+    G->>N: Passkey or email-code sign-in<br/>(guest session cookie attached)
+    N->>BA: proxied request
+    BA->>DB: verify credential, create account session
+    BA->>BA: anonymous after-hook finds the guest session
+    BA->>DB: onLinkAccount → runMutation(adoptGuestPlayers)<br/>players.userId: guest id → account id<br/>(guest's name kept if the account has none)
+    BA->>DB: delete guest user and its sessions
+    BA-->>N: Set-Cookie: account session + Convex JWT
+    N-->>G: response
+    G->>G: remember account in localStorage,<br/>full page load to next
+```
+
 ## Local development
 
 Assumes you know Convex and Next. From a fresh clone:
