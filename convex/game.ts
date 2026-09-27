@@ -647,12 +647,29 @@ export const startNewGameRound = mutation({
   },
 });
 
+// The categories a host can draw from, sorted. A distinct walk of the
+// byCategory index: one seek per category rather than a read of every
+// scenario, so the timesSelected patch each lock-in makes no longer re-runs a
+// scan of the whole table for every host on this screen. It deliberately does
+// not read scenarioCategories: that table can hold categories with no
+// scenarios yet, which would show in the picker and then fail the draw.
 export const scenarioCategories = query({
   handler: async (ctx) => {
-    const scenarios = await ctx.db.query("scenarios").collect();
-
-    // Extract unique categories
-    return [...new Set(scenarios.map((s) => s.category))];
+    const categories: string[] = [];
+    let last: string | undefined;
+    for (;;) {
+      const after = last;
+      const next = await ctx.db
+        .query("scenarios")
+        .withIndex("byCategory", (q) =>
+          after === undefined ? q : q.gt("category", after),
+        )
+        .first();
+      if (!next) break;
+      categories.push(next.category);
+      last = next.category;
+    }
+    return categories;
   },
 });
 
