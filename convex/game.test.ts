@@ -1026,6 +1026,147 @@ async function seedGuessingRound(t: TestConvex<typeof schema>) {
   });
 }
 
+// Each guess's correctness, keyed by the guesser's display name.
+async function correctnessByPlayer(
+  t: TestConvex<typeof schema>,
+  roundId: Id<"gameRounds">,
+) {
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  return Object.fromEntries(
+    guesses.map((guess) => [guess.playerDisplayName, guess.isCorrect]),
+  );
+}
+
+// The round's scenario that the host picked.
+async function answerFor(
+  t: TestConvex<typeof schema>,
+  roundId: Id<"gameRounds">,
+) {
+  const answer = await t.run((ctx) =>
+    ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", roundId).eq("selected", true),
+      )
+      .first(),
+  );
+  return answer!._id;
+}
+
+test("moving to display-results marks every guess in the same transaction", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.transitionRoundPhase, {
+      gameRoundId: roundId,
+      toPhase: "display-results",
+    });
+
+  // No markGuessesForRound call: the reveal is already right.
+  expect(await correctnessByPlayer(t, roundId)).toEqual({
+    Alice: true,
+    Bob: false,
+  });
+});
+
+test("guesses stay unmarked until the reveal", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+  expect(guesses.every((guess) => guess.isCorrect === undefined)).toBe(true);
+});
+
+test("a no-op transition to display-results doesn't throw", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+  const asHost = t.withIdentity({ subject: "host" });
+
+  await asHost.mutation(api.game.transitionRoundPhase, {
+    gameRoundId: roundId,
+    toPhase: "display-results",
+  });
+  await asHost.mutation(api.game.transitionRoundPhase, {
+    gameRoundId: roundId,
+    toPhase: "display-results",
+  });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("display-results");
+  expect(await correctnessByPlayer(t, roundId)).toEqual({
+    Alice: true,
+    Bob: false,
+  });
+});
+
+test("the last guess reveals the results and marks them", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+
+  await t
+    .withIdentity({ subject: "cara" })
+    .mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario: await answerFor(t, roundId),
+    });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("display-results");
+  expect(await correctnessByPlayer(t, roundId)).toEqual({
+    Alice: true,
+    Bob: false,
+    Cara: true,
+  });
+});
+
+test("a guess that isn't the last leaves the round guessing", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+  await t.run((ctx) =>
+    ctx.db.insert("players", {
+      userId: "dan",
+      gameId,
+      displayName: "Dan",
+      lastAlive: 0,
+    }),
+  );
+
+  await t
+    .withIdentity({ subject: "cara" })
+    .mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario: await answerFor(t, roundId),
+    });
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+});
+
+test("makeGuessForRound rejects a guess outside guess-scenario", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+  const scenario = await answerFor(t, roundId);
+
+  for (const phase of ["rank-players", "display-results"] as const) {
+    await t.run((ctx) => ctx.db.patch(roundId, { phase }));
+    await expect(
+      t.withIdentity({ subject: "cara" }).mutation(api.game.makeGuessForRound, {
+        game: gameId,
+        gameRound: roundId,
+        scenario,
+      }),
+    ).rejects.toThrow(/only be made while the round is guessing/);
+  }
+
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+});
+
 function tallyByDescription(
   tally: { description: string; count: number }[] | null,
 ) {

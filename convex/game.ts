@@ -973,6 +973,15 @@ async function advanceRoundPhase(
     await ctx.db.patch(gameRound._id, { phase: toPhase });
   }
 
+  // Mark the guesses in the same transaction as the reveal, so every player's
+  // first frame of results is already right. Doing it from the host's browser
+  // afterwards showed everyone all-wrong until it landed, or for good if the
+  // host had gone. Guesses can't arrive after this: makeGuessForRound only
+  // takes them during guess-scenario.
+  if (changed && toPhase === "display-results") {
+    await markGuesses(ctx, gameRound._id);
+  }
+
   // stamp game completion when the final round finishes
   const game = await ctx.db.get(gameRound.gameId);
   if (
@@ -1272,6 +1281,49 @@ export const getPlayerRankingsForRound = query({
   },
 });
 
+// Record on each of the round's guesses whether it picked the host's scenario.
+// Returns false, marking nothing, when the round has no selected scenario.
+// Idempotent. Callers do their own authorisation.
+async function markGuesses(
+  ctx: MutationCtx,
+  roundId: Id<"gameRounds">,
+): Promise<boolean> {
+  // Fetch all guesses for this round
+  const guesses = await ctx.db
+    .query("gameRoundGuesses")
+    .withIndex("byRound", (q) => q.eq("roundId", roundId))
+    .collect();
+
+  // Get the selected scenario for the game round (assuming one selected scenario per round)
+  const selectedScenario = await ctx.db
+    .query("gameRoundScenarios")
+    .withIndex("byRoundSelected", (q) =>
+      q.eq("roundId", roundId).eq("selected", true),
+    )
+    .first();
+
+  if (!selectedScenario) {
+    return false;
+  }
+
+  // Determine correct guesses by comparing the guessed scenario ID with the selected scenario ID
+  await Promise.all(
+    guesses.map((guess) =>
+      ctx.db.patch(guess._id, {
+        isCorrect: guess.scenarioId === selectedScenario._id,
+      }),
+    ),
+  );
+  return true;
+}
+
+/**
+ * @deprecated Guesses are now marked by the transition to "display-results"
+ * itself (see advanceRoundPhase). The client no longer calls this.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still call it by name.
+ */
 export const markGuessesForRound = mutation({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
@@ -1299,40 +1351,9 @@ export const markGuessesForRound = mutation({
       throw new Error("Only the game round host can determine who was correct");
     }
 
-    // Fetch all guesses for this round
-    const guesses = await ctx.db
-      .query("gameRoundGuesses")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .collect();
-
-    // Get the selected scenario for the game round (assuming one selected scenario per round)
-    const selectedScenario = await ctx.db
-      .query("gameRoundScenarios")
-      .withIndex("byRoundSelected", (q) =>
-        q.eq("roundId", args.roundId).eq("selected", true),
-      )
-      .first();
-
-    if (!selectedScenario) {
+    if (!(await markGuesses(ctx, args.roundId))) {
       throw new Error("No selected scenario found for this round");
     }
-
-    // Determine correct guesses by comparing the guessed scenario ID with the selected scenario ID
-    const updatedGuesses = guesses.map((guess) => {
-      const isCorrect = guess.scenarioId === selectedScenario._id;
-
-      return {
-        ...guess,
-        isCorrect: isCorrect,
-      };
-    });
-
-    // Update all guesses with the 'correct' field
-    await Promise.all(
-      updatedGuesses.map((guess) =>
-        ctx.db.patch(guess._id, { isCorrect: guess.isCorrect }),
-      ),
-    );
   },
 });
 
@@ -1507,6 +1528,13 @@ export const makeGuessForRound = mutation({
       throw new Error("Game rounds hosts cannot submit guesses");
     }
 
+    // Guesses are marked when the round moves to its reveal, so one landing
+    // after that would stay unmarked. Before guessing opens there is nothing
+    // to guess at.
+    if (gameRound.phase !== "guess-scenario") {
+      throw new Error("Guesses can only be made while the round is guessing.");
+    }
+
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
@@ -1528,6 +1556,26 @@ export const makeGuessForRound = mutation({
       scenarioId: args.scenario,
       playerId: player._id,
     });
+
+    // The last guess reveals the results itself, marking them in the same
+    // transaction, so the reveal doesn't wait on the host's browser, or never
+    // come if the host has gone. "Everyone" is every active player bar the
+    // host, as in getGuessesStatusForRound. The host's own auto-advance then
+    // finds the phase already moved, which transitionRoundPhase allows.
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", gameRound.gameId))
+      .collect();
+    const guesses = await ctx.db
+      .query("gameRoundGuesses")
+      .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
+      .collect();
+    const everyoneHasGuessed = players
+      .filter((p) => p._id !== gameRound.hostPlayerId && p.active !== false)
+      .every((p) => guesses.some((guess) => guess.playerId === p._id));
+    if (everyoneHasGuessed) {
+      await advanceRoundPhase(ctx, gameRound, "display-results");
+    }
   },
 });
 
