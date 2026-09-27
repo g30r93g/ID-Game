@@ -75,6 +75,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     : hostname;
   return {
     baseURL: siteUrl,
+    appName: "The ID Game",
     database: authComponent.adapter(ctx),
     // Better Auth's default rate limiting uses in-memory storage, which is
     // meaningless across Convex's ephemeral isolates — store windows in the
@@ -105,6 +106,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       emailOTP({
         otpLength: 6,
         expiresIn: 600,
+        storeOTP: "hashed",
         // The Resend component enqueues the send durably — this await is a fast enqueue, not a blocking SMTP round-trip, so it leaks no account-existence timing signal.
         sendVerificationOTP: async ({ email, otp }) => {
           await resend.sendEmail(requireActionCtx(ctx), {
