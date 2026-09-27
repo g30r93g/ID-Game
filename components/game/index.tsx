@@ -94,7 +94,7 @@ export function Game({ preloadedGame }: GameProps) {
   // Read here only where the parent itself uses the draw: the host's rank and
   // await-guesses screens, and the reveal. The phase components that need it
   // otherwise subscribe themselves with identical args. Skipping it elsewhere
-  // matters because it re-runs on every host heartbeat.
+  // saves a query that checks who is asking, so it runs once per viewer.
   const needsRoundScenarios =
     currentRound?.phase === "display-results" ||
     (isHost === true &&
@@ -341,13 +341,13 @@ export function Game({ preloadedGame }: GameProps) {
     if (game?.isOpen) {
       return (
         <LobbyGamePhase
+          gameId={game._id}
           joinCode={game.joinCode}
           players={players.map((p) => {
             return {
               id: p._id,
               name: p.displayName,
               userId: p.userId,
-              lastAlive: p.lastAlive,
               active: p.active,
             };
           })}
@@ -428,6 +428,7 @@ export function Game({ preloadedGame }: GameProps) {
     >
       {game && !game.isOpen && currentRound && (
         <DisconnectPrompt
+          gameId={game._id}
           joinCode={game.joinCode}
           players={players}
           hostPlayerId={currentRound.hostPlayerId}
@@ -437,6 +438,7 @@ export function Game({ preloadedGame }: GameProps) {
       <div className={"shrink-0 w-full flex flex-row gap-2"}>
         <GameInstructions />
         <PlayersDialog
+          gameId={game!._id}
           players={players}
           hostPlayerId={currentRound?.hostPlayerId}
           viewerPlayerId={userPlayer?._id}

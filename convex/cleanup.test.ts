@@ -44,7 +44,9 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       lastAlive: now - 60 * 60_000,
     });
 
-    // Left 20 minutes ago — still continuable, must be left alone.
+    // Left 20 minutes ago — still continuable, must be left alone. Known only
+    // from presence: the players row is from when they joined, hours ago.
+    // The other games here predate the presence table and fall back to it.
     const recent = await ctx.db.insert("games", {
       joinCode: "REC003",
       totalRounds: 5,
@@ -53,10 +55,15 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       createdBy: "me",
       startedAt: now - 40 * 60_000,
     });
-    await ctx.db.insert("players", {
+    const recentPlayer = await ctx.db.insert("players", {
       userId: "me",
       gameId: recent,
       displayName: "Me",
+      lastAlive: now - 3 * 60 * 60_000,
+    });
+    await ctx.db.insert("playerPresence", {
+      gameId: recent,
+      playerId: recentPlayer,
       lastAlive: now - 20 * 60_000,
     });
 

@@ -12,14 +12,15 @@ import { toast } from "sonner";
 import { useCallback } from "react";
 import PlayerCard from "@/components/game/lobby/player-card";
 import { invitePath } from "@/lib/join-code";
+import { Id } from "@/convex/_generated/dataModel";
 
 interface LobbyGamePhaseProps {
+  gameId: Id<"games">;
   joinCode: string;
   players: {
-    id: string;
+    id: Id<"players">;
     name: string;
     userId: string;
-    lastAlive: number;
     active?: boolean;
   }[];
   isHost: boolean;
@@ -27,6 +28,7 @@ interface LobbyGamePhaseProps {
 }
 
 export default function LobbyGamePhase({
+  gameId,
   joinCode,
   players,
   isHost,
@@ -109,13 +111,14 @@ export default function LobbyGamePhase({
         </h2>
         <div className={"flex flex-col gap-4"}>
           <div className={"grid grid-cols-1 lg:grid-cols-2 gap-4"}>
-            {players.map(({ id, name, userId, lastAlive, active }) => {
+            {players.map(({ id, name, userId, active }) => {
               return (
                 <PlayerCard
                   key={id}
+                  gameId={gameId}
+                  playerId={id}
                   playerUserId={userId}
                   playerName={name}
-                  lastAlive={lastAlive}
                   active={active}
                 />
               );

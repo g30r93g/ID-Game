@@ -1,26 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { PRESENCE_TIMEOUT_MS } from "@/lib/presence";
+import { Id } from "@/convex/_generated/dataModel";
+import { isConnected } from "@/lib/presence";
+import { useNow } from "@/lib/use-now";
+import { usePresence } from "@/lib/use-presence";
 import { cn } from "@/lib/utils";
 
 // A green dot while the player's heartbeat is fresh, grey once it goes stale or
-// the player has been removed. Re-evaluates on a local 5s tick so it updates
-// even when no Convex write happens.
+// the player has been removed. Reads presence itself, so a heartbeat re-renders
+// only the dot, and re-evaluates on the shared 5s clock so it goes grey even
+// when no Convex write happens.
 export default function PresenceDot({
-  lastAlive,
+  gameId,
+  playerId,
   active,
 }: {
-  lastAlive: number;
+  gameId: Id<"games">;
+  playerId: Id<"players">;
   active?: boolean;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(id);
-  }, []);
+  const presence = usePresence(gameId);
+  const now = useNow(5000);
 
-  const connected = active !== false && now - lastAlive < PRESENCE_TIMEOUT_MS;
+  const lastAlive = presence?.get(playerId);
+  const connected =
+    active !== false && lastAlive !== undefined && isConnected(lastAlive, now);
 
   return (
     <span

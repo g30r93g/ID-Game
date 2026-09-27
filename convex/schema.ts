@@ -17,6 +17,19 @@ export default defineSchema({
     // needs both fields. Without it every such lookup scans the players table.
     .index("byGameUser", ["gameId", "userId"]),
 
+  // Each player's newest heartbeat, kept apart from `players` so a beat every
+  // 15s only invalidates the queries that care about liveness. Rows are
+  // written on create/join and by `sendHeartbeat`, and deleted on leave. A
+  // player from before this table has none until their next beat; readers
+  // fall back to `players.lastAlive`, which heartbeats no longer update.
+  playerPresence: defineTable({
+    gameId: v.id("games"),
+    playerId: v.id("players"),
+    lastAlive: v.number(),
+  })
+    .index("byGame", ["gameId"])
+    .index("byPlayer", ["playerId"]),
+
   // One row per (target, voter) while a disconnect-recovery vote is open. Rows
   // are deleted when the vote resolves or the target reconnects.
   presenceVotes: defineTable({

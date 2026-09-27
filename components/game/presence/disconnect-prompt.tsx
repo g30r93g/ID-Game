@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Doc } from "@/convex/_generated/dataModel";
-import { PRESENCE_TIMEOUT_MS } from "@/lib/presence";
+import { Id } from "@/convex/_generated/dataModel";
+import { isConnected } from "@/lib/presence";
+import { useNow } from "@/lib/use-now";
+import { RosterPlayer, usePresence } from "@/lib/use-presence";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { toast } from "sonner";
 
@@ -14,29 +16,33 @@ import { toast } from "sonner";
 // as a player crosses the staleness threshold client-side, and pressing Agree
 // pre-collects votes even if the 45s server threshold was only just reached.
 export default function DisconnectPrompt({
+  gameId,
   joinCode,
   players,
   hostPlayerId,
   viewerPlayerId,
 }: {
+  gameId: Id<"games">;
   joinCode: string;
-  players: Doc<"players">[];
+  players: RosterPlayer[];
   hostPlayerId: string | undefined;
   viewerPlayerId: string | undefined;
 }) {
   const castPresenceVote = useMutation(api.game.castPresenceVote);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(id);
-  }, []);
+  const presence = usePresence(gameId);
+  const now = useNow(5000);
 
-  const stale = players.filter(
-    (p) =>
+  // Nobody is stale until presence has loaded: an unknown heartbeat is not an
+  // old one.
+  const stale = players.filter((p) => {
+    const lastAlive = presence?.get(p._id);
+    return (
       p._id !== viewerPlayerId &&
       p.active !== false &&
-      now - p.lastAlive >= PRESENCE_TIMEOUT_MS,
-  );
+      lastAlive !== undefined &&
+      !isConnected(lastAlive, now)
+    );
+  });
 
   if (stale.length === 0) return null;
 
@@ -81,7 +87,7 @@ function StaleCard({
   isHost,
   onAgree,
 }: {
-  player: Doc<"players">;
+  player: RosterPlayer;
   isHost: boolean;
   onAgree: () => Promise<void>;
 }) {

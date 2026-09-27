@@ -4,8 +4,10 @@ import schema from "./schema";
 import { api } from "./_generated/api";
 import { MAX_ACTIVE_SEATS, pickHost } from "./game";
 import { Id } from "./_generated/dataModel";
+import betterAuthSchema from "./betterAuth/schema";
 
 const modules = import.meta.glob("./**/*.*s");
+const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
 
 test("presenceVotes rows and players.active persist", async () => {
   const t = convexTest(schema, modules);
@@ -52,9 +54,9 @@ test("presenceVotes rows and players.active persist", async () => {
   expect(read.active).toBe(false);
 });
 
-test("sendHeartbeat updates only the specified game's player row and reactivates", async () => {
+test("sendHeartbeat records presence only for the specified game and reactivates", async () => {
   const t = convexTest(schema, modules);
-  const { g1, g2 } = await t.run(async (ctx) => {
+  const { g2 } = await t.run(async (ctx) => {
     const g1 = await ctx.db.insert("games", {
       joinCode: "HB0001",
       totalRounds: 3,
@@ -80,7 +82,7 @@ test("sendHeartbeat updates only the specified game's player row and reactivates
       lastAlive: 0,
       active: false,
     });
-    return { g1, g2 };
+    return { g2 };
   });
 
   await t.withIdentity({ subject: "u1" }).mutation(api.game.sendHeartbeat, {
@@ -88,20 +90,136 @@ test("sendHeartbeat updates only the specified game's player row and reactivates
   });
 
   const rows = await t.run(async (ctx) => {
-    const p1 = await ctx.db
-      .query("players")
-      .withIndex("byGame", (q) => q.eq("gameId", g1))
-      .first();
     const p2 = await ctx.db
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", g2))
       .first();
-    return { p1, p2 };
+    const presence = await ctx.db.query("playerPresence").collect();
+    return { p2, presence };
   });
 
-  expect(rows.p2!.lastAlive).toBeGreaterThan(0);
+  // One presence row, for the game the beat was about.
+  expect(rows.presence).toHaveLength(1);
+  expect(rows.presence[0].gameId).toBe(g2);
+  expect(rows.presence[0].playerId).toBe(rows.p2!._id);
+  expect(rows.presence[0].lastAlive).toBeGreaterThan(0);
+  // The removal is undone on the players row; the beat itself is not there.
   expect(rows.p2!.active).toBe(true);
-  expect(rows.p1!.lastAlive).toBe(0);
+  expect(rows.p2!.lastAlive).toBe(0);
+});
+
+test("sendHeartbeat leaves an active player's row untouched", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, before } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "HB0004",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "u1",
+    });
+    const playerId = await ctx.db.insert("players", {
+      userId: "u1",
+      gameId,
+      displayName: "P",
+      lastAlive: 0,
+    });
+    // Already has a presence row, so the beat takes the update path.
+    await ctx.db.insert("playerPresence", { gameId, playerId, lastAlive: 1 });
+    return { gameId, before: await ctx.db.get(playerId) };
+  });
+
+  const asU1 = t.withIdentity({ subject: "u1" });
+  await asU1.mutation(api.game.sendHeartbeat, { gameId });
+  await asU1.mutation(api.game.sendHeartbeat, { gameId });
+
+  const after = await t.run(async (ctx) => ({
+    player: await ctx.db.get(before!._id),
+    presence: await ctx.db.query("playerPresence").collect(),
+  }));
+  // Byte-identical: no write at all, so nothing reading `players` re-runs.
+  expect(after.player).toEqual(before);
+  expect(after.presence).toHaveLength(1);
+  expect(after.presence[0].lastAlive).toBeGreaterThan(1);
+});
+
+test("getPresenceForGame returns one row per player, falling back to players.lastAlive", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, withRow, withoutRow } = await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "PRS001",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "a",
+    });
+    const withRow = await ctx.db.insert("players", {
+      userId: "a",
+      gameId,
+      displayName: "A",
+      lastAlive: 100,
+    });
+    await ctx.db.insert("playerPresence", {
+      gameId,
+      playerId: withRow,
+      lastAlive: 500,
+    });
+    // From before the presence table: no row yet.
+    const withoutRow = await ctx.db.insert("players", {
+      userId: "b",
+      gameId,
+      displayName: "B",
+      lastAlive: 200,
+    });
+    // Another game's presence must not leak in.
+    const otherGame = await ctx.db.insert("games", {
+      joinCode: "PRS002",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "a",
+    });
+    const other = await ctx.db.insert("players", {
+      userId: "a",
+      gameId: otherGame,
+      displayName: "A",
+      lastAlive: 0,
+    });
+    await ctx.db.insert("playerPresence", {
+      gameId: otherGame,
+      playerId: other,
+      lastAlive: 900,
+    });
+    return { gameId, withRow, withoutRow };
+  });
+
+  const presence = await t.query(api.game.getPresenceForGame, { gameId });
+  expect(presence).toHaveLength(2);
+  expect(presence).toEqual(
+    expect.arrayContaining([
+      { playerId: withRow, lastAlive: 500 },
+      { playerId: withoutRow, lastAlive: 200 },
+    ]),
+  );
+});
+
+test("createGame and joinGame record presence, leaveGame removes it", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+
+  // createGame and joinGame look the caller's name up by session; no session
+  // row exists, so both fall back to the default name.
+  const game = await t
+    .withIdentity({ subject: "host", sessionId: "session" })
+    .mutation(api.game.createGame, { numberOfRounds: 3 });
+  const asGuest = t.withIdentity({ subject: "guest", sessionId: "session" });
+  await asGuest.mutation(api.game.joinGame, { joinCode: game!.joinCode });
+
+  const rows = await t.run((ctx) => ctx.db.query("playerPresence").collect());
+  expect(rows).toHaveLength(2);
+  expect(rows.every((row) => row.gameId === game!._id)).toBe(true);
+
+  await asGuest.mutation(api.game.leaveGame, { gameId: game!._id });
+
+  const left = await t.run((ctx) => ctx.db.query("playerPresence").collect());
+  expect(left).toHaveLength(1);
 });
 
 test("getMyActiveGames returns only unfinished games the user still belongs to", async () => {
@@ -235,10 +353,17 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
       displayName: "Me",
       lastAlive: now - 30 * 60_000,
     });
-    await ctx.db.insert("players", {
+    // Online through presence alone: the players row only says when they
+    // joined. Everyone else here predates the table and falls back to it.
+    const friend = await ctx.db.insert("players", {
       userId: "friend",
       gameId: live,
       displayName: "Friend",
+      lastAlive: now - 3 * 60 * 60_000,
+    });
+    await ctx.db.insert("playerPresence", {
+      gameId: live,
+      playerId: friend,
       lastAlive: now,
     });
   });
@@ -397,13 +522,20 @@ test("getGuessesStatusForRound ignores removed (inactive) non-host players", asy
   expect(status.playerGuesses.map((p) => p.displayName)).toEqual(["A"]);
 });
 
+/**
+ * Seeds a game in round 1. Liveness goes in presence rows, with each players
+ * row claiming the opposite so a reader that ignored presence would get every
+ * answer wrong. `withPresence: false` seeds a game from before the presence
+ * table instead, where the players row is all there is.
+ */
 async function seedRoundGame(
   t: ReturnType<typeof convexTest>,
   players: { userId: string; connected: boolean; host?: boolean }[],
-  phase: "guess-scenario" | "create-scenarios" = "guess-scenario",
+  { withPresence = true }: { withPresence?: boolean } = {},
 ) {
   return t.run(async (ctx) => {
     const now = Date.now();
+    const stale = now - 10 * 60_000;
     const gameId = await ctx.db.insert("games", {
       joinCode: "CPV001",
       totalRounds: 3,
@@ -413,19 +545,27 @@ async function seedRoundGame(
     });
     const ids: Record<string, Id<"players">> = {};
     for (const p of players) {
+      const lastAlive = p.connected ? now : stale;
       ids[p.userId] = await ctx.db.insert("players", {
         userId: p.userId,
         gameId,
         displayName: p.userId.toUpperCase(),
-        lastAlive: p.connected ? now : 0,
+        lastAlive: withPresence ? (p.connected ? stale : now) : lastAlive,
       });
+      if (withPresence) {
+        await ctx.db.insert("playerPresence", {
+          gameId,
+          playerId: ids[p.userId],
+          lastAlive,
+        });
+      }
     }
     const host = players.find((p) => p.host) ?? players[0];
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
       roundNumber: 1,
       hostPlayerId: ids[host.userId],
-      phase,
+      phase: "guess-scenario",
     });
     return { gameId, roundId, ids };
   });
@@ -448,6 +588,34 @@ test("castPresenceVote reassigns the host when the host is stale and majority ag
   expect(res).toEqual({ resolved: true, action: "reassign-host" });
   const round = await t.run((ctx) => ctx.db.get(roundId));
   expect(round!.hostPlayerId).toBe(ids["alice"]);
+});
+
+test("castPresenceVote falls back to players.lastAlive without presence rows", async () => {
+  const t = convexTest(schema, modules);
+  const { ids } = await seedRoundGame(
+    t,
+    [
+      { userId: "host", connected: true, host: true },
+      { userId: "alice", connected: true },
+      { userId: "bob", connected: false },
+    ],
+    { withPresence: false },
+  );
+
+  // Denominator = connected non-target players = {host, alice} = 2, needs > 1.
+  await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["bob"],
+    });
+  const second = await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.castPresenceVote, {
+      joinCode: "CPV001",
+      targetPlayerId: ids["bob"],
+    });
+  expect(second).toEqual({ resolved: true, action: "remove-player" });
 });
 
 test("castPresenceVote refuses to act on a connected target", async () => {
@@ -604,6 +772,14 @@ test("sendHeartbeat cancels votes targeting the reconnecting player", async () =
       .collect(),
   );
   expect(votes.length).toBe(0);
+
+  const presence = await t.run((ctx) =>
+    ctx.db
+      .query("playerPresence")
+      .withIndex("byPlayer", (q) => q.eq("playerId", xId))
+      .unique(),
+  );
+  expect(presence?.lastAlive).toBeGreaterThan(0);
 });
 
 test("startNewGameRound skips removed players when choosing a host", async () => {

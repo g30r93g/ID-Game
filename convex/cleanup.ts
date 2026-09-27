@@ -4,11 +4,12 @@ import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { evaluateContinuity } from "../lib/continuable";
 import { canDeleteGuest, GUEST_GRACE_PERIOD_MS } from "../lib/guest";
+import { lastAliveFor, loadPresence } from "./presence";
 
 /**
- * Games inspected per transaction. Each costs a read of its players, and a
- * heartbeat in any of them conflicts with the sweep, so batches stay small; a
- * longer candidate list carries on in follow-up runs.
+ * Games inspected per transaction. Each costs a read of its players and their
+ * presence rows, and a heartbeat in any of them conflicts with the sweep, so
+ * batches stay small; a longer candidate list carries on in follow-up runs.
  */
 const BATCH_SIZE = 25;
 
@@ -21,9 +22,9 @@ const BATCH_SIZE = 25;
  * counting games nobody is coming back to.
  *
  * Candidates are games neither finished nor already marked, oldest first.
- * Continuable games stay in that range, so a full page continues in a follow-up run from
- * where this one stopped: however many games are live, every candidate is
- * reached in each sweep. Marking a game moves it out of the range, behind the
+ * Continuable games stay in that range, so a full page continues in a
+ * follow-up run from where this one stopped: however many games are live,
+ * every candidate is reached in each sweep. Marking a game moves it out of the range, behind the
  * cursor, so it is not read twice.
  *
  * Nothing is deleted. `sendHeartbeat` clears the mark if a player returns.
@@ -53,13 +54,16 @@ export const markAbandonedGames = internalMutation({
 
     let marked = 0;
     for (const game of candidates.page) {
-      const players = await ctx.db
-        .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", game._id))
-        .collect();
+      const [players, presence] = await Promise.all([
+        ctx.db
+          .query("players")
+          .withIndex("byGame", (q) => q.eq("gameId", game._id))
+          .collect(),
+        loadPresence(ctx, game._id),
+      ]);
       const activePlayers = players.filter((p) => p.active !== false);
       const lastActivityAt = activePlayers.reduce(
-        (newest, p) => Math.max(newest, p.lastAlive),
+        (newest, p) => Math.max(newest, lastAliveFor(p, presence)),
         0,
       );
 
