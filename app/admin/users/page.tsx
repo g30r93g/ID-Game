@@ -33,16 +33,30 @@ const columns: Column<UserRow>[] = [
 
 export default function UsersPage() {
   const [pageSize, setPageSize] = useState(25);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]); // stack; index = page
   const [page, setPage] = useState(0);
   // Fetched once, not subscribed: see `useOneShotQuery`.
   const statsQuery = useOneShotQuery(api.admin.userStats, {});
-  const listQuery = useOneShotQuery(api.admin.listUsers, { limit: pageSize, offset: page * pageSize });
+  const listQuery = useOneShotQuery(api.admin.listUsers, {
+    paginationOpts: { numItems: pageSize, cursor: cursors[page] ?? null },
+  });
   const stats = statsQuery.data;
   const data = listQuery.data;
 
-  const rows = data?.users ?? [];
-  const total = data?.total ?? 0;
-  const hasNext = (page + 1) * pageSize < total;
+  const rows = data?.page ?? [];
+  const hasNext = data ? !data.isDone : false;
+
+  const onNext = () => {
+    if (!data || data.isDone) return;
+    setCursors((prev) => {
+      const copy = [...prev];
+      copy[page + 1] = data.continueCursor;
+      return copy;
+    });
+    setPage((p) => p + 1);
+  };
+
+  const resetTo = (n: number) => { setPageSize(n); setCursors([null]); setPage(0); };
 
   return (
     <div className="space-y-6">
@@ -67,10 +81,10 @@ export default function UsersPage() {
         page={page}
         hasNext={hasNext}
         hasPrev={page > 0}
-        onNext={() => setPage((p) => p + 1)}
+        onNext={onNext}
         onPrev={() => setPage((p) => Math.max(0, p - 1))}
         pageSize={pageSize}
-        onPageSize={(n) => { setPageSize(n); setPage(0); }}
+        onPageSize={resetTo}
       />
     </div>
   );
