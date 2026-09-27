@@ -1,6 +1,7 @@
 import { getToken } from "@/lib/auth-server";
 import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
 import { DisplayNamePrompt } from "@/components/display-name-prompt";
+import { RememberAccount } from "@/components/remember-account";
 
 export default async function GameLayout({
   children,
@@ -15,6 +16,7 @@ export default async function GameLayout({
         {children}
         {/* Sits over whatever is on screen when the account has no name yet. */}
         <DisplayNamePrompt />
+        <RememberAccount />
       </ConvexClientProvider>
     </div>
   );

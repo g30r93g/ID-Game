@@ -978,3 +978,44 @@ test("getInvite leaves out a host who left or never chose a name", async () => {
     expect(invite?.hostName).toBeNull();
   }
 });
+
+// Guests (Better Auth anonymous users) may join games but never host one. The
+// Convex JWT carries the user row's `isAnonymous`, so the claim is the check.
+test("createGame refuses guests", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+
+  await expect(
+    t
+      .withIdentity({ subject: "guest", sessionId: "session", isAnonymous: true })
+      .mutation(api.game.createGame, { numberOfRounds: 5 }),
+  ).rejects.toThrow(/Guests can't create games/);
+
+  const games = await t.run((ctx) => ctx.db.query("games").collect());
+  expect(games).toEqual([]);
+});
+
+test("joinGame lets guests in", async () => {
+  const t = convexTest(schema, modules);
+  t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+  const gameId = await t.run((ctx) =>
+    ctx.db.insert("games", {
+      joinCode: "GJN001",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "host",
+    }),
+  );
+
+  await t
+    .withIdentity({ subject: "guest", sessionId: "session", isAnonymous: true })
+    .mutation(api.game.joinGame, { joinCode: "GJN001" });
+
+  const players = await t.run((ctx) =>
+    ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", gameId))
+      .collect(),
+  );
+  expect(players.map((p) => p.userId)).toEqual(["guest"]);
+});

@@ -28,9 +28,10 @@ One player secretly picks a scenario ("most likely to argue with their parents o
 
 ## How auth works
 
-There are no passwords. Accounts exist mainly to keep bots from creating and abandoning games, so sign-in is deliberately light:
+There are no passwords. Accounts exist mainly to keep bots from creating and abandoning games, so sign-in is deliberately light — and people who only want to join a friend's game don't need one at all:
 
-- **Passkeys** (WebAuthn) are the primary method — including conditional-UI autofill from the email field on supporting browsers.
+- **Guests** join from an invite link with nothing but a display name, via Better Auth's [anonymous plugin](https://better-auth.com/docs/plugins/anonymous). Guests can **join** games but never **create** one: the UI offers them an account instead, and the `createGame` mutation refuses any caller whose JWT says `isAnonymous`. Guest sign-ins are rate-limited per IP (10 a minute).
+- **Passkeys** (WebAuthn) are the primary method for accounts — including conditional-UI autofill from the email field on supporting browsers.
 - **Email OTP** is the fallback and recovery path: a 6-digit code sent via Resend proves inbox ownership, which doubles as the sign-up bot gate. New users are registered on their first verified code.
 
 Mechanically:
@@ -43,10 +44,72 @@ Browser ── /api/auth/* (Next.js catch-all route) ──▶ Convex HTTP actio
 
 - Better Auth runs on the Convex deployment itself via [`@convex-dev/better-auth`](https://labs.convex.dev/better-auth) (local-install component); auth tables live in Convex alongside game data.
 - The Next.js route at `app/api/auth/[...all]` proxies auth requests to Convex, so sessions are same-origin cookies on the app domain.
-- Convex functions authorise with `ctx.auth.getUserIdentity()` — `identity.subject` **is** the Better Auth user id, and is what `players.userId` / `games.createdBy` store.
-- `proxy.ts` gates `/game*` on session-cookie presence (optimistic, fast); the authoritative checks are in the Convex functions.
+- Convex functions authorise with `ctx.auth.getUserIdentity()` — `identity.subject` **is** the Better Auth user id, and is what `players.userId` / `games.createdBy` store. The JWT also carries the user row's fields, so `identity.isAnonymous` tells guests apart without a lookup.
+- `proxy.ts` gates `/game*` on session-cookie presence (optimistic, fast); guests and accounts have the same cookie, so the authoritative checks are in the Convex functions.
 
-Key auth files: `convex/auth.ts` (Better Auth config + plugins), `convex/http.ts` (route registration), `lib/auth-client.ts` / `lib/auth-server.ts` (client/server helpers), `app/(auth-routes)/sign-in/` (the single auth page).
+Key auth files: `convex/auth.ts` (Better Auth config + plugins), `convex/http.ts` (route registration), `lib/auth-client.ts` / `lib/auth-server.ts` (client/server helpers), `app/(auth-routes)/sign-in/` (the single auth page), `components/guest-join.tsx` (the invite page's guest form), `convex/guests.ts` (moves a guest's seats onto their new account).
+
+### Getting into a game
+
+```mermaid
+flowchart TD
+    link(["Invitee opens shared link /game/CODE"]) --> proxy{"proxy.ts:<br/>session cookie?<br/>(guest or account)"}
+    play(["Play → /game"]) --> proxy
+
+    proxy -- "no, invite link" --> invite["/join/CODE<br/>public invite page"]
+    proxy -- "no, any other /game path" --> signin
+    proxy -- yes --> gamePage
+
+    invite --> open{"Game still<br/>open?"}
+    open -- "no, started" --> signin
+    open -- yes --> remembered{"localStorage:<br/>account signed in<br/>here before?"}
+    remembered -- yes --> modal["'Welcome back' modal"]
+    modal -- "Sign in" --> signin
+    modal -- "Join as a guest" --> guestForm
+    remembered -- no --> guestForm["Guest form:<br/>pick a display name"]
+    guestForm --> anon["POST /sign-in/anonymous<br/>(10/min per IP)<br/>→ user with isAnonymous: true,<br/>then renamed to their pick"]
+    anon -- "full page load" --> gamePage
+
+    signin["/sign-in?next=…<br/>passkey or email code"] -- "full page load<br/>to next" --> gamePage
+
+    gamePage{"Which page?"}
+    gamePage -- "/game/CODE" --> join["Server: fetchGameAndMembership,<br/>then joinGame if not a player"]
+    gamePage -- "/game" --> lobby["Create / join screen"]
+    lobby -- "Create New Game" --> isGuest{"Guest?"}
+    isGuest -- no --> create["createGame mutation<br/>(rejects isAnonymous)"]
+    isGuest -- yes --> upsell["'Hosting needs an account'<br/>→ /sign-in?tab=sign-up"]
+    upsell --> signin
+    join --> game(["In the game"])
+    create --> game
+```
+
+The "Welcome back" prompt stops a returning player from joining as a stranger to their own account. `components/remember-account.tsx` records a first name (never the email) in `localStorage` whenever an account — not a guest — is signed in, and signing out leaves it in place, because "this device has an account" is exactly what the invite page wants to know.
+
+### Guest to account
+
+A guest who signs in or signs up (from the user tray's "Create account", or the hosting prompt) keeps their seats. The anonymous plugin's after-hook sees the old guest session on the same request that creates the real one, and `onLinkAccount` moves the guest's `players` rows across before the plugin deletes the guest user. If the move fails, the sign-in fails with it, so the guest and their seats survive to retry.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor G as Guest browser
+    participant N as Next.js /api/auth
+    participant BA as Better Auth (Convex HTTP action)
+    participant DB as Convex DB
+
+    G->>N: Passkey or email-code sign-in<br/>(guest session cookie attached)
+    N->>BA: proxied request
+    BA->>DB: verify credential, create account session
+    BA->>BA: anonymous after-hook finds the guest session
+    BA->>DB: onLinkAccount: a nameless new account takes the guest's name
+    BA->>DB: runMutation(guests.adoptGuestPlayers)<br/>players.userId: guest id → account id
+    BA->>DB: delete guest user and its sessions
+    BA-->>N: Set-Cookie: account session + Convex JWT
+    N-->>G: response
+    G->>G: full page load to next
+```
+
+If the account already has its own seat in one of those games, the account's seat wins and the guest's is retired (`active: false`), the same way consensus removal retires a player.
 
 ## Local development
 

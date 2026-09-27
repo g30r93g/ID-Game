@@ -107,6 +107,7 @@ export const listUsers = query({
         name: u.name ?? "",
         email: u.email,
         createdAt: Number(u.createdAt),
+        isGuest: (u as { isAnonymous?: boolean | null }).isAnonymous === true,
       })),
     };
   },

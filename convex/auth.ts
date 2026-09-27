@@ -4,13 +4,18 @@ import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
 import { dash } from "@better-auth/infra";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { admin, emailOTP } from "better-auth/plugins";
+import { admin, anonymous, emailOTP } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
+import {
+  GUEST_EMAIL_DOMAIN,
+  guestPlaceholderName,
+  isGuestPlaceholderName,
+} from "../lib/guest";
 
 export const resend = new Resend(components.resend, { testMode: false });
 
@@ -56,6 +61,9 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       customRules: {
         "/email-otp/send-verification-otp": { window: 60, max: 6 },
         "/sign-in/email-otp": { window: 60, max: 10 },
+        // Guest accounts need nothing but a request, so this is the bot gate
+        // for them. Loose enough for a group joining from one venue's Wi-Fi.
+        "/sign-in/anonymous": { window: 60, max: 10 },
       },
     },
     plugins: [
@@ -73,6 +81,39 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             subject: `${otp} is your ID Game sign-in code`,
             html: `<p>Your sign-in code is <strong>${otp}</strong>.</p><p>It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
           });
+        },
+      }),
+      // Guests: invitees join a game with just a display name. They can join
+      // but never create games (enforced in `createGame`, which reads the
+      // `isAnonymous` claim the Convex JWT carries over from the user row).
+      anonymous({
+        // A reserved TLD, so nothing can ever be delivered to a guest address.
+        emailDomainName: GUEST_EMAIL_DOMAIN,
+        generateName: () => guestPlaceholderName(),
+        // Runs when a guest signs in or signs up for real, on the request that
+        // creates the account session and before the plugin deletes the guest
+        // user. Deliberately not caught: if the seats can't be moved, failing
+        // the sign-in keeps the guest (and its seats) around to retry with,
+        // where swallowing the error would delete them.
+        onLinkAccount: async ({ anonymousUser, newUser, ctx: endpoint }) => {
+          const guestName = anonymousUser.user.name?.trim();
+          let name: string | undefined = newUser.user.name?.trim();
+          // A brand-new account from the sign-in tab arrives nameless; the
+          // name they were playing under is the one they'd pick anyway.
+          if (!name && guestName && !isGuestPlaceholderName(guestName)) {
+            await endpoint.context.internalAdapter.updateUser(newUser.user.id, {
+              name: guestName,
+            });
+            name = guestName;
+          }
+          await requireActionCtx(ctx).runMutation(
+            internal.guests.adoptGuestPlayers,
+            {
+              guestUserId: anonymousUser.user.id,
+              userId: newUser.user.id,
+              ...(name ? { displayName: name } : {}),
+            },
+          );
         },
       }),
       passkey({
@@ -117,6 +158,7 @@ export const getCurrentUser = query({
       email: user.email,
       image: user.image ?? null,
       role: (user as { role?: string }).role ?? "user",
+      isAnonymous: user.isAnonymous === true,
     };
   },
 });
