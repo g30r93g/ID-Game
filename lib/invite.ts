@@ -8,9 +8,9 @@ import { env } from "@/app/env";
  * The public summary of the game behind an invite link, or `null` when there is
  * no such game or it can't be reached.
  *
- * Memoised per request: the invite page's metadata, its body and its image
- * metadata all ask for it while rendering the same response. Fetched without a
- * token on purpose — link-preview crawlers have none.
+ * Memoised per request: the invite page's metadata and its body both ask for
+ * it while rendering the same response. Fetched without a token on purpose —
+ * link-preview crawlers have none.
  */
 export const getInvite = cache(async (joinCode: string) => {
   try {
