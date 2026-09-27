@@ -10,7 +10,10 @@ import {
 } from "@/components/ui/input-otp";
 import { toast } from "sonner";
 import { useCallback } from "react";
-import PlayerCard from "@/components/game/lobby/player-card";
+import {
+  PlayerCard,
+  SelfPlayerCard,
+} from "@/components/game/lobby/player-card";
 import { invitePath } from "@/lib/join-code";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -23,6 +26,8 @@ interface LobbyGamePhaseProps {
     userId: string;
     active?: boolean;
   }[];
+  /** The viewer's user id, which picks out the one card they can edit. */
+  viewerUserId?: string;
   isHost: boolean;
   advanceGame: () => void;
 }
@@ -31,6 +36,7 @@ export default function LobbyGamePhase({
   gameId,
   joinCode,
   players,
+  viewerUserId,
   isHost,
   advanceGame,
 }: LobbyGamePhaseProps) {
@@ -112,12 +118,13 @@ export default function LobbyGamePhase({
         <div className={"flex flex-col gap-4"}>
           <div className={"grid grid-cols-1 lg:grid-cols-2 gap-4"}>
             {players.map(({ id, name, userId, active }) => {
+              const PlayerCardVariant =
+                userId === viewerUserId ? SelfPlayerCard : PlayerCard;
               return (
-                <PlayerCard
+                <PlayerCardVariant
                   key={id}
                   gameId={gameId}
                   playerId={id}
-                  playerUserId={userId}
                   playerName={name}
                   active={active}
                 />

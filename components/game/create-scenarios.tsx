@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -15,7 +15,7 @@ interface CreateScenarioGamePhaseProps {
   advanceGame: () => void;
 }
 
-export default function CreateScenariosGamePhase({
+function CreateScenariosGamePhase({
   gameId,
   gameRoundId,
   advanceGame,
@@ -108,3 +108,5 @@ export default function CreateScenariosGamePhase({
     </div>
   );
 }
+
+export default memo(CreateScenariosGamePhase);

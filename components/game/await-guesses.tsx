@@ -10,7 +10,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { clsx } from "clsx";
 import { useQuery } from "convex/react";
 import { Check, Eye, Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 interface AwaitGuessesGamePhaseProps {
   gameRoundId: Id<"gameRounds">;
@@ -25,7 +25,7 @@ interface AwaitGuessesGamePhaseProps {
   scenario?: string;
 }
 
-export default function AwaitGuessesGamePhase({
+function AwaitGuessesGamePhase({
   gameRoundId,
   isHost,
   advanceGame,
@@ -41,7 +41,7 @@ export default function AwaitGuessesGamePhase({
 
   // Keep the latest `advanceGame` in a ref so the scheduling effect below can
   // call it without re-running (and re-scheduling) whenever the parent passes a
-  // new function identity on every render.
+  // new function identity.
   const advanceGameRef = useRef(advanceGame);
   useEffect(() => {
     advanceGameRef.current = advanceGame;
@@ -165,3 +165,5 @@ export default function AwaitGuessesGamePhase({
     </>
   );
 }
+
+export default memo(AwaitGuessesGamePhase);

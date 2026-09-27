@@ -6,30 +6,49 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import * as Editable from "@/components/ui/editable";
 import { Button } from "@/components/ui/button";
 import { Edit } from "lucide-react";
-import { authClient } from "@/lib/auth-client";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 import { useSaveDisplayName } from "@/lib/use-display-name";
 import PresenceDot from "@/components/game/presence/presence-dot";
 import { Id } from "@/convex/_generated/dataModel";
 
 // Liveness is not a prop: the dot reads it itself, so a heartbeat re-renders
-// the dot and leaves the card alone.
+// the dot and leaves the card alone. Props are primitives so the memoised cards
+// skip re-rendering when the lobby does and their player hasn't changed.
 interface PlayerCardProps {
   gameId: Id<"games">;
   playerId: Id<"players">;
-  playerUserId: string;
   playerName: string;
   active?: boolean;
 }
 
-export default function PlayerCard({
+// Everyone else's card: read-only, so it needs neither the session nor the
+// rename hook.
+export const PlayerCard = React.memo(function PlayerCard({
   gameId,
   playerId,
-  playerUserId,
   playerName,
   active,
 }: PlayerCardProps) {
-  const { data: session } = authClient.useSession();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-row items-center gap-2">
+          <PresenceDot gameId={gameId} playerId={playerId} active={active} />
+          {playerName}
+        </CardTitle>
+      </CardHeader>
+    </Card>
+  );
+});
+
+// The viewer's own card, where they can rename themselves. The lobby picks it
+// by user id, so only this one card subscribes to the session.
+export const SelfPlayerCard = React.memo(function SelfPlayerCard({
+  gameId,
+  playerId,
+  playerName,
+  active,
+}: PlayerCardProps) {
   const { save: saveDisplayName, ready } = useSaveDisplayName();
 
   // What is being typed, tagged with the server value it was typed over. The
@@ -44,8 +63,6 @@ export default function PlayerCard({
   } | null>(null);
   const [saving, setSaving] = React.useState(false);
   const value = draft?.base === playerName ? draft.value : playerName;
-
-  const isCurrentUser = playerUserId === session?.user.id;
 
   const submitName = async (next: string) => {
     const trimmed = next.trim();
@@ -85,42 +102,38 @@ export default function PlayerCard({
       <CardHeader>
         <CardTitle className="flex flex-row items-center gap-2">
           <PresenceDot gameId={gameId} playerId={playerId} active={active} />
-          {isCurrentUser ? (
-            <Editable.Root
-              value={value}
-              onValueChange={(next) =>
-                setDraft({ base: playerName, value: next })
-              }
-              onSubmit={(next) => void submitName(next)}
-              onCancel={() => setDraft(null)}
-              disabled={saving || !ready}
-              className="flex flex-1 flex-row items-center gap-1.5"
-            >
-              <Editable.Area className="flex-1">
-                <Editable.Preview className={"w-full rounded-md px-1.5 py-1"} />
-                {/* maxLength belongs on the input: EditableInput reads its own
-                    prop, not the one Editable.Root puts on the context. */}
-                <Editable.Input
-                  className="px-1.5 py-1"
-                  maxLength={MAX_DISPLAY_NAME_LENGTH}
-                />
-              </Editable.Area>
-              <Editable.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  aria-label="Change your display name"
-                >
-                  <Edit />
-                </Button>
-              </Editable.Trigger>
-            </Editable.Root>
-          ) : (
-            playerName
-          )}
+          <Editable.Root
+            value={value}
+            onValueChange={(next) =>
+              setDraft({ base: playerName, value: next })
+            }
+            onSubmit={(next) => void submitName(next)}
+            onCancel={() => setDraft(null)}
+            disabled={saving || !ready}
+            className="flex flex-1 flex-row items-center gap-1.5"
+          >
+            <Editable.Area className="flex-1">
+              <Editable.Preview className={"w-full rounded-md px-1.5 py-1"} />
+              {/* maxLength belongs on the input: EditableInput reads its own
+                  prop, not the one Editable.Root puts on the context. */}
+              <Editable.Input
+                className="px-1.5 py-1"
+                maxLength={MAX_DISPLAY_NAME_LENGTH}
+              />
+            </Editable.Area>
+            <Editable.Trigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label="Change your display name"
+              >
+                <Edit />
+              </Button>
+            </Editable.Trigger>
+          </Editable.Root>
         </CardTitle>
       </CardHeader>
     </Card>
   );
-}
+});

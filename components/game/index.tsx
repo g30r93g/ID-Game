@@ -21,7 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import CreateScenariosGamePhase from "@/components/game/create-scenarios";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import WaitGamePhase from "@/components/game/wait";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
 import { useRouter } from "next/navigation";
@@ -113,24 +113,33 @@ export function Game({ preloadedGame }: GameProps) {
 
   const startGame = useMutation(api.game.startGame);
   const finishRoundAndStartNext = useMutation(api.game.finishRoundAndStartNext);
-  const transitionRoundPhase = useMutation(
+  const transitionRoundPhaseMutation = useMutation(
     api.game.transitionRoundPhase,
-  ).withOptimisticUpdate((localStore, { gameRoundId, toPhase }) => {
-    // Phase only, on the cached current round this step is about.
-    for (const { args, value } of localStore.getAllQueries(
-      api.game.getCurrentGameRound,
-    )) {
-      if (
-        value?._id === gameRoundId &&
-        OPTIMISTIC_NEXT_PHASE[value.phase] === toPhase
-      ) {
-        localStore.setQuery(api.game.getCurrentGameRound, args, {
-          ...value,
-          phase: toPhase,
-        });
-      }
-    }
-  });
+  );
+  // Memoised because `withOptimisticUpdate` returns a new function on every
+  // call, and `advanceGame` / `goBack` below depend on this one.
+  const transitionRoundPhase = useMemo(
+    () =>
+      transitionRoundPhaseMutation.withOptimisticUpdate(
+        (localStore, { gameRoundId, toPhase }) => {
+          // Phase only, on the cached current round this step is about.
+          for (const { args, value } of localStore.getAllQueries(
+            api.game.getCurrentGameRound,
+          )) {
+            if (
+              value?._id === gameRoundId &&
+              OPTIMISTIC_NEXT_PHASE[value.phase] === toPhase
+            ) {
+              localStore.setQuery(api.game.getCurrentGameRound, args, {
+                ...value,
+                phase: toPhase,
+              });
+            }
+          }
+        },
+      ),
+    [transitionRoundPhaseMutation],
+  );
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
   const leaveGameFn = useMutation(api.game.leaveGame);
 
@@ -216,17 +225,21 @@ export function Game({ preloadedGame }: GameProps) {
     }
   }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace]);
 
-  if (isHost === undefined) {
-    return <GameShellSkeleton />;
-  }
+  // `advanceGame` and `goBack` are handed to memoised phase components, so they
+  // are keyed on primitives only: a push that leaves these alone (a player
+  // joining, a new copy of the game document) must not give them a new
+  // identity.
+  const gameIsOpen = game?.isOpen;
+  const roundId = currentRound?._id;
+  const roundPhase = currentRound?.phase;
 
-  const advanceGame = () => {
-    if (!game) {
+  const advanceGame = useCallback(() => {
+    if (!gameId) {
       throw new Error("No game loaded");
     }
 
-    if (game.isOpen) {
-      startGame({ game: game._id });
+    if (gameIsOpen) {
+      startGame({ game: gameId });
       return;
     }
 
@@ -237,56 +250,72 @@ export function Game({ preloadedGame }: GameProps) {
     }
 
     if (posthog) {
-      posthog.capture("game_advance", { phase: currentRound?.phase });
+      posthog.capture("game_advance", { phase: roundPhase });
     }
 
-    switch (currentRound?.phase) {
+    if (!roundId) return;
+
+    switch (roundPhase) {
       case "create-scenarios":
         transitionRoundPhase({
-          gameRoundId: currentRound._id,
+          gameRoundId: roundId,
           toPhase: "pick-scenario",
         });
         return;
       case "pick-scenario":
         transitionRoundPhase({
-          gameRoundId: currentRound._id,
+          gameRoundId: roundId,
           toPhase: "rank-players",
         });
         return;
       case "rank-players":
         transitionRoundPhase({
-          gameRoundId: currentRound._id,
+          gameRoundId: roundId,
           toPhase: "guess-scenario",
         });
         return;
       case "guess-scenario":
         transitionRoundPhase({
-          gameRoundId: currentRound._id,
+          gameRoundId: roundId,
           toPhase: "display-results",
         });
         return;
       case "display-results":
         // Only offered while rounds remain: the final round ends through
         // "Finish Game" and the rating screen instead.
-        finishRoundAndStartNext({ round: currentRound._id });
+        finishRoundAndStartNext({ round: roundId });
         return;
     }
-  };
+  }, [
+    gameId,
+    gameIsOpen,
+    isHost,
+    roundId,
+    roundPhase,
+    posthog,
+    startGame,
+    transitionRoundPhase,
+    finishRoundAndStartNext,
+  ]);
 
   // The one backward step the round allows: the host reconsidering the category
   // they picked. `transitionRoundPhase` rejects it once a scenario is locked in.
-  const goBack = () => {
-    if (!currentRound) return;
+  const goBack = useCallback(() => {
+    if (!roundId) return;
 
     if (posthog) {
-      posthog.capture("game_phase_rewind", { phase: currentRound.phase });
+      posthog.capture("game_phase_rewind", { phase: roundPhase });
     }
 
     transitionRoundPhase({
-      gameRoundId: currentRound._id,
+      gameRoundId: roundId,
       toPhase: "create-scenarios",
     }).catch(() => toast("Couldn't go back to the categories."));
-  };
+  }, [roundId, roundPhase, posthog, transitionRoundPhase]);
+
+  if (isHost === undefined) {
+    return <GameShellSkeleton />;
+  }
 
   const gamePhaseTitle = () => {
     if (game?.isOpen) {
@@ -351,6 +380,7 @@ export function Game({ preloadedGame }: GameProps) {
               active: p.active,
             };
           })}
+          viewerUserId={userPlayer?.userId}
           isHost={isHost}
           advanceGame={advanceGame}
         />
