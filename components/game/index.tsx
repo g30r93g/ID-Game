@@ -95,8 +95,8 @@ export function Game({ preloadedGame }: GameProps) {
     (x) => x.selected,
   )?.scenarioDetails?.description;
 
-  const closeGameToNewPlayers = useMutation(api.game.closeGameToNewPlayers);
-  const startNewGameRound = useMutation(api.game.startNewGameRound);
+  const startGame = useMutation(api.game.startGame);
+  const finishRoundAndStartNext = useMutation(api.game.finishRoundAndStartNext);
   const transitionRoundPhase = useMutation(api.game.transitionRoundPhase);
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
   const leaveGameFn = useMutation(api.game.leaveGame);
@@ -193,9 +193,7 @@ export function Game({ preloadedGame }: GameProps) {
     }
 
     if (game.isOpen) {
-      closeGameToNewPlayers({ game: game._id }).then(() => {
-        startNewGameRound({ game: game._id });
-      });
+      startGame({ game: game._id });
       return;
     }
 
@@ -235,12 +233,9 @@ export function Game({ preloadedGame }: GameProps) {
         });
         return;
       case "display-results":
-        transitionRoundPhase({
-          gameRoundId: currentRound._id,
-          toPhase: "finished",
-        }).then(() => {
-          startNewGameRound({ game: game._id });
-        });
+        // Only offered while rounds remain: the final round ends through
+        // "Finish Game" and the rating screen instead.
+        finishRoundAndStartNext({ round: currentRound._id });
         return;
     }
   };
