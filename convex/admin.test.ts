@@ -2,14 +2,18 @@ import { convexTest } from "convex-test";
 import { expect, test, vi } from "vitest";
 import schema from "./schema";
 import betterAuthSchema from "./betterAuth/schema";
-import { api, components } from "./_generated/api";
+import { api, components, internal } from "./_generated/api";
 import {
   activePlayers14dCore,
   createCategoryCore,
+  createScenarioCore,
+  createScenariosCore,
   deleteCategoryCore,
   gameStatsCore,
+  listCategoriesWithCountsCore,
   listScenariosPage,
   renameCategoryCore,
+  scenarioCategoriesForAdminCore,
   setCategoryBriefCore,
 } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
@@ -89,6 +93,7 @@ test("createCategoryCore inserts and rejects duplicates/empty", async () => {
   await t.run((ctx) => createCategoryCore(ctx, "  Work  "));
   const rows = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
   expect(rows.map((r) => r.name)).toEqual(["Work"]); // trimmed
+  expect(rows[0].scenarioCount).toBe(0);
   await expect(t.run((ctx) => createCategoryCore(ctx, "Work"))).rejects.toThrow(/already exists/);
   await expect(t.run((ctx) => createCategoryCore(ctx, "   "))).rejects.toThrow(/required/);
 });
@@ -96,7 +101,7 @@ test("createCategoryCore inserts and rejects duplicates/empty", async () => {
 test("renameCategoryCore cascades to scenarios and blocks name clashes", async () => {
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
-    await ctx.db.insert("scenarioCategories", { name: "Old" });
+    await ctx.db.insert("scenarioCategories", { name: "Old", scenarioCount: 2 });
     await ctx.db.insert("scenarioCategories", { name: "Taken" });
     await ctx.db.insert("scenarios", { description: "s1", category: "Old", timesSelected: 0 });
     await ctx.db.insert("scenarios", { description: "s2", category: "Old", timesSelected: 0 });
@@ -106,6 +111,7 @@ test("renameCategoryCore cascades to scenarios and blocks name clashes", async (
   expect(moved).toBe(2);
   const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
   expect(cats.map((c) => c.name).sort()).toEqual(["New", "Taken"]);
+  expect(cats.find((c) => c.name === "New")?.scenarioCount).toBe(2);
   const scenarios = await t.run((ctx) => ctx.db.query("scenarios").collect());
   expect(scenarios.filter((s) => s.category === "New")).toHaveLength(2);
   expect(scenarios.filter((s) => s.category === "Old")).toHaveLength(0);
@@ -115,14 +121,135 @@ test("renameCategoryCore cascades to scenarios and blocks name clashes", async (
 test("deleteCategoryCore blocks deletion while in use", async () => {
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
-    await ctx.db.insert("scenarioCategories", { name: "Used" });
-    await ctx.db.insert("scenarioCategories", { name: "Empty" });
+    await ctx.db.insert("scenarioCategories", { name: "Used", scenarioCount: 1 });
+    await ctx.db.insert("scenarioCategories", { name: "Empty", scenarioCount: 0 });
+    // Count not yet backfilled: the delete is still blocked by the index read.
+    await ctx.db.insert("scenarioCategories", { name: "Unknown" });
     await ctx.db.insert("scenarios", { description: "s", category: "Used", timesSelected: 0 });
+    await ctx.db.insert("scenarios", { description: "u", category: "Unknown", timesSelected: 0 });
   });
   await expect(t.run((ctx) => deleteCategoryCore(ctx, "Used"))).rejects.toThrow(/used by 1 scenario/);
+  await expect(t.run((ctx) => deleteCategoryCore(ctx, "Unknown"))).rejects.toThrow(/used by some scenario/);
   await t.run((ctx) => deleteCategoryCore(ctx, "Empty"));
   const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
-  expect(cats.map((c) => c.name)).toEqual(["Used"]);
+  expect(cats.map((c) => c.name).sort()).toEqual(["Unknown", "Used"]);
+});
+
+async function categoryCounts(t: ReturnType<typeof convexTest>) {
+  const rows = await t.run((ctx) =>
+    ctx.db.query("scenarioCategories").collect(),
+  );
+  return Object.fromEntries(rows.map((r) => [r.name, r.scenarioCount]));
+}
+
+test("createScenarioCore creates the category row and increments its count", async () => {
+  const t = convexTest(schema, modules);
+  await t.run((ctx) => createScenarioCore(ctx, "one", " Work "));
+  expect(await categoryCounts(t)).toEqual({ Work: 1 });
+  await t.run((ctx) => createScenarioCore(ctx, "two", "Work"));
+  expect(await categoryCounts(t)).toEqual({ Work: 2 });
+});
+
+test("createScenariosCore increments each category by its inserted rows", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work", scenarioCount: 3 });
+  });
+  const { created } = await t.run((ctx) =>
+    createScenariosCore(ctx, [
+      { description: "w1", category: "Work" },
+      { description: "f1", category: "Family" },
+      { description: "w2", category: "Work" },
+      { description: "  ", category: "Work" }, // skipped: no text
+      { description: "f2", category: "Family" },
+    ]),
+  );
+  expect(created).toBe(4);
+  expect(await categoryCounts(t)).toEqual({ Work: 5, Family: 2 });
+});
+
+test("createScenarioCore leaves an unknown count for the backfill", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work" });
+  });
+  await t.run((ctx) => createScenarioCore(ctx, "one", "Work"));
+  expect(await categoryCounts(t)).toEqual({ Work: undefined });
+});
+
+test("deleteScenarios decrements each category's count", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work", scenarioCount: 3 });
+    // Drifted low: the decrement clamps at 0.
+    await ctx.db.insert("scenarioCategories", { name: "Family", scenarioCount: 0 });
+    return Promise.all([
+      ctx.db.insert("scenarios", { description: "w1", category: "Work" }),
+      ctx.db.insert("scenarios", { description: "w2", category: "Work" }),
+      ctx.db.insert("scenarios", { description: "w3", category: "Work" }),
+      ctx.db.insert("scenarios", { description: "f1", category: "Family" }),
+    ]);
+  });
+  const result = await t.mutation(
+    internal.scenariosMaintenance.deleteScenarios,
+    { ids: [ids[0], ids[1], ids[3]] },
+  );
+  expect(result.deleted).toBe(3);
+  expect(await categoryCounts(t)).toEqual({ Work: 1, Family: 0 });
+});
+
+test("seedScenarioCategories sets exact counts and is idempotent", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work", scenarioCount: 7 }); // drifted
+    await ctx.db.insert("scenarioCategories", { name: "Family" }); // unknown
+    await ctx.db.insert("scenarioCategories", { name: "Empty" });
+    for (const [description, category] of [
+      ["w1", "Work"],
+      ["w2", "Work"],
+      ["f1", "Family"],
+      ["o1", "Orphan"], // used by a scenario, no row yet
+    ]) {
+      await ctx.db.insert("scenarios", { description, category });
+    }
+  });
+  const expected = { Work: 2, Family: 1, Empty: 0, Orphan: 1 };
+  const first = await t.mutation(internal.admin.seedScenarioCategories, {});
+  expect(first).toEqual({ created: 1, updated: 3 });
+  expect(await categoryCounts(t)).toEqual(expected);
+  const second = await t.mutation(internal.admin.seedScenarioCategories, {});
+  expect(second).toEqual({ created: 0, updated: 0 });
+  expect(await categoryCounts(t)).toEqual(expected);
+});
+
+test("listCategoriesWithCountsCore reads stored counts, not scenarios", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work", scenarioCount: 5, brief: "office" });
+    await ctx.db.insert("scenarioCategories", { name: "Family" });
+    // Neither of these shows up in the result: no scenarios rows are read.
+    await ctx.db.insert("scenarios", { description: "w1", category: "Work" });
+    await ctx.db.insert("scenarios", { description: "s1", category: "Stray" });
+  });
+  const rows = await t.run((ctx) => listCategoriesWithCountsCore(ctx));
+  expect(rows).toEqual([
+    { name: "Family", count: 0, brief: "" },
+    { name: "Work", count: 5, brief: "office" },
+  ]);
+});
+
+test("scenarioCategoriesForAdminCore returns the managed names sorted", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work" });
+    await ctx.db.insert("scenarioCategories", { name: "Family" });
+    await ctx.db.insert("scenarioCategories", { name: "Nightlife" });
+    // A category that only exists on a scenario. It's absent from the result,
+    // which shows the query reads the managed table and not `scenarios`.
+    await ctx.db.insert("scenarios", { description: "s", category: "Stray", timesSelected: 0 });
+  });
+  const names = await t.run((ctx) => scenarioCategoriesForAdminCore(ctx));
+  expect(names).toEqual(["Family", "Nightlife", "Work"]);
 });
 
 test("setCategoryBriefCore upserts a trimmed brief", async () => {

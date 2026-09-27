@@ -74,6 +74,11 @@ export default defineSchema({
     // Optional style brief that steers AI generation for this category
     // (tone, spice level, length, example lines). Editable in the admin UI.
     brief: v.optional(v.string()),
+    // How many scenarios use this category, maintained by the admin scenario
+    // mutations and scenariosMaintenance.deleteScenarios. Missing means
+    // unknown: admin:seedScenarioCategories sets exact values, and re-running
+    // it repairs drift from writes made outside those mutations.
+    scenarioCount: v.optional(v.number()),
   }).index("byName", ["name"]),
 
   gameRounds: defineTable({

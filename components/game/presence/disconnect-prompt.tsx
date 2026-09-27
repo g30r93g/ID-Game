@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc } from "@/convex/_generated/dataModel";
 import { PRESENCE_TIMEOUT_MS } from "@/lib/presence";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { toast } from "sonner";
 
 // Shows a recovery prompt for each player who has gone stale. Any connected
@@ -83,17 +83,33 @@ function StaleCard({
 }: {
   player: Doc<"players">;
   isHost: boolean;
-  onAgree: () => void;
+  onAgree: () => Promise<void>;
 }) {
+  // Held while the vote is in flight, so a double tap sends one vote and shows
+  // one toast.
+  const [pending, setPending] = useState(false);
+
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
       <span>
         <strong>{player.displayName}</strong> seems disconnected.{" "}
         {isHost ? "Reassign the host?" : "Skip them so the round can continue?"}
       </span>
-      <Button size="sm" variant="secondary" onClick={onAgree}>
+      <LoadingButton
+        size="sm"
+        variant="secondary"
+        loading={pending}
+        onClick={async () => {
+          setPending(true);
+          try {
+            await onAgree();
+          } finally {
+            setPending(false);
+          }
+        }}
+      >
         Agree
-      </Button>
+      </LoadingButton>
     </div>
   );
 }
