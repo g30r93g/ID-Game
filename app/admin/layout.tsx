@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { fetchAuthQuery, getToken } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
+import { env } from "@/app/env";
 import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
+import { PostHogIdentity } from "@/providers/PostHogIdentity";
+import { Toaster } from "@/components/ui/sonner";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await fetchAuthQuery(api.auth.getCurrentUser, {});
@@ -29,6 +32,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </header>
         <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
       </div>
+      {env.NODE_ENV === "production" && <PostHogIdentity />}
+      <Toaster />
     </ConvexClientProvider>
   );
 }
