@@ -1252,6 +1252,156 @@ test("makeGuessForRound rejects a guess outside guess-scenario", async () => {
   expect(guesses).toHaveLength(2);
 });
 
+test("makeGuessForRound records a guess for one of the round's scenarios", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+  const scenario = await answerFor(t, roundId);
+
+  await t
+    .withIdentity({ subject: "cara" })
+    .mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario,
+    });
+
+  const caraGuesses = await t.run(async (ctx) => {
+    const cara = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", gameId).eq("userId", "cara"),
+      )
+      .first();
+    const guesses = await ctx.db
+      .query("gameRoundGuesses")
+      .withIndex("byRound", (q) => q.eq("roundId", roundId))
+      .collect();
+    return guesses.filter((guess) => guess.playerId === cara!._id);
+  });
+  expect(caraGuesses).toHaveLength(1);
+  expect(caraGuesses[0].gameId).toBe(gameId);
+  expect(caraGuesses[0].scenarioId).toBe(scenario);
+});
+
+test("makeGuessForRound rejects a second guess from the same player", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+  // Dan hasn't guessed, so the round is still open to Alice's repeat.
+  await t.run((ctx) =>
+    ctx.db.insert("players", {
+      userId: "dan",
+      gameId,
+      displayName: "Dan",
+      lastAlive: 0,
+    }),
+  );
+
+  await expect(
+    t.withIdentity({ subject: "alice" }).mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario: await answerFor(t, roundId),
+    }),
+  ).rejects.toThrow(/already guessed/);
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+});
+
+test("a rejected repeat guess doesn't reveal the results", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+
+  // Cara is the only one left, so a repeat from Alice must not count as the
+  // last guess.
+  await expect(
+    t.withIdentity({ subject: "alice" }).mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario: await answerFor(t, roundId),
+    }),
+  ).rejects.toThrow(/already guessed/);
+
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+  expect(guesses.every((guess) => guess.isCorrect === undefined)).toBe(true);
+});
+
+test("makeGuessForRound rejects a game that isn't the round's", async () => {
+  const t = convexTest(schema, modules);
+  const { roundId } = await seedGuessingRound(t);
+  // Cara is also in another game, so a player lookup by that game succeeds.
+  const otherGameId = await t.run(async (ctx) => {
+    const otherGameId = await ctx.db.insert("games", {
+      joinCode: "OTH001",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "cara",
+    });
+    await ctx.db.insert("players", {
+      userId: "cara",
+      gameId: otherGameId,
+      displayName: "Cara",
+      lastAlive: 0,
+    });
+    return otherGameId;
+  });
+
+  await expect(
+    t.withIdentity({ subject: "cara" }).mutation(api.game.makeGuessForRound, {
+      game: otherGameId,
+      gameRound: roundId,
+      scenario: await answerFor(t, roundId),
+    }),
+  ).rejects.toThrow(/does not belong to this game/);
+
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+});
+
+test("makeGuessForRound rejects a scenario from another round", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGuessingRound(t);
+  const otherRoundScenario = await t.run(async (ctx) => {
+    const round = await ctx.db.get(roundId);
+    const otherRoundId = await ctx.db.insert("gameRounds", {
+      gameId,
+      roundNumber: 2,
+      hostPlayerId: round!.hostPlayerId,
+      phase: "guess-scenario",
+    });
+    const scenarioId = await ctx.db.insert("scenarios", {
+      description: "Elsewhere",
+      category: "General",
+    });
+    return ctx.db.insert("gameRoundScenarios", {
+      gameId,
+      roundId: otherRoundId,
+      scenarioId,
+      selected: false,
+    });
+  });
+
+  await expect(
+    t.withIdentity({ subject: "cara" }).mutation(api.game.makeGuessForRound, {
+      game: gameId,
+      gameRound: roundId,
+      scenario: otherRoundScenario,
+    }),
+  ).rejects.toThrow(/not one of this round's scenarios/);
+
+  const guesses = await t.query(api.game.getGuessesForRound, { roundId });
+  expect(guesses).toHaveLength(2);
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("guess-scenario");
+});
+
 function tallyByDescription(
   tally: { description: string; count: number }[] | null,
 ) {
