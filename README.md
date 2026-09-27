@@ -30,7 +30,7 @@ One player secretly picks a scenario ("most likely to argue with their parents o
 
 There are no passwords. Accounts exist mainly to keep bots from creating and abandoning games, so sign-in is deliberately light — and people who only want to join a friend's game don't need one at all:
 
-- **Guests** join from an invite link with nothing but a display name, via Better Auth's [anonymous plugin](https://better-auth.com/docs/plugins/anonymous). Guests can **join** games but never **create** one: the UI offers them an account instead, and the `createGame` mutation refuses any caller whose JWT says `isAnonymous`. Guest sign-ins are rate-limited per IP (10 a minute).
+- **Guests** join from an invite link in one click, then pick a display name in the lobby, via Better Auth's [anonymous plugin](https://better-auth.com/docs/plugins/anonymous). Guests can **join** games but never **create** one: the UI offers them an account instead, and the `createGame` mutation refuses any caller whose JWT says `isAnonymous`. Guest sign-ins are rate-limited per IP (10 a minute).
 - **Passkeys** (WebAuthn) are the primary method for accounts — including conditional-UI autofill from the email field on supporting browsers.
 - **Email OTP** is the fallback and recovery path: a 6-digit code sent via Resend proves inbox ownership, which doubles as the sign-up bot gate. New users are registered on their first verified code.
 
@@ -65,9 +65,9 @@ flowchart TD
     open -- yes --> remembered{"localStorage:<br/>account signed in<br/>here before?"}
     remembered -- yes --> modal["'Welcome back' modal"]
     modal -- "Sign in" --> signin
-    modal -- "Join as a guest" --> guestForm
-    remembered -- no --> guestForm["Guest form:<br/>pick a display name"]
-    guestForm --> anon["POST /sign-in/anonymous<br/>(10/min per IP)<br/>→ user with isAnonymous: true,<br/>then renamed to their pick"]
+    modal -- "Join as a guest" --> anon
+    remembered -- no --> guestButton["Invite card:<br/>'Join as a guest'"]
+    guestButton --> anon["POST /sign-in/anonymous<br/>(10/min per IP)<br/>→ 'Guest 1234',<br/>isAnonymous: true"]
     anon -- "full page load" --> gamePage
 
     signin["/sign-in?next=…<br/>passkey or email code"] -- "full page load<br/>to next" --> gamePage
@@ -79,9 +79,14 @@ flowchart TD
     isGuest -- no --> create["createGame mutation<br/>(rejects isAnonymous)"]
     isGuest -- yes --> upsell["'Hosting needs an account'<br/>→ /sign-in?tab=sign-up"]
     upsell --> signin
-    join --> game(["In the game"])
+    join --> named{"Still<br/>'Guest 1234'?"}
+    named -- yes --> prompt["Lobby name prompt<br/>(DisplayNamePrompt)"]
+    named -- no --> game(["In the game"])
+    prompt --> game
     create --> game
 ```
+
+Guests name themselves in the lobby rather than on the invite page, so nothing stands between the link and the game: `DisplayNamePrompt` asks anyone still on their generated "Guest 1234", the same way it asks an account that has no name, and the name it saves is copied onto the cards they already have.
 
 The "Welcome back" prompt stops a returning player from joining as a stranger to their own account. `components/remember-account.tsx` records a first name (never the email) in `localStorage` whenever an account — not a guest — is signed in, and signing out leaves it in place, because "this device has an account" is exactly what the invite page wants to know.
 

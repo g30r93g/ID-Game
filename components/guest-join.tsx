@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowRight, LogIn } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
-import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 import {
   firstName,
   parseRememberedAccount,
@@ -20,8 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Icons } from "@/components/ui/icons";
 
 // Signing in anonymously from a session that is already a guest's is refused
@@ -33,10 +30,13 @@ const ALREADY_GUEST = "ANONYMOUS_USERS_CANNOT_SIGN_IN_AGAIN_ANONYMOUSLY";
 const noSubscription = () => () => {};
 
 /**
- * The invite page's way in: join as a guest with just a display name, or sign
- * in to an account. Guests can join games but not create them (see
- * `createGame`), which keeps accounts as the bot gate for the thing bots
- * actually abuse.
+ * The invite page's way in: join as a guest in one click, or sign in to an
+ * account. Guests can join games but not create them (see `createGame`), which
+ * keeps accounts as the bot gate for the thing bots actually abuse.
+ *
+ * Guests arrive in the lobby as "Guest 1234" and are asked for a name there by
+ * `DisplayNamePrompt`, the same prompt a nameless account gets, so nothing
+ * stands between the invite link and the game.
  *
  * Someone who has signed in with an account on this device before is asked
  * first, in a modal, whether they'd rather sign in: joining as a guest would
@@ -72,8 +72,7 @@ export function GuestJoin({
   const [promptDismissed, setPromptDismissed] = React.useState(false);
   const promptOpen = remembered !== null && !promptDismissed && !hasSession;
 
-  const nameInput = React.useRef<HTMLInputElement>(null);
-  const [name, setName] = React.useState("");
+  const joinButton = React.useRef<HTMLButtonElement>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [joining, setJoining] = React.useState(false);
 
@@ -81,20 +80,7 @@ export function GuestJoin({
   // layout, which seeds the Convex client with a token for the new session.
   const goToGame = () => window.location.assign(`/game/${joinCode}`);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (hasSession) {
-      setJoining(true);
-      goToGame();
-      return;
-    }
-
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError("Enter the name you want other players to see.");
-      return;
-    }
-
+  const joinAsGuest = async () => {
     setError(null);
     setJoining(true);
     let leaving = false;
@@ -109,15 +95,6 @@ export function GuestJoin({
         return;
       }
 
-      // The guest was created as "Guest 1234". Failing to rename isn't worth
-      // stopping for: they can still play, and change it from the user tray.
-      const { error: nameError } = await authClient.updateUser({
-        name: trimmed,
-      });
-      if (nameError) {
-        console.error("Could not set the guest's display name", nameError);
-      }
-
       leaving = true;
       goToGame();
     } finally {
@@ -126,39 +103,38 @@ export function GuestJoin({
     }
   };
 
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (hasSession) {
+      setJoining(true);
+      goToGame();
+      return;
+    }
+    void joinAsGuest();
+  };
+
   const greetingName = firstName(remembered?.name);
 
   return (
     <>
       <form className="contents" onSubmit={handleSubmit}>
         <CardContent className="space-y-2">
-          {hasSession ? (
-            <p className="text-sm text-muted-foreground">
-              {signedInAs
+          <p className="text-sm text-muted-foreground">
+            {hasSession
+              ? signedInAs
                 ? `You're signed in as ${signedInAs}.`
-                : "You're already signed in."}
-            </p>
-          ) : (
-            <>
-              <Label htmlFor="guest-name">Your name</Label>
-              <Input
-                id="guest-name"
-                ref={nameInput}
-                type="text"
-                autoComplete="nickname"
-                required
-                maxLength={MAX_DISPLAY_NAME_LENGTH}
-                placeholder="What should everyone call you?"
-                value={name}
-                disabled={joining}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </>
-          )}
+                : "You're already signed in."
+              : "No account needed — you'll pick the name everyone sees once you're in."}
+          </p>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-          <Button type="submit" className="w-full" disabled={joining}>
+          <Button
+            ref={joinButton}
+            type="submit"
+            className="w-full"
+            disabled={joining}
+          >
             {joining ? (
               <Icons.spinner className="size-4 animate-spin" />
             ) : (
@@ -182,10 +158,10 @@ export function GuestJoin({
       >
         <DialogContent
           className="sm:max-w-sm"
-          // Closing lands on the guest form; put the cursor where it's needed.
+          // Dismissing lands on the invite card; focus its main action.
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            nameInput.current?.focus();
+            joinButton.current?.focus();
           }}
         >
           <DialogHeader>
@@ -199,7 +175,14 @@ export function GuestJoin({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPromptDismissed(true)}>
+            <Button
+              variant="outline"
+              disabled={joining}
+              onClick={() => {
+                setPromptDismissed(true);
+                void joinAsGuest();
+              }}
+            >
               Join as a guest
             </Button>
             <Button asChild>

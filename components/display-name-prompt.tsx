@@ -4,7 +4,8 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
+import { MAX_DISPLAY_NAME_LENGTH, needsDisplayName } from "@/lib/display-name";
+import { isGuestPlaceholderName } from "@/lib/guest";
 import { useSaveDisplayName } from "@/lib/use-display-name";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,10 @@ import { Icons } from "@/components/ui/icons";
  * and then, and the OTP flow carries no name on that path — only the sign-up
  * tab collects one. Those accounts show up to everyone else as
  * "Unknown Player", so this asks before they get any further.
+ *
+ * Guests are asked the same way. Joining as a guest is a single click on the
+ * invite page, which creates them as "Guest 1234"; this is where they pick the
+ * name the rest of the lobby sees.
  *
  * Deliberately not dismissable: there is no useful state behind it (a nameless
  * player is what the fix is for) and the only way past it is to answer or sign
@@ -53,14 +58,21 @@ export function DisplayNamePrompt() {
   const onAuthRoute = pathname?.startsWith("/sign-") ?? false;
 
   const user = session?.user;
-  const open =
-    !onAuthRoute && !isPending && !!user && !user.name?.trim() && !saved;
+  const isGuest = !!user?.isAnonymous;
+  const open = !onAuthRoute && !isPending && needsDisplayName(user) && !saved;
+  // What everyone else sees until this is answered.
+  const currentName = user?.name?.trim() || "Unknown Player";
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
       setError("Enter a name so other players know who you are.");
+      return;
+    }
+    // Would leave a guest looking unnamed, and this prompt coming back.
+    if (isGuest && isGuestPlaceholderName(trimmed)) {
+      setError("Pick a name your friends will recognise.");
       return;
     }
     setError(null);
@@ -76,8 +88,7 @@ export function DisplayNamePrompt() {
         toast.success(`You're playing as ${trimmed}`);
       } else {
         toast.warning(`You're playing as ${trimmed}`, {
-          description:
-            'Games you have already joined may still show you as "Unknown Player".',
+          description: `Games you have already joined may still show you as "${currentName}".`,
         });
       }
     } finally {
@@ -97,9 +108,9 @@ export function DisplayNamePrompt() {
           <DialogHeader>
             <DialogTitle>What should we call you?</DialogTitle>
             <DialogDescription>
-              Your account doesn&apos;t have a name yet, so everyone else sees
-              you as &quot;Unknown Player&quot;. Pick the name you want on your
-              card.
+              {isGuest
+                ? `You're in! Right now everyone else sees you as "${currentName}". Pick the name you want on your card.`
+                : `Your account doesn't have a name yet, so everyone else sees you as "Unknown Player". Pick the name you want on your card.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
