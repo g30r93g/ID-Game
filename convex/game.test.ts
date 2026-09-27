@@ -885,3 +885,96 @@ test("fetchGameAndMembership requires an authenticated caller", async () => {
     t.query(api.game.fetchGameAndMembership, { joinCode: "MEM001" }),
   ).rejects.toThrow(/must be authenticated/);
 });
+
+test("getInvite describes a game without exposing user ids", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "INV123",
+      totalRounds: 4,
+      isOpen: true,
+      createdBy: "host",
+    });
+    await ctx.db.insert("players", {
+      userId: "guest",
+      gameId,
+      displayName: "Guest",
+      lastAlive: 0,
+    });
+    await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "George",
+      lastAlive: 0,
+    });
+  });
+
+  // No identity: link-preview crawlers have none.
+  const invite = await t.query(api.game.getInvite, { joinCode: "INV123" });
+  expect(invite).toEqual({
+    joinCode: "INV123",
+    hostName: "George",
+    totalRounds: 4,
+    status: "open",
+  });
+});
+
+test("getInvite reports each stage of a game's life", async () => {
+  const t = convexTest(schema, modules);
+  const base = { totalRounds: 3, createdBy: "host" };
+  await t.run(async (ctx) => {
+    await ctx.db.insert("games", {
+      ...base,
+      joinCode: "STA123",
+      isOpen: false,
+    });
+    await ctx.db.insert("games", {
+      ...base,
+      joinCode: "END123",
+      isOpen: false,
+      completedAt: 1,
+    });
+    await ctx.db.insert("games", {
+      ...base,
+      joinCode: "ABA123",
+      isOpen: true,
+      abandonedAt: 1,
+    });
+  });
+
+  const status = async (joinCode: string) =>
+    (await t.query(api.game.getInvite, { joinCode }))?.status;
+  expect(await status("STA123")).toBe("started");
+  expect(await status("END123")).toBe("ended");
+  expect(await status("ABA123")).toBe("ended");
+  expect(await t.query(api.game.getInvite, { joinCode: "NOPE00" })).toBeNull();
+});
+
+test("getInvite leaves out a host who left or never chose a name", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("games", {
+      joinCode: "GON123",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "host",
+    });
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "ANO123",
+      totalRounds: 3,
+      isOpen: true,
+      createdBy: "host",
+    });
+    await ctx.db.insert("players", {
+      userId: "host",
+      gameId,
+      displayName: "Unknown Player",
+      lastAlive: 0,
+    });
+  });
+
+  for (const joinCode of ["GON123", "ANO123"]) {
+    const invite = await t.query(api.game.getInvite, { joinCode });
+    expect(invite?.hostName).toBeNull();
+  }
+});

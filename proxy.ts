@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { env } from "@/app/env";
+import { inviteRedirectFor } from "@/lib/join-code";
 
 const BYPASS_COOKIE = "maintenance-bypass";
 
@@ -46,6 +47,11 @@ export default function proxy(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/game")) {
     const sessionCookie = getSessionCookie(req);
     if (!sessionCookie) {
+      // A shared game link goes to its public invite page, which link-preview
+      // crawlers can read and which sends people on to sign in from there.
+      const invite = inviteRedirectFor(req.nextUrl.pathname);
+      if (invite) return NextResponse.redirect(new URL(invite, req.url));
+
       const signIn = new URL("/sign-in", req.url);
       signIn.searchParams.set("next", req.nextUrl.pathname);
       return NextResponse.redirect(signIn);

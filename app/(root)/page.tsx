@@ -2,6 +2,13 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
+import type { Metadata } from "next";
+import { pageOpenGraph, SITE_NAME } from "@/lib/metadata";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: pageOpenGraph({ path: "/", title: SITE_NAME }),
+};
 
 export default function HomePage() {
   return (

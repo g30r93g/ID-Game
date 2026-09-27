@@ -1,4 +1,19 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { pageOpenGraph } from "@/lib/metadata";
+
+const description = "The terms you agree to when you play The ID Game.";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description,
+  alternates: { canonical: "/tos" },
+  openGraph: pageOpenGraph({
+    path: "/tos",
+    title: "Terms of Service",
+    description,
+  }),
+};
 
 export default function TermsOfServicePage() {
   return (
