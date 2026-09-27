@@ -391,7 +391,7 @@ async function roundsOf(t: TestConvex<typeof schema>, gameId: Id<"games">) {
   return t.run((ctx) =>
     ctx.db
       .query("gameRounds")
-      .withIndex("byGame", (q) => q.eq("gameId", gameId))
+      .withIndex("byGameRound", (q) => q.eq("gameId", gameId))
       .collect(),
   );
 }
