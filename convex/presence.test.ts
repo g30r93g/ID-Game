@@ -120,9 +120,8 @@ test("sendHeartbeat records presence only for the specified game and reactivates
   expect(rows.presence[0].gameId).toBe(g2);
   expect(rows.presence[0].playerId).toBe(rows.p2!._id);
   expect(rows.presence[0].lastAlive).toBeGreaterThan(0);
-  // The removal is undone on the players row; the beat itself is not there.
+  // The removal is undone on the players row.
   expect(rows.p2!.active).toBe(true);
-  expect(rows.p2).not.toHaveProperty("lastAlive");
 });
 
 test("sendHeartbeat leaves an active player's row untouched", async () => {

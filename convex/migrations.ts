@@ -67,20 +67,6 @@ export const backfillGameTimestamps = migrations.define({
   },
 });
 
-/**
- * Clears `players.lastAlive`, which nothing reads or writes any more: every
- * heartbeat lives in `playerPresence`. Idempotent: a player without the field
- * is left alone. Once it has finished in every deployment, the field can be
- * dropped from the schema. Run it after deploying with:
- *   pnpm exec convex run migrations:clearPlayersLastAlive
- */
-export const clearPlayersLastAlive = migrations.define({
-  table: "players",
-  migrateOne: (_ctx, player) => {
-    if (player.lastAlive !== undefined) return { lastAlive: undefined };
-  },
-});
-
 // Deviation from brief: `Migrations#runner` types its argument as
 // `MigrationFunctionReference | MigrationFunctionReference[]` (actual function
 // references), not migration name strings — passing string literals like
@@ -90,7 +76,6 @@ export const clearPlayersLastAlive = migrations.define({
 // node_modules/@convex-dev/migrations/dist/client/index.d.ts:137).
 export const runAll = migrations.runner([
   internal.migrations.backfillGameTimestamps,
-  internal.migrations.clearPlayersLastAlive,
 ]);
 
 /** Users counted per backfill run. */
