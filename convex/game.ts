@@ -1598,6 +1598,18 @@ export const makeGuessForRound = mutation({
       throw new Error("Guesses can only be made while the round is guessing.");
     }
 
+    // The player is looked up by the game passed in, so it has to be the
+    // round's own game, or a player of another game could guess here.
+    if (gameRound.gameId !== args.game) {
+      throw new Error("Game round does not belong to this game");
+    }
+
+    // Only one of the scenarios drawn for this round can be guessed.
+    const scenario = await ctx.db.get(args.scenario);
+    if (!scenario || scenario.roundId !== gameRound._id) {
+      throw new Error("Scenario is not one of this round's scenarios");
+    }
+
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
@@ -1610,6 +1622,18 @@ export const makeGuessForRound = mutation({
       throw new Error(
         "Player associated with user in this game could not be found",
       );
+    }
+
+    // One guess per player. The client leaves the guessing view as soon as a
+    // guess is sent, so a second one is never meant; it would only skew the
+    // tally and the results. Throwing here also keeps a repeat away from the
+    // reveal below.
+    const guesses = await ctx.db
+      .query("gameRoundGuesses")
+      .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
+      .collect();
+    if (guesses.some((guess) => guess.playerId === player._id)) {
+      throw new Error("Player has already guessed this round");
     }
 
     // Make the guess
@@ -1629,13 +1653,11 @@ export const makeGuessForRound = mutation({
       .query("players")
       .withIndex("byGame", (q) => q.eq("gameId", gameRound.gameId))
       .collect();
-    const guesses = await ctx.db
-      .query("gameRoundGuesses")
-      .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
-      .collect();
+    const guessed = new Set(guesses.map((guess) => guess.playerId));
+    guessed.add(player._id);
     const everyoneHasGuessed = players
       .filter((p) => p._id !== gameRound.hostPlayerId && p.active !== false)
-      .every((p) => guesses.some((guess) => guess.playerId === p._id));
+      .every((p) => guessed.has(p._id));
     if (everyoneHasGuessed) {
       await advanceRoundPhase(ctx, gameRound, "display-results");
     }
