@@ -903,6 +903,29 @@ test("selectScenariosForGameRound is host-only", async () => {
   ).rejects.toThrow(/host/);
 });
 
+test("scenarioCategories lists each category with scenarios once, sorted", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    for (const category of ["Work", "Nightlife", "Family"]) {
+      for (let i = 0; i < 3; i++) {
+        await ctx.db.insert("scenarios", {
+          description: `${category} ${i}`,
+          category,
+        });
+      }
+    }
+    // A managed category nobody has written a scenario for yet. It must not
+    // reach the picker: a draw from it would fail the at-least-10 check.
+    await ctx.db.insert("scenarioCategories", { name: "Empty" });
+  });
+
+  expect(await t.query(api.game.scenarioCategories, {})).toEqual([
+    "Family",
+    "Nightlife",
+    "Work",
+  ]);
+});
+
 test("transitionRoundPhase allows rewinding to category selection", async () => {
   const t = convexTest(schema, modules);
   const { roundId } = await seedRoundWithPhase(t, "pick-scenario");

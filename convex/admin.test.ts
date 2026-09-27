@@ -10,6 +10,7 @@ import {
   gameStatsCore,
   listScenariosPage,
   renameCategoryCore,
+  scenarioCategoriesForAdminCore,
   setCategoryBriefCore,
 } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
@@ -122,6 +123,20 @@ test("deleteCategoryCore blocks deletion while in use", async () => {
   await t.run((ctx) => deleteCategoryCore(ctx, "Empty"));
   const cats = await t.run((ctx) => ctx.db.query("scenarioCategories").collect());
   expect(cats.map((c) => c.name)).toEqual(["Used"]);
+});
+
+test("scenarioCategoriesForAdminCore returns the managed names sorted", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("scenarioCategories", { name: "Work" });
+    await ctx.db.insert("scenarioCategories", { name: "Family" });
+    await ctx.db.insert("scenarioCategories", { name: "Nightlife" });
+    // A category that only exists on a scenario. It's absent from the result,
+    // which shows the query reads the managed table and not `scenarios`.
+    await ctx.db.insert("scenarios", { description: "s", category: "Stray", timesSelected: 0 });
+  });
+  const names = await t.run((ctx) => scenarioCategoriesForAdminCore(ctx));
+  expect(names).toEqual(["Family", "Nightlife", "Work"]);
 });
 
 test("setCategoryBriefCore upserts a trimmed brief", async () => {

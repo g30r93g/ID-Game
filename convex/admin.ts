@@ -233,21 +233,21 @@ export const listScenarios = query({
   },
 });
 
+/**
+ * Sorted names from the managed category list. Every scenario insert path
+ * (`createScenario`, `createScenarios`) and rename keeps that list in sync, so
+ * there's no need to read `scenarios`, which every round's lock-in writes to.
+ */
+export async function scenarioCategoriesForAdminCore(ctx: QueryCtx) {
+  const managed = await ctx.db.query("scenarioCategories").collect();
+  return managed.map((c) => c.name).sort();
+}
+
 export const scenarioCategoriesForAdmin = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const [managed, scenarios] = await Promise.all([
-      ctx.db.query("scenarioCategories").collect(),
-      ctx.db.query("scenarios").collect(),
-    ]);
-    // Union of the managed list and any category strings already on scenarios,
-    // so nothing disappears from the Select/filter before the seed runs.
-    const names = new Set<string>([
-      ...managed.map((c) => c.name),
-      ...scenarios.map((s) => s.category),
-    ]);
-    return [...names].sort();
+    return scenarioCategoriesForAdminCore(ctx);
   },
 });
 
