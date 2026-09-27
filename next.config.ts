@@ -28,19 +28,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async rewrites() {
-    return [
-      {
-        source: "/ingest/static/:path*",
-        destination: "https://eu-assets.i.posthog.com/static/:path*",
-      },
-      {
-        source: "/ingest/:path*",
-        destination: "https://eu.i.posthog.com/:path*",
-      },
-    ];
-  },
-  skipTrailingSlashRedirect: true, // required for PostHog
+  // Required for PostHog, whose endpoints end in a slash. The `/ingest` proxy
+  // itself is in proxy.ts, which strips our cookies before forwarding.
+  skipTrailingSlashRedirect: true,
 };
 
 export default nextConfig;

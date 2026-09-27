@@ -24,10 +24,14 @@ describe("proxy matcher", () => {
     expect(matches("/api/admin/generate-scenarios")).toBe(true);
   });
 
-  test("skips analytics, Better Auth and static assets", () => {
-    expect(matches("/ingest/e/")).toBe(false);
-    expect(matches("/ingest/e/?ver=1.2.3")).toBe(false);
-    expect(matches("/ingest/flags/")).toBe(false);
+  test("runs on every PostHog proxy path, assets included", () => {
+    expect(matches("/ingest/e/")).toBe(true);
+    expect(matches("/ingest/e/?ver=1.2.3")).toBe(true);
+    expect(matches("/ingest/flags/")).toBe(true);
+    expect(matches("/ingest/static/array.js")).toBe(true);
+  });
+
+  test("skips Better Auth and static assets", () => {
     expect(matches("/api/auth/get-session")).toBe(false);
     expect(matches("/_next/static/x.js")).toBe(false);
     expect(matches("/icon0.svg")).toBe(false);
@@ -49,5 +53,62 @@ describe("signed-out /game gate", () => {
     const location = new URL(res.headers.get("location")!);
     expect(location.pathname).toBe("/sign-in");
     expect(location.searchParams.get("next")).toBe("/game");
+  });
+});
+
+describe("PostHog proxy", () => {
+  const cookie =
+    "better-auth.session_token=secret; better-auth.convex_jwt=jwt; maintenance-bypass=bypass";
+
+  const forward = (path: string, method = "GET") =>
+    proxy(
+      new NextRequest(`https://example.com${path}`, {
+        method,
+        headers: {
+          cookie,
+          authorization: "Bearer secret",
+          "content-type": "text/plain",
+          "user-agent": "test",
+        },
+      }),
+    );
+
+  // What Next does with the proxy's answer: the listed headers are the whole
+  // set the request goes on with, and anything left out is deleted.
+  const forwardedHeaders = (res: Response) =>
+    res.headers.get("x-middleware-override-headers")!.split(",");
+
+  test("rewrites captures to the EU ingestion host, path and query intact", () => {
+    const res = forward("/ingest/e/?ver=1.2.3&compression=gzip-js", "POST");
+    expect(res.headers.get("x-middleware-rewrite")).toBe(
+      "https://eu.i.posthog.com/e/?ver=1.2.3&compression=gzip-js",
+    );
+    expect(res.headers.get("x-middleware-request-host")).toBe(
+      "eu.i.posthog.com",
+    );
+  });
+
+  test("rewrites static assets to the EU assets host", () => {
+    const res = forward("/ingest/static/array.js");
+    expect(res.headers.get("x-middleware-rewrite")).toBe(
+      "https://eu-assets.i.posthog.com/static/array.js",
+    );
+    expect(res.headers.get("x-middleware-request-host")).toBe(
+      "eu-assets.i.posthog.com",
+    );
+  });
+
+  test("forwards no cookies or credentials", () => {
+    const headers = forwardedHeaders(forward("/ingest/e/"));
+    expect(headers).not.toContain("cookie");
+    expect(headers).not.toContain("authorization");
+    expect(headers).toEqual(
+      expect.arrayContaining(["host", "content-type", "user-agent"]),
+    );
+  });
+
+  test("leaves paths that only start with the same letters alone", () => {
+    const res = forward("/ingestion");
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
   });
 });
