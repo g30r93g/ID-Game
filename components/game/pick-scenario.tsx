@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
@@ -17,7 +17,7 @@ interface PickScenarioGamePhaseProps {
   goBack: () => void;
 }
 
-export default function PickScenarioGamePhase({
+function PickScenarioGamePhase({
   gameRound,
   advanceGame,
   goBack,
@@ -115,3 +115,5 @@ export default function PickScenarioGamePhase({
     </div>
   );
 }
+
+export default memo(PickScenarioGamePhase);

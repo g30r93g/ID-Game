@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   Sortable,
   SortableContent,
@@ -10,9 +10,13 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { LoadingButton } from "@/components/ui/loading-button";
 import ScenarioBanner from "@/components/game/scenario-banner";
+
+// Module scope so its identity never changes: an inline arrow would rebuild the
+// sortable context, and re-render every item, on each render mid-drag.
+const getPlayerId = (player: Doc<"players">) => player._id;
 
 interface RankPlayersGamePhaseProps {
   gameId: Id<"games">;
@@ -21,7 +25,7 @@ interface RankPlayersGamePhaseProps {
   advanceGame: () => void;
 }
 
-export default function RankPlayersGamePhase({
+function RankPlayersGamePhase({
   gameId,
   roundId,
   scenario,
@@ -84,7 +88,7 @@ export default function RankPlayersGamePhase({
         <Sortable
           value={players}
           onValueChange={setPlayers}
-          getItemValue={(item) => item._id}
+          getItemValue={getPlayerId}
           orientation="vertical"
         >
           <SortableContent className="grid auto-rows-fr gap-2.5">
@@ -125,3 +129,5 @@ export default function RankPlayersGamePhase({
     </div>
   );
 }
+
+export default memo(RankPlayersGamePhase);
