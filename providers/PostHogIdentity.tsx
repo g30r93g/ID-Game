@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { authClient } from "@/lib/auth-client";
 import { nextIdentityAction } from "@/lib/posthog-identity";
 import { whenLoaded } from "@/lib/analytics";
+import { readConsent, subscribeConsent } from "@/lib/consent";
+
+const analyticsAllowed = () => readConsent()?.analytics === true;
 
 /**
  * Ties captured events to the signed-in account.
@@ -19,6 +22,11 @@ import { whenLoaded } from "@/lib/analytics";
  * matters (the signed-in routes, /admin and the invite page), so that public
  * pages don't ship the Better Auth client or call get-session. Like
  * PostHogProvider, render it in production only.
+ *
+ * Nothing happens without analytics consent. It is read here as well as in
+ * lib/analytics.ts so that a yes given mid-session, in the banner or in
+ * "Cookie settings", runs the effect again: whatever it queued before was
+ * dropped with a no, or never queued while there was no answer.
  */
 export function PostHogIdentity() {
   const { data: session, isPending } = authClient.useSession();
@@ -29,8 +37,14 @@ export function PostHogIdentity() {
   // A guest's email is a generated placeholder; don't put it on the person.
   const email = isGuest ? undefined : session?.user?.email;
   const name = session?.user?.name;
+  const allowed = useSyncExternalStore(
+    subscribeConsent,
+    analyticsAllowed,
+    () => false,
+  );
 
   useEffect(() => {
+    if (!allowed) return;
     // The decision reads the live client, so the whole of it waits for
     // posthog-js to load rather than queueing plain identify/reset calls.
     // Each render's decision runs in turn, against the state the previous one
@@ -57,7 +71,7 @@ export function PostHogIdentity() {
         });
       }
     });
-  }, [isPending, userId, email, name, isGuest]);
+  }, [allowed, isPending, userId, email, name, isGuest]);
 
   return null;
 }

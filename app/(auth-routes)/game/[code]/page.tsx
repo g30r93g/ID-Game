@@ -1,7 +1,6 @@
 import { Game } from "@/components/game";
 import { api } from "@/convex/_generated/api";
 import { redirect } from "next/navigation";
-import { after } from "next/server";
 import { preloadedQueryResult } from "convex/nextjs";
 import {
   fetchAuthMutation,
@@ -9,7 +8,7 @@ import {
   getToken,
   preloadAuthQuery,
 } from "@/lib/auth-server";
-import PostHogClient from "@/lib/posthog";
+import { captureAfterResponse } from "@/lib/posthog";
 
 export default async function GamePage({
   params,
@@ -78,24 +77,16 @@ export default async function GamePage({
     }
 
     // Recorded once the join has gone through, and flushed after the response
-    // is sent: `after` keeps the invocation alive until the flush finishes, so
-    // the event isn't lost to a frozen function, and a slow PostHog no longer
-    // holds up the page. `distinctId` is the Better Auth user ID, which is what
-    // the browser identifies as too (see providers/PostHogIdentity.tsx), so
-    // this lands on the same person as the rest of the session. A failure is
-    // logged, never thrown.
-    after(async () => {
-      const posthog = PostHogClient();
-      posthog.capture({
-        distinctId: user.id,
-        event: "game_join",
-        properties: {
-          joinCode,
-        },
-      });
-      await posthog.shutdown().catch((error) => {
-        console.error("Could not record game_join in PostHog", error);
-      });
+    // is sent, so a slow PostHog doesn't hold up the page. `distinctId` is the
+    // Better Auth user ID, which is what the browser identifies as too (see
+    // providers/PostHogIdentity.tsx), so this lands on the same person as the
+    // rest of the session. Skipped without analytics consent.
+    await captureAfterResponse({
+      distinctId: user.id,
+      event: "game_join",
+      properties: {
+        joinCode,
+      },
     });
   }
 

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { PostHogProvider } from "@/providers/Posthog";
+import { CookieConsent } from "@/components/cookie-consent";
 import { env } from "@/app/env";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/metadata";
 
@@ -56,6 +57,9 @@ export default function RootLayout({
               <PostHogProvider>{children}</PostHogProvider>
             )}
           </main>
+          {/* Client-only, and its banner loads on demand, so this keeps
+              `cookies()` out of the layout and every static page static. */}
+          <CookieConsent />
         </ThemeProvider>
       </body>
     </html>

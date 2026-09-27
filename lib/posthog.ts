@@ -1,5 +1,8 @@
 import { PostHog } from "posthog-node";
+import { cookies } from "next/headers";
+import { after } from "next/server";
 import { env } from "@/app/env";
+import { CONSENT_COOKIE, hasAnalyticsConsent } from "@/lib/consent";
 
 // NEXT_PUBLIC_POSTHOG_API_HOST is a relative path ("/ingest") proxied by the
 // rewrites in next.config.ts, which a server-side client cannot post to, and
@@ -21,4 +24,31 @@ export default function PostHogClient() {
     flushInterval: 0,
   });
   return posthogClient;
+}
+
+/**
+ * Sends one event from a server component once the response has gone out,
+ * if the visitor has agreed to analytics in the cookie banner. Without that
+ * yes nothing is sent, as in the browser (see lib/analytics.ts).
+ *
+ * The consent cookie is read here, before the response, since `cookies()`
+ * can't be called inside `after` in a server component. That makes the
+ * calling page dynamic, so use it only from pages that already are.
+ *
+ * `after` keeps the invocation alive until the flush finishes, so the event
+ * isn't lost to a frozen function. A failure is logged, never thrown.
+ */
+export async function captureAfterResponse(
+  message: Parameters<PostHog["capture"]>[0],
+) {
+  const consent = (await cookies()).get(CONSENT_COOKIE)?.value;
+  if (!hasAnalyticsConsent(consent)) return;
+
+  after(async () => {
+    const posthog = PostHogClient();
+    posthog.capture(message);
+    await posthog.shutdown().catch((error) => {
+      console.error(`Could not record ${message.event} in PostHog`, error);
+    });
+  });
 }
