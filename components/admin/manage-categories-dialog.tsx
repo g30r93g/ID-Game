@@ -166,8 +166,8 @@ function CategoryRow({
 export function ManageCategoriesDialog() {
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  // Only subscribed while the dialog is open: the counts come from a read of
-  // every scenario, which re-runs whenever any game locks a scenario in.
+  // Only subscribed while the dialog is open: nothing else on the page needs
+  // the counts.
   const categories = useQuery(
     api.admin.listCategoriesWithCounts,
     open ? {} : "skip",
