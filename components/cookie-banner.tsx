@@ -1,7 +1,5 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +11,8 @@ import {
 } from "@/lib/consent";
 import { clearPasskeyNudge } from "@/lib/passkey-nudge";
 import { forgetRememberedAccount } from "@/lib/remembered-account";
+import Link from "next/link";
+import * as React from "react";
 
 const POLICY_HREF = "/privacy#cookies";
 
@@ -31,7 +31,7 @@ const OPTIONAL: {
     key: "analytics",
     title: "Analytics",
     description:
-      "Let PostHog record page views, clicks and errors, so we can see what to fix and improve. Its cookies last up to a year.",
+      "Allow PostHog to record page views, clicks and errors, so we can see what to fix and improve. Its cookies last up to a year.",
   },
 ];
 
@@ -152,7 +152,7 @@ export default function CookieBanner({
               We use cookies the game needs to work, like the one that keeps
               you signed in. With your permission we&apos;d also use analytics
               cookies to see how the game is played, and remember a couple of
-              things on this device. Nothing optional is used until you choose.{" "}
+              things on this device.{" "}
               <Link href={POLICY_HREF} className="font-medium text-foreground underline underline-offset-4">
                 How we use cookies
               </Link>

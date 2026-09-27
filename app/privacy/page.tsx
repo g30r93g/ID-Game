@@ -1,9 +1,9 @@
-import Link from "next/link";
-import type { Metadata } from "next";
-import { pageOpenGraph } from "@/lib/metadata";
-import { CONSENT_COOKIE } from "@/lib/consent";
 import { CookieSettingsButton } from "@/components/cookie-settings-button";
 import { SiteFooter } from "@/components/site-footer";
+import { CONSENT_COOKIE } from "@/lib/consent";
+import { pageOpenGraph } from "@/lib/metadata";
+import type { Metadata } from "next";
+import Link from "next/link";
 
 const description = "What The ID Game collects, why, and how it is protected.";
 
@@ -132,7 +132,7 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong>Personal Information:</strong> When you sign up, we may
           collect your name, email address, and other necessary details.
-          Authentication is managed by Better Auth running on our Convex backend; sign-in codes are delivered by Resend.
+          Authentication is managed by Better Auth and stored in our database; sign-in codes are delivered by Resend.
         </li>
         <li>
           <strong>Usage Data:</strong> We collect data about how you use the
@@ -140,9 +140,10 @@ export default function PrivacyPolicyPage() {
           Convex.
         </li>
         <li>
-          <strong>Cookies and Tracking: </strong> We use cookies to manage
-          authentication sessions. If you allow it, we also track page views
-          and user interactions such as button clicks with PostHog. See{" "}
+          <strong>Cookies and Tracking: </strong> We require the use of cookies to manage
+          authentication sessions. These cannot be turned off. We optionally ask for additional
+          cookies for telemetry which is recorded to PostHog. These cookies enable us to track page views
+          and user interactions. See{" "}
           <Link href="#cookies" className="font-bold underline">
             Cookies and Similar Technologies
           </Link>{" "}
@@ -165,8 +166,6 @@ export default function PrivacyPolicyPage() {
       >
         4. Cookies and Similar Technologies
       </h2>
-      {/* TODO(owner): review this section's wording, and confirm it matches
-          your PostHog project settings (session replay, surveys, heatmaps). */}
       <p>
         Cookies are small files a website stores in your browser. We also use
         your browser&apos;s local storage and session storage, which work in a
@@ -242,7 +241,8 @@ export default function PrivacyPolicyPage() {
       <p>
         We implement industry-standard security measures to protect your data.
         Whilst no method of transmission is 100% secure, we take every
-        precaution to ensure your data is not accessed by unauthorised parties.
+        precaution to ensure your data is not accessed by unauthorised parties and perform regular
+        security audits to check our systems are secure.
       </p>
       <p>
         Convex and Resend provide measures within their software to address data
