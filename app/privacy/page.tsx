@@ -1,4 +1,19 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { pageOpenGraph } from "@/lib/metadata";
+
+const description = "What The ID Game collects, why, and how it is protected.";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description,
+  alternates: { canonical: "/privacy" },
+  openGraph: pageOpenGraph({
+    path: "/privacy",
+    title: "Privacy Policy",
+    description,
+  }),
+};
 
 export default function PrivacyPolicyPage() {
   return (

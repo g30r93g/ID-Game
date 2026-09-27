@@ -194,6 +194,54 @@ export const fetchGameAndMembership = query({
   },
 });
 
+/**
+ * What an invite link says about its game, for the public /join page and its
+ * link-preview image.
+ *
+ * Deliberately unauthenticated: link-preview crawlers carry no session. It
+ * returns only what anyone holding the join code could already learn by
+ * joining — the creator's display name and the round count — never user ids.
+ *
+ * `status` collapses the game's lifecycle into what an invitee cares about:
+ * `open` can be joined, `started` is closed to new players, and `ended` is
+ * finished or abandoned. An unknown code is `null`.
+ */
+export const getInvite = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .unique();
+    if (!game) return null;
+
+    // The creator's own players row, not their account: that is the name the
+    // lobby shows. They may have left, or never set a name, in which case the
+    // invite goes nameless rather than inviting you to "Unknown Player's game".
+    const host = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", game.createdBy),
+      )
+      .first();
+
+    const status: "open" | "started" | "ended" =
+      game.completedAt !== undefined || game.abandonedAt !== undefined
+        ? "ended"
+        : game.isOpen
+          ? "open"
+          : "started";
+
+    return {
+      joinCode: game.joinCode,
+      hostName:
+        host && host.displayName !== "Unknown Player" ? host.displayName : null,
+      totalRounds: game.totalRounds,
+      status,
+    };
+  },
+});
+
 export const createGame = mutation({
   args: { numberOfRounds: v.number() },
   handler: async (ctx, args) => {

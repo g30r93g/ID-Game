@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Back soon — The ID Game",
+  title: { absolute: "Back soon — The ID Game" },
 };
 
 export default function MaintenancePage() {

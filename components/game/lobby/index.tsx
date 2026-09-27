@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { useCallback } from "react";
 import PlayerCard from "@/components/game/lobby/player-card";
+import { invitePath } from "@/lib/join-code";
 
 interface LobbyGamePhaseProps {
   joinCode: string;
@@ -32,7 +33,9 @@ export default function LobbyGamePhase({
   advanceGame,
 }: LobbyGamePhaseProps) {
   const shareGame = useCallback(async () => {
-    const url = `${window.location.origin}/game/${joinCode}`;
+    // The public invite page rather than the game itself, so the link
+    // previews with the host's name and code in chat apps.
+    const url = `${window.location.origin}${invitePath(joinCode)}`;
 
     // Prefer the OS share sheet. Both of its preconditions already hold here:
     // this runs from a click handler (a user gesture) and the app is served
