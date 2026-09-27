@@ -16,8 +16,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@better-auth/infra": "0.4.9",
-    "@better-auth/passkey": "1.6.23",
+    "@better-auth/infra": "0.4.11",
+    "@better-auth/passkey": "1.6.33",
     "@convex-dev/aggregate": "^0.2.2",
     "@convex-dev/better-auth": "^0.12.5",
     "@convex-dev/migrations": "^0.3.5",
@@ -29,7 +29,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@t3-oss/env-nextjs": "^0.13.11",
     "ai": "^7.0.27",
-    "better-auth": "1.6.23",
+    "better-auth": "1.6.33",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.42.1",
