@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
-import { RiGrokAiFill } from "react-icons/ri";
+import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -144,7 +143,7 @@ function CategoryRow({
                 </>
               ) : (
                 <>
-                  <RiGrokAiFill className="size-4" /> Draft with Grok
+                  <Sparkles className="size-4" /> Draft with Grok
                 </>
               )}
             </Button>

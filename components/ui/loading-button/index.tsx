@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
+import { Slot } from "radix-ui";
 import { type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
@@ -19,7 +19,7 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     if (asChild) {
       return (
-        <Slot ref={ref} {...props}>
+        <Slot.Root ref={ref} {...props}>
           {React.Children.map(children, (child) => {
             if (
               React.isValidElement<{
@@ -50,7 +50,7 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
             }
             return child;
           })}
-        </Slot>
+        </Slot.Root>
       );
     }
 
