@@ -32,10 +32,10 @@ test("activePlayers14dCore dedupes users across recent player rows", async () =>
       joinCode: "P", totalRounds: 1, isOpen: true, createdBy: "a",
     });
     // two rows for user a (recent), one for b (recent), one for c (recent)
-    await ctx.db.insert("players", { userId: "a", gameId, displayName: "A", lastAlive: 0 });
-    await ctx.db.insert("players", { userId: "a", gameId, displayName: "A", lastAlive: 0 });
-    await ctx.db.insert("players", { userId: "b", gameId, displayName: "B", lastAlive: 0 });
-    await ctx.db.insert("players", { userId: "c", gameId, displayName: "C", lastAlive: 0 });
+    await ctx.db.insert("players", { userId: "a", gameId, displayName: "A" });
+    await ctx.db.insert("players", { userId: "a", gameId, displayName: "A" });
+    await ctx.db.insert("players", { userId: "b", gameId, displayName: "B" });
+    await ctx.db.insert("players", { userId: "c", gameId, displayName: "C" });
   });
   // convex-test stamps `_creationTime` from the real system clock (it cannot
   // be backdated), so `now` must be the real current time for the rows above
@@ -58,13 +58,13 @@ test("activePlayers14dCore leaves out players who joined before the window", asy
       const gameId = await ctx.db.insert("games", {
         joinCode: "P", totalRounds: 1, isOpen: true, createdBy: "a",
       });
-      await ctx.db.insert("players", { userId: "old", gameId, displayName: "O", lastAlive: 0 });
+      await ctx.db.insert("players", { userId: "old", gameId, displayName: "O" });
       return gameId;
     });
     vi.setSystemTime(NOW - 60_000);
     await t.run(async (ctx) => {
-      await ctx.db.insert("players", { userId: "a", gameId, displayName: "A", lastAlive: 0 });
-      await ctx.db.insert("players", { userId: "b", gameId, displayName: "B", lastAlive: 0 });
+      await ctx.db.insert("players", { userId: "a", gameId, displayName: "A" });
+      await ctx.db.insert("players", { userId: "b", gameId, displayName: "B" });
     });
     const count = await t.run((ctx) => activePlayers14dCore(ctx, NOW));
     expect(count).toBe(2);

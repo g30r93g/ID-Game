@@ -12,7 +12,9 @@ export type RosterPlayer = Pick<
 >;
 
 /**
- * Each player's newest heartbeat, by player id; undefined while loading.
+ * Each player's newest heartbeat, by player id; undefined while loading. A
+ * player missing from the loaded map has no heartbeat on record, so is not
+ * connected.
  *
  * Heartbeats land every 15s per player, so only the components that show
  * liveness should call this: every caller re-renders on every beat. Convex

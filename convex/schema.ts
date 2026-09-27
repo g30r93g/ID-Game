@@ -6,7 +6,10 @@ export default defineSchema({
     userId: v.string(),
     gameId: v.id("games"),
     displayName: v.string(),
-    lastAlive: v.number(),
+    // No longer read or written: heartbeats live in `playerPresence`. Optional
+    // until `migrations:clearPlayersLastAlive` has cleared it everywhere, then
+    // dropped.
+    lastAlive: v.optional(v.number()),
     // Set to false when the player is removed from the game by consensus while
     // disconnected. Absent/true = participating. Reset to true on reconnect.
     active: v.optional(v.boolean()),
@@ -19,9 +22,9 @@ export default defineSchema({
 
   // Each player's newest heartbeat, kept apart from `players` so a beat every
   // 15s only invalidates the queries that care about liveness. Rows are
-  // written on create/join and by `sendHeartbeat`, and deleted on leave. A
-  // player from before this table has none until their next beat; readers
-  // fall back to `players.lastAlive`, which heartbeats no longer update.
+  // written on create/join and by `sendHeartbeat`, and deleted on leave. The
+  // only record of liveness: a player with no row has no heartbeat on record,
+  // so counts as disconnected and inactive.
   playerPresence: defineTable({
     gameId: v.id("games"),
     playerId: v.id("players"),

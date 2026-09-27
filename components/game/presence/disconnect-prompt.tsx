@@ -33,14 +33,15 @@ export default function DisconnectPrompt({
   const now = useNow(5000);
 
   // Nobody is stale until presence has loaded: an unknown heartbeat is not an
-  // old one.
+  // old one. Once it has, a player missing from it has no heartbeat on record,
+  // which is as stale as it gets.
   const stale = players.filter((p) => {
-    const lastAlive = presence?.get(p._id);
+    if (!presence) return false;
+    const lastAlive = presence.get(p._id);
     return (
       p._id !== viewerPlayerId &&
       p.active !== false &&
-      lastAlive !== undefined &&
-      !isConnected(lastAlive, now)
+      (lastAlive === undefined || !isConnected(lastAlive, now))
     );
   });
 
