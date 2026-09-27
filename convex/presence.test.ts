@@ -636,12 +636,14 @@ test("startNewGameRound skips removed players when choosing a host", async () =>
       gameId,
       roundNumber: 1,
       hostPlayerId: p1,
-      phase: "display-results",
+      phase: "finished",
     });
     return { gameId, p1 };
   });
 
-  await t.mutation(api.game.startNewGameRound, { game: gameId });
+  await t
+    .withIdentity({ subject: "p1" })
+    .mutation(api.game.startNewGameRound, { game: gameId });
 
   const newRound = await t.run((ctx) =>
     ctx.db
