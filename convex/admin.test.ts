@@ -41,6 +41,31 @@ test("activePlayers14dCore dedupes users across recent player rows", async () =>
   expect(FOURTEEN_DAYS_MS).toBe(14 * 24 * 60 * 60 * 1000);
 });
 
+test("activePlayers14dCore leaves out players who joined before the window", async () => {
+  // `_creationTime` follows the system clock, so an old row is written with
+  // the clock wound back and the recent ones after moving it forward.
+  vi.useFakeTimers({ now: NOW - FOURTEEN_DAYS_MS - 60_000 });
+  try {
+    const t = convexTest(schema, modules);
+    const gameId = await t.run(async (ctx) => {
+      const gameId = await ctx.db.insert("games", {
+        joinCode: "P", totalRounds: 1, isOpen: true, createdBy: "a",
+      });
+      await ctx.db.insert("players", { userId: "old", gameId, displayName: "O", lastAlive: 0 });
+      return gameId;
+    });
+    vi.setSystemTime(NOW - 60_000);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("players", { userId: "a", gameId, displayName: "A", lastAlive: 0 });
+      await ctx.db.insert("players", { userId: "b", gameId, displayName: "B", lastAlive: 0 });
+    });
+    const count = await t.run((ctx) => activePlayers14dCore(ctx, NOW));
+    expect(count).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("gameStatsCore computes counts and average duration", async () => {
   const t = convexTest(schema, modules);
   const now = NOW;
@@ -54,6 +79,31 @@ test("gameStatsCore computes counts and average duration", async () => {
   expect(stats.started14d).toBe(3);
   expect(stats.completed14d).toBe(2);
   expect(stats.avgLengthMs).toBe(5000); // (2000 + 8000) / 2
+});
+
+test("gameStatsCore leaves out old games and abandoned lobbies", async () => {
+  const t = convexTest(schema, modules);
+  const now = NOW;
+  const old = now - FOURTEEN_DAYS_MS - 60_000;
+  await t.run(async (ctx) => {
+    // Counts: live, started and completed inside the window.
+    await ctx.db.insert("games", { joinCode: "1", totalRounds: 1, isOpen: true, createdBy: "x", startedAt: now - 1000 });
+    await ctx.db.insert("games", { joinCode: "2", totalRounds: 1, isOpen: false, createdBy: "x", startedAt: now - 5000, completedAt: now - 1000 });
+    // Started before the window, finished inside it: completed only.
+    await ctx.db.insert("games", { joinCode: "3", totalRounds: 1, isOpen: false, createdBy: "x", startedAt: old, completedAt: now - 60_000 });
+    // Started and completed before the window.
+    await ctx.db.insert("games", { joinCode: "4", totalRounds: 1, isOpen: false, createdBy: "x", startedAt: old - 5000, completedAt: old });
+    // An abandoned lobby stays open forever but isn't live.
+    await ctx.db.insert("games", { joinCode: "5", totalRounds: 1, isOpen: true, createdBy: "x", abandonedAt: now - 1000 });
+    // A lobby that never started: live, but in neither window.
+    await ctx.db.insert("games", { joinCode: "6", totalRounds: 1, isOpen: true, createdBy: "x" });
+  });
+  const stats = await t.run((ctx) => gameStatsCore(ctx, now));
+  expect(stats.activeNow).toBe(2);
+  expect(stats.started14d).toBe(2);
+  expect(stats.completed14d).toBe(2);
+  // (4000 + (now - 60_000 - old)) / 2
+  expect(stats.avgLengthMs).toBe(Math.round((4000 + (now - 60_000 - old)) / 2));
 });
 
 test("listScenariosPage orders by popularity", async () => {

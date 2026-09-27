@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { StatCard } from "@/components/admin/stat-card";
+import { SnapshotControls } from "@/components/admin/snapshot-controls";
+import { useOneShotQuery } from "@/lib/admin/use-one-shot-query";
 import { AdminDataTable, type Column } from "@/components/admin/admin-data-table";
 import { Badge } from "@/components/ui/badge";
 import { formatDuration } from "@/lib/admin/metrics";
@@ -35,10 +36,14 @@ export default function GamesPage() {
   const [cursors, setCursors] = useState<(string | null)[]>([null]); // stack; index = page
   const [page, setPage] = useState(0);
 
-  const stats = useQuery(api.admin.gameStats, {});
-  const data = useQuery(api.admin.listGames, {
+  // Fetched once, not subscribed: page 1 holds the live games, whose players
+  // heartbeat constantly. See `useOneShotQuery`.
+  const statsQuery = useOneShotQuery(api.admin.gameStats, {});
+  const listQuery = useOneShotQuery(api.admin.listGames, {
     paginationOpts: { numItems: pageSize, cursor: cursors[page] ?? null },
   });
+  const stats = statsQuery.data;
+  const data = listQuery.data;
 
   const rows = (data?.page ?? []) as GameRow[];
   const hasNext = data ? !data.isDone : false;
@@ -57,7 +62,15 @@ export default function GamesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Games</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Games</h1>
+        <SnapshotControls
+          fetchedAt={statsQuery.fetchedAt}
+          loading={statsQuery.loading || listQuery.loading}
+          failed={statsQuery.error !== undefined || listQuery.error !== undefined}
+          onRefresh={() => { statsQuery.refresh(); listQuery.refresh(); }}
+        />
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Active now" value={stats?.activeNow ?? "—"} />
         <StatCard label="Started (14d)" value={stats?.started14d ?? "—"} />

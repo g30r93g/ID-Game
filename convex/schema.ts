@@ -47,8 +47,11 @@ export default defineSchema({
     // Finds a creator's existing open game without scanning all open games.
     // Its `isOpen` prefix also serves plain open-game queries.
     .index("byIsOpenCreatedBy", ["isOpen", "createdBy"])
+    // `admin.gameStatsCore` reads its 14-day windows off these two, and "active
+    // now" off `byIsOpenAbandonedAt` below.
     .index("byStartedAt", ["startedAt"])
     .index("byCompletedAt", ["completedAt"])
+    .index("byIsOpenAbandonedAt", ["isOpen", "abandonedAt"])
     // The cleanup cron's candidate set: games that are neither finished nor
     // already marked. Both fields are matched as `undefined`, so the scan
     // never touches games it has nothing to do.

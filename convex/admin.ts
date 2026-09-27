@@ -5,6 +5,7 @@ import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { authComponent, createAuthOptions, createAuth } from "./auth";
 import { requireAdmin } from "./adminAuth";
 import {
+  FOURTEEN_DAYS_MS,
   activePlayerCount,
   computeGameStats,
   gameDurationMs,
@@ -63,9 +64,17 @@ export const createScenario = mutation({
  * Pure enough to unit test: reads our own `players` table only (no
  * Better Auth component dependency), delegating the dedupe/window logic to
  * the pure `activePlayerCount` helper.
+ *
+ * The built-in `by_creation_time` index bounds the read to the window, so the
+ * cost tracks recent players rather than every player row ever written.
  */
 export async function activePlayers14dCore(ctx: QueryCtx, now: number) {
-  const players = await ctx.db.query("players").collect();
+  const players = await ctx.db
+    .query("players")
+    .withIndex("by_creation_time", (q) =>
+      q.gte("_creationTime", now - FOURTEEN_DAYS_MS),
+    )
+    .collect();
   return activePlayerCount(players, now);
 }
 
@@ -123,9 +132,33 @@ export const listUsers = query({
   },
 });
 
+/**
+ * Reads only the games each stat can count, one index range per stat, instead
+ * of every game ever. The three sets overlap (a live game can also have started
+ * this fortnight), so they are merged by id before `computeGameStats` applies
+ * the same rules as before.
+ */
 export async function gameStatsCore(ctx: QueryCtx, now: number) {
-  const games = await ctx.db.query("games").collect();
-  return computeGameStats(games, now);
+  const since = now - FOURTEEN_DAYS_MS;
+  const sets = await Promise.all([
+    ctx.db
+      .query("games")
+      .withIndex("byIsOpenAbandonedAt", (q) =>
+        q.eq("isOpen", true).eq("abandonedAt", undefined),
+      )
+      .collect(),
+    // A `gte` range skips games whose timestamp is still unset.
+    ctx.db
+      .query("games")
+      .withIndex("byStartedAt", (q) => q.gte("startedAt", since))
+      .collect(),
+    ctx.db
+      .query("games")
+      .withIndex("byCompletedAt", (q) => q.gte("completedAt", since))
+      .collect(),
+  ]);
+  const games = new Map(sets.flat().map((g) => [g._id, g]));
+  return computeGameStats([...games.values()], now);
 }
 
 export const gameStats = query({
@@ -173,12 +206,10 @@ const SCENARIO_SORTS = ["popular-desc", "popular-asc", "newest", "oldest"] as co
 
 /**
  * `scenarioSortToQuery` reports the target index as either "byTimesSelected"
- * or the system creation-time index. The `scenarios` table only defines a
- * "byTimesSelected" index (see convex/schema.ts) - there is no
- * "by_creation_time" index to pass to `.withIndex`, and Convex's generated
- * types reject that string there. So for the creation-time sorts we fall
- * back to the default (unindexed) query, which is already ordered by
- * creation time, and just apply `.order()`.
+ * or the system creation-time index. Every table has the built-in
+ * "by_creation_time" index and `.withIndex` accepts it, but a query with no
+ * index already reads through it in creation order, so for the creation-time
+ * sorts the default query plus `.order()` is the same read.
  */
 export async function listScenariosPage(
   ctx: QueryCtx,

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { StatCard } from "@/components/admin/stat-card";
+import { SnapshotControls } from "@/components/admin/snapshot-controls";
+import { useOneShotQuery } from "@/lib/admin/use-one-shot-query";
 import { Badge } from "@/components/ui/badge";
 import { AdminDataTable, type Column } from "@/components/admin/admin-data-table";
 
@@ -33,8 +34,11 @@ const columns: Column<UserRow>[] = [
 export default function UsersPage() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
-  const stats = useQuery(api.admin.userStats, {});
-  const data = useQuery(api.admin.listUsers, { limit: pageSize, offset: page * pageSize });
+  // Fetched once, not subscribed: see `useOneShotQuery`.
+  const statsQuery = useOneShotQuery(api.admin.userStats, {});
+  const listQuery = useOneShotQuery(api.admin.listUsers, { limit: pageSize, offset: page * pageSize });
+  const stats = statsQuery.data;
+  const data = listQuery.data;
 
   const rows = data?.users ?? [];
   const total = data?.total ?? 0;
@@ -42,7 +46,15 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Users</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Users</h1>
+        <SnapshotControls
+          fetchedAt={statsQuery.fetchedAt}
+          loading={statsQuery.loading || listQuery.loading}
+          failed={statsQuery.error !== undefined || listQuery.error !== undefined}
+          onRefresh={() => { statsQuery.refresh(); listQuery.refresh(); }}
+        />
+      </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Accounts" value={stats?.totalUsers ?? "—"} />
         <StatCard label="Guests" value={stats?.guests ?? "—"} />
