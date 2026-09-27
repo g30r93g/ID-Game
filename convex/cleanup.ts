@@ -5,12 +5,11 @@ import { evaluateContinuity } from "../lib/continuable";
 import { canDeleteGuest, GUEST_GRACE_PERIOD_MS } from "../lib/guest";
 
 /**
- * Games inspected per run. The candidate set is only games that are neither
- * finished nor already marked, so in practice a run sees a handful. The bound
- * keeps a single mutation inside Convex's transaction limits if that set ever
- * grows; the next hourly run picks up the remainder.
+ * Games inspected per transaction. Each costs a read of its players, and a
+ * heartbeat in any of them conflicts with the sweep, so batches stay small; a
+ * longer candidate list carries on in follow-up runs.
  */
-const BATCH_SIZE = 200;
+const BATCH_SIZE = 25;
 
 /**
  * Marks games that have been abandoned rather than merely left, applying the
@@ -20,13 +19,28 @@ const BATCH_SIZE = 200;
  * namely the admin `activeNow` stat and the `createGame` dedupe, stops
  * counting games nobody is coming back to.
  *
+ * Candidates are games neither finished nor already marked, oldest first.
+ * Continuable games stay in that range, so a full page continues in a follow-up run from
+ * where this one stopped: however many games are live, every candidate is
+ * reached in each sweep. Marking a game moves it out of the range, behind the
+ * cursor, so it is not read twice.
+ *
  * Nothing is deleted. `sendHeartbeat` clears the mark if a player returns.
  */
 export const markAbandonedGames = internalMutation({
-  args: {},
-  returns: v.object({ inspected: v.number(), marked: v.number() }),
-  handler: async (ctx) => {
-    const now = Date.now();
+  args: {
+    // Set only on a continuation, which keeps the first run's clock so the
+    // whole sweep judges games against the same moment.
+    cursor: v.optional(v.string()),
+    now: v.optional(v.number()),
+  },
+  returns: v.object({
+    inspected: v.number(),
+    marked: v.number(),
+    continued: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
 
     const candidates = await ctx.db
       .query("games")
@@ -34,10 +48,10 @@ export const markAbandonedGames = internalMutation({
         q.eq("abandonedAt", undefined).eq("completedAt", undefined),
       )
       .order("asc")
-      .take(BATCH_SIZE);
+      .paginate({ cursor: args.cursor ?? null, numItems: BATCH_SIZE });
 
     let marked = 0;
-    for (const game of candidates) {
+    for (const game of candidates.page) {
       const players = await ctx.db
         .query("players")
         .withIndex("byGame", (q) => q.eq("gameId", game._id))
@@ -62,7 +76,15 @@ export const markAbandonedGames = internalMutation({
       marked += 1;
     }
 
-    return { inspected: candidates.length, marked };
+    const continued = !candidates.isDone;
+    if (continued) {
+      await ctx.scheduler.runAfter(0, internal.cleanup.markAbandonedGames, {
+        cursor: candidates.continueCursor,
+        now,
+      });
+    }
+
+    return { inspected: candidates.page.length, marked, continued };
   },
 });
 
