@@ -34,6 +34,22 @@ import { usePostHog } from "posthog-js/react";
 import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 import GameShellSkeleton from "@/components/game/game-shell-skeleton";
 import { HEARTBEAT_INTERVAL_MS } from "@/lib/presence";
+import { Doc } from "@/convex/_generated/dataModel";
+
+type RoundPhase = Doc<"gameRounds">["phase"];
+
+// The phase steps the host sees straight away, before the server confirms
+// them. Only plain forward steps within a round; the server's own rules
+// (transitionRoundPhase) still decide, and a rejected step rolls back.
+// Leaving guessing for the results is not one of them: the server marks the
+// guesses in that transition, so showing the results early would show them
+// unmarked, and a rollback would re-arm the host's auto-advance. A new round
+// is never faked either, since only the server knows its id.
+const OPTIMISTIC_NEXT_PHASE: Partial<Record<RoundPhase, RoundPhase>> = {
+  "create-scenarios": "pick-scenario",
+  "pick-scenario": "rank-players",
+  "rank-players": "guess-scenario",
+};
 
 interface GameProps {
   preloadedGame: Preloaded<typeof api.game.fetchGameAndMembership>;
@@ -97,7 +113,24 @@ export function Game({ preloadedGame }: GameProps) {
 
   const startGame = useMutation(api.game.startGame);
   const finishRoundAndStartNext = useMutation(api.game.finishRoundAndStartNext);
-  const transitionRoundPhase = useMutation(api.game.transitionRoundPhase);
+  const transitionRoundPhase = useMutation(
+    api.game.transitionRoundPhase,
+  ).withOptimisticUpdate((localStore, { gameRoundId, toPhase }) => {
+    // Phase only, on the cached current round this step is about.
+    for (const { args, value } of localStore.getAllQueries(
+      api.game.getCurrentGameRound,
+    )) {
+      if (
+        value?._id === gameRoundId &&
+        OPTIMISTIC_NEXT_PHASE[value.phase] === toPhase
+      ) {
+        localStore.setQuery(api.game.getCurrentGameRound, args, {
+          ...value,
+          phase: toPhase,
+        });
+      }
+    }
+  });
   const sendHeartbeat = useMutation(api.game.sendHeartbeat);
   const leaveGameFn = useMutation(api.game.leaveGame);
 
