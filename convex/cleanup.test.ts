@@ -1,4 +1,5 @@
 import { convexTest, type TestConvex } from "convex-test";
+import aggregateTest from "@convex-dev/aggregate/test";
 import { expect, test, vi } from "vitest";
 import schema from "./schema";
 import { api, components, internal } from "./_generated/api";
@@ -264,6 +265,8 @@ async function authRows(
 test("deleteExpiredGuests removes only old guests with no live session", async () => {
   const t = convexTest(schema, modules);
   t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+  // Deleting a guest updates the user counts.
+  aggregateTest.register(t, "userCounts");
 
   // Oldest first, as real sign-ups would be.
   const expiredNoSession = await seedUser(t, {
@@ -347,6 +350,7 @@ test("deleteExpiredGuests carries a backlog on in follow-up runs", async () => {
   try {
     const t = convexTest(schema, modules);
     t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+    aggregateTest.register(t, "userCounts");
 
     // More than one batch of expired guests.
     for (let i = 0; i < 130; i++) {

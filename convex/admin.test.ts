@@ -3,7 +3,8 @@ import { expect, test, vi } from "vitest";
 import type { FunctionReturnType } from "convex/server";
 import schema from "./schema";
 import betterAuthSchema from "./betterAuth/schema";
-import { api, components } from "./_generated/api";
+import aggregateTest from "@convex-dev/aggregate/test";
+import { api, components, internal } from "./_generated/api";
 import {
   activePlayers14dCore,
   createCategoryCore,
@@ -192,13 +193,14 @@ test("setCategoryBriefCore upserts a trimmed brief", async () => {
 });
 
 // Guests (anonymous users) share the user table with accounts; the users page
-// reports them apart, counting guests on the user table's `isAnonymous` index.
+// reports them apart, from the counts in convex/userCounts.ts.
 test("userStats counts guests apart from accounts", async () => {
   vi.stubEnv("SITE_URL", "http://localhost:3000");
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-test-secret-test-secret");
   try {
     const t = convexTest(schema, modules);
     t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+    aggregateTest.register(t, "userCounts");
     const now = Date.now();
 
     const admin = await t.run(async (ctx) => {
@@ -242,6 +244,9 @@ test("userStats counts guests apart from accounts", async () => {
       );
       return { subject: adminUser._id, sessionId: session._id };
     });
+    // Seeded straight through the component, which runs no triggers, so the
+    // counts come from the backfill.
+    await t.mutation(internal.migrations.backfillUserCounts, {});
 
     const stats = await t.withIdentity(admin).query(api.admin.userStats, {});
     expect(stats.totalUsers).toBe(2);

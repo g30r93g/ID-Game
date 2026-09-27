@@ -1,14 +1,11 @@
 import { v } from "convex/values";
-import {
-  paginationOptsValidator,
-  type PaginationOptions,
-  type PaginationResult,
-} from "convex/server";
+import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { components } from "./_generated/api";
 import { authComponent, createAuthOptions } from "./auth";
 import { requireAdmin } from "./adminAuth";
+import { readUserCounts } from "./userCounts";
 import {
   FOURTEEN_DAYS_MS,
   activePlayerCount,
@@ -83,49 +80,15 @@ export async function activePlayers14dCore(ctx: QueryCtx, now: number) {
   return activePlayerCount(players, now);
 }
 
-/** Rows per `findMany` call while counting users. */
-const COUNT_PAGE_SIZE = 500;
-
-/**
- * Counts user rows by paging through the Better Auth component's `findMany`,
- * reading ids only. Still O(users), but without building Better Auth or
- * re-running its admin middleware, which `auth.api.listUsers` did per call.
- */
-async function countUsers(
-  ctx: QueryCtx,
-  where?: { field: string; value: boolean }[],
-) {
-  let count = 0;
-  let cursor: string | null = null;
-  for (;;) {
-    const result: PaginationResult<unknown> = await ctx.runQuery(
-      components.betterAuth.adapter.findMany,
-      {
-        model: "user",
-        where,
-        select: ["_id"],
-        paginationOpts: { cursor, numItems: COUNT_PAGE_SIZE },
-      },
-    );
-    count += result.page.length;
-    if (result.isDone) return count;
-    cursor = result.continueCursor;
-  }
-}
-
 export const userStats = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const [all, guests] = await Promise.all([
-      countUsers(ctx),
-      // Counted on the user table's `isAnonymous` index. `deleteExpiredGuests`
-      // removes guests nobody can use any more, so this stays small.
-      countUsers(ctx, [{ field: "isAnonymous", value: true }]),
-    ]);
+    // Maintained counts, so no user rows are read (see convex/userCounts.ts).
+    const { accounts, guests } = await readUserCounts(ctx);
     return {
       // Guests share the user table but aren't sign-ups; count them apart.
-      totalUsers: all - guests,
+      totalUsers: accounts,
       guests,
       activePlayers14d: await activePlayers14dCore(ctx, Date.now()),
     };

@@ -1,4 +1,8 @@
-import { createClient, type GenericCtx } from "@convex-dev/better-auth";
+import {
+  createClient,
+  type AuthFunctions,
+  type GenericCtx,
+} from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { Resend } from "@convex-dev/resend";
@@ -11,6 +15,7 @@ import { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
+import { countUser, recountUser, uncountUser } from "./userCounts";
 import {
   GUEST_EMAIL_DOMAIN,
   guestPlaceholderName,
@@ -19,14 +24,38 @@ import {
 
 export const resend = new Resend(components.resend, { testMode: false });
 
+// Annotated to break the type cycle: `internal.auth` includes the trigger
+// functions exported below, which are built from `authComponent`.
+const authFunctions: AuthFunctions = internal.auth;
+
 export const authComponent = createClient<DataModel, typeof authSchema>(
   components.betterAuth,
   {
     local: {
       schema: authSchema,
     },
+    authFunctions,
+    // Keeps the admin user counts (convex/userCounts.ts) in step with every
+    // user write that goes through the Better Auth adapter. A direct call to
+    // `components.betterAuth.adapter.*` skips these unless it passes the
+    // matching handle, as `cleanup.deleteExpiredGuests` does.
+    triggers: {
+      user: {
+        onCreate: async (ctx, user) => {
+          await countUser(ctx, user);
+        },
+        onUpdate: async (ctx, newUser, oldUser) => {
+          await recountUser(ctx, newUser, oldUser);
+        },
+        onDelete: async (ctx, user) => {
+          await uncountUser(ctx, user);
+        },
+      },
+    },
   },
 );
+
+export const { onCreate, onUpdate, onDelete } = authComponent.triggersApi();
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   // The localhost fallback exists ONLY for env-less static analysis /
