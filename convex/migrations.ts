@@ -55,7 +55,7 @@ export const backfillGameTimestamps = migrations.define({
     if (game.completedAt === undefined && game.totalRounds > 0) {
       const rounds = await ctx.db
         .query("gameRounds")
-        .withIndex("byGame", (q) => q.eq("gameId", game._id))
+        .withIndex("byGameRound", (q) => q.eq("gameId", game._id))
         .collect();
       const reachedFinal = rounds.some((r) => r.roundNumber === game.totalRounds);
       if (reachedFinal) {

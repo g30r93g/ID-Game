@@ -35,7 +35,7 @@ export async function pickHost(
   const hostCounts = new Map<string, number>();
   const rounds = await ctx.db
     .query("gameRounds")
-    .withIndex("byGame", (q) => q.eq("gameId", gameId))
+    .withIndex("byGameRound", (q) => q.eq("gameId", gameId))
     .collect();
   rounds.forEach((round) => {
     hostCounts.set(
@@ -605,7 +605,7 @@ export const getGameRoundsForGame = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("gameRounds")
-      .withIndex("byGame", (q) => q.eq("gameId", args.game))
+      .withIndex("byGameRound", (q) => q.eq("gameId", args.game))
       .collect();
   },
 });

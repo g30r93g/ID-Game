@@ -40,8 +40,7 @@ export default defineSchema({
     kind: v.union(v.literal("reassign-host"), v.literal("remove-player")),
     createdAt: v.number(),
   })
-    .index("byGameTarget", ["gameId", "targetPlayerId"])
-    .index("byGameRound", ["gameId", "roundNumber"]),
+    .index("byGameTarget", ["gameId", "targetPlayerId"]),
 
   games: defineTable({
     joinCode: v.string(),
@@ -102,8 +101,8 @@ export default defineSchema({
       v.literal("finished"),
     ),
   })
-    .index("byGame", ["gameId"])
-    .index("byHost", ["hostPlayerId"])
+    // Also serves "every round of a game", in round order, via its gameId
+    // prefix, so there is no separate byGame index to write on each round.
     .index("byGameRound", ["gameId", "roundNumber"]),
 
   gameRoundScenarios: defineTable({
