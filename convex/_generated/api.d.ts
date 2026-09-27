@@ -18,6 +18,7 @@ import type * as guests from "../guests.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as scenariosMaintenance from "../scenariosMaintenance.js";
+import type * as userCounts from "../userCounts.js";
 
 import type {
   ApiFromModules,
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   migrations: typeof migrations;
   scenariosMaintenance: typeof scenariosMaintenance;
+  userCounts: typeof userCounts;
 }>;
 
 /**
@@ -68,4 +70,5 @@ export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  userCounts: import("@convex-dev/aggregate/_generated/component.js").ComponentApi<"userCounts">;
 };
