@@ -3,11 +3,33 @@ import aggregateTest from "@convex-dev/aggregate/test";
 import { expect, test, vi } from "vitest";
 import schema from "./schema";
 import { api, components, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
+import { MutationCtx } from "./_generated/server";
 
 import betterAuthSchema from "./betterAuth/schema";
 
 const modules = import.meta.glob("./**/*.*s");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
+
+// A players row with a heartbeat on record: its presence row says when.
+async function insertPlayerWithHeartbeat(
+  ctx: MutationCtx,
+  player: {
+    userId: string;
+    gameId: Id<"games">;
+    displayName: string;
+    active?: boolean;
+  },
+  lastAlive: number,
+) {
+  const playerId = await ctx.db.insert("players", player);
+  await ctx.db.insert("playerPresence", {
+    gameId: player.gameId,
+    playerId,
+    lastAlive,
+  });
+  return playerId;
+}
 
 test("markAbandonedGames marks only games that break the rules", async () => {
   const t = convexTest(schema, modules);
@@ -23,12 +45,11 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       createdBy: "me",
       startedAt: now - 5 * 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: stale,
-      displayName: "Me",
-      lastAlive: now - 4 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: stale, displayName: "Me" },
+      now - 4 * 60 * 60_000,
+    );
 
     // Lobby untouched for an hour — abandoned.
     const idleLobby = await ctx.db.insert("games", {
@@ -37,16 +58,13 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       isOpen: true,
       createdBy: "me",
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: idleLobby,
-      displayName: "Me",
-      lastAlive: now - 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: idleLobby, displayName: "Me" },
+      now - 60 * 60_000,
+    );
 
-    // Left 20 minutes ago — still continuable, must be left alone. Known only
-    // from presence: the players row is from when they joined, hours ago.
-    // The other games here predate the presence table and fall back to it.
+    // Left 20 minutes ago — still continuable, must be left alone.
     const recent = await ctx.db.insert("games", {
       joinCode: "REC003",
       totalRounds: 5,
@@ -55,16 +73,26 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       createdBy: "me",
       startedAt: now - 40 * 60_000,
     });
-    const recentPlayer = await ctx.db.insert("players", {
-      userId: "me",
-      gameId: recent,
-      displayName: "Me",
-      lastAlive: now - 3 * 60 * 60_000,
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: recent, displayName: "Me" },
+      now - 20 * 60_000,
+    );
+
+    // Started minutes ago, but its only player has no heartbeat on record:
+    // no presence row is no activity, so abandoned.
+    const noRow = await ctx.db.insert("games", {
+      joinCode: "NOR005",
+      totalRounds: 5,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 10 * 60_000,
     });
-    await ctx.db.insert("playerPresence", {
-      gameId: recent,
-      playerId: recentPlayer,
-      lastAlive: now - 20 * 60_000,
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: noRow,
+      displayName: "Me",
     });
 
     // Finished long ago — not a candidate, must keep abandonedAt unset.
@@ -77,18 +105,17 @@ test("markAbandonedGames marks only games that break the rules", async () => {
       startedAt: now - 9 * 60 * 60_000,
       completedAt: now - 8 * 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: finished,
-      displayName: "Me",
-      lastAlive: now - 8 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: finished, displayName: "Me" },
+      now - 8 * 60 * 60_000,
+    );
   });
 
   const result = await t.mutation(internal.cleanup.markAbandonedGames, {});
-  expect(result.marked).toBe(2);
+  expect(result.marked).toBe(3);
   // The finished game is excluded by the index, never inspected.
-  expect(result.inspected).toBe(3);
+  expect(result.inspected).toBe(4);
 
   const marked = await t.run(async (ctx) => {
     const games = await ctx.db.query("games").collect();
@@ -102,6 +129,7 @@ test("markAbandonedGames marks only games that break the rules", async () => {
     IDL002: true,
     REC003: false,
     FIN004: false,
+    NOR005: true,
   });
 });
 
@@ -119,12 +147,11 @@ test("markAbandonedGames skips games it has already marked", async () => {
       startedAt: now - 5 * 60 * 60_000,
       abandonedAt: now - 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId,
-      displayName: "Me",
-      lastAlive: now - 4 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId, displayName: "Me" },
+      now - 4 * 60 * 60_000,
+    );
   });
 
   const result = await t.mutation(internal.cleanup.markAbandonedGames, {});
@@ -149,12 +176,11 @@ test("markAbandonedGames reaches an abandoned game behind a batch of live ones",
           createdBy: "me",
           startedAt: now - 60 * 60_000,
         });
-        await ctx.db.insert("players", {
-          userId: `player${i}`,
-          gameId: live,
-          displayName: "Player",
-          lastAlive: now - 60_000,
-        });
+        await insertPlayerWithHeartbeat(
+          ctx,
+          { userId: `player${i}`, gameId: live, displayName: "Player" },
+          now - 60_000,
+        );
       }
 
       const stale = await ctx.db.insert("games", {
@@ -165,12 +191,11 @@ test("markAbandonedGames reaches an abandoned game behind a batch of live ones",
         createdBy: "me",
         startedAt: now - 5 * 60 * 60_000,
       });
-      await ctx.db.insert("players", {
-        userId: "me",
-        gameId: stale,
-        displayName: "Me",
-        lastAlive: now - 4 * 60 * 60_000,
-      });
+      await insertPlayerWithHeartbeat(
+        ctx,
+        { userId: "me", gameId: stale, displayName: "Me" },
+        now - 4 * 60 * 60_000,
+      );
     });
 
     const first = await t.mutation(internal.cleanup.markAbandonedGames, {});
@@ -204,12 +229,11 @@ test("a heartbeat clears the abandoned mark and restores the game", async () => 
       startedAt: now - 5 * 60 * 60_000,
       abandonedAt: now - 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId,
-      displayName: "Me",
-      lastAlive: now - 4 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId, displayName: "Me" },
+      now - 4 * 60 * 60_000,
+    );
     return gameId;
   });
 
@@ -244,12 +268,11 @@ test("createGame does not hand back an abandoned lobby", async () => {
       createdBy: "me",
       abandonedAt: now - 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: dead,
-      displayName: "Me",
-      lastAlive: now - 2 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: dead, displayName: "Me" },
+      now - 2 * 60 * 60_000,
+    );
   });
 
   // createGame resolves a display name through the betterAuth component, which
@@ -377,7 +400,6 @@ test("deleteExpiredGuests removes only old guests with no live session", async (
       userId: expiredNoSession,
       gameId,
       displayName: "Ada",
-      lastAlive: 0,
     });
   });
 

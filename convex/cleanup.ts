@@ -4,7 +4,7 @@ import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { evaluateContinuity } from "../lib/continuable";
 import { canDeleteGuest, GUEST_GRACE_PERIOD_MS } from "../lib/guest";
-import { lastAliveFor, loadPresence } from "./presence";
+import { loadPresence, newestHeartbeat } from "./presence";
 
 /**
  * Games inspected per transaction. Each costs a read of its players and their
@@ -62,10 +62,7 @@ export const markAbandonedGames = internalMutation({
         loadPresence(ctx, game._id),
       ]);
       const activePlayers = players.filter((p) => p.active !== false);
-      const lastActivityAt = activePlayers.reduce(
-        (newest, p) => Math.max(newest, lastAliveFor(p, presence)),
-        0,
-      );
+      const lastActivityAt = newestHeartbeat(activePlayers, presence);
 
       const continuity = evaluateContinuity(
         {

@@ -32,9 +32,10 @@ export type ContinuityInput = {
   /** Unset while the game is still in its lobby. */
   startedAt?: number;
   /**
-   * Newest `lastAlive` across the game's active players. Every player row gets
-   * a heartbeat on join, so this is always a real timestamp once the
-   * `no-players` check below has passed.
+   * Newest heartbeat across the game's active players. Every player gets a
+   * presence row on join, so this is a real timestamp once the `no-players`
+   * check below has passed; a game whose players all lack one passes 0, which
+   * reads as idle for good.
    */
   lastActivityAt: number;
   /** Players not removed from the game, whether or not they're connected. */

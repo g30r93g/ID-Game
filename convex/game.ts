@@ -3,11 +3,11 @@ import { authComponent } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
-import { isConnected } from "../lib/presence";
 import {
   deletePresence,
-  lastAliveFor,
+  isPlayerConnected,
   loadPresence,
+  newestHeartbeat,
   recordHeartbeat,
 } from "./presence";
 import { evaluateContinuity, findReusableLobby } from "../lib/continuable";
@@ -261,7 +261,6 @@ export const createGame = mutation({
     const playerId = await ctx.db.insert("players", {
       userId: user.subject,
       gameId: gameId,
-      lastAlive: now,
       displayName,
     });
     await recordHeartbeat(ctx, { _id: playerId, gameId }, now);
@@ -311,7 +310,6 @@ export const joinGame = mutation({
       const playerId = await ctx.db.insert("players", {
         userId: user.subject,
         gameId: game._id,
-        lastAlive: now,
         displayName,
       });
       await recordHeartbeat(ctx, { _id: playerId, gameId: game._id }, now);
@@ -398,24 +396,19 @@ export const getPlayersForGame = query({
 });
 
 /**
- * Each player's newest heartbeat, one row per player. Apart from the join
- * screen's `getMyActiveGames`, the only query a heartbeat invalidates, so only
- * the components that show liveness subscribe to it; everything else reads
- * `players`, which a beat no longer writes.
+ * Each player's newest heartbeat, one row per player who has sent one. A
+ * player with no row has no heartbeat on record, and counts as disconnected.
+ * Apart from the join screen's `getMyActiveGames`, the only query a heartbeat
+ * invalidates, so only the components that show liveness subscribe to it;
+ * everything else reads `players`, which a beat never writes.
  */
 export const getPresenceForGame = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
-    const [players, presence] = await Promise.all([
-      ctx.db
-        .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
-        .collect(),
-      loadPresence(ctx, args.gameId),
-    ]);
-    return players.map((player) => ({
-      playerId: player._id,
-      lastAlive: lastAliveFor(player, presence),
+    const presence = await loadPresence(ctx, args.gameId);
+    return Array.from(presence, ([playerId, lastAlive]) => ({
+      playerId,
+      lastAlive,
     }));
   },
 });
@@ -470,13 +463,9 @@ export const getMyActiveGames = query({
         // no heartbeat is sent, so counting themselves would be misleading.
         const othersOnline = activePlayers.filter(
           (p) =>
-            p._id !== myPlayer._id &&
-            isConnected(lastAliveFor(p, presence), now),
+            p._id !== myPlayer._id && isPlayerConnected(p._id, presence, now),
         ).length;
-        const lastActivityAt = activePlayers.reduce(
-          (newest, p) => Math.max(newest, lastAliveFor(p, presence)),
-          0,
-        );
+        const lastActivityAt = newestHeartbeat(activePlayers, presence);
 
         // Hide games that have been abandoned rather than merely left.
         const continuity = evaluateContinuity(
@@ -1541,7 +1530,7 @@ export const castPresenceVote = mutation({
       .collect();
 
     // If the target is back online, cancel any open vote and do nothing.
-    if (isConnected(lastAliveFor(target, presence), now)) {
+    if (isPlayerConnected(target._id, presence, now)) {
       await Promise.all(
         existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)),
       );
@@ -1578,7 +1567,7 @@ export const castPresenceVote = mutation({
       (p) =>
         p._id !== target._id &&
         p.active !== false &&
-        isConnected(lastAliveFor(p, presence), now),
+        isPlayerConnected(p._id, presence, now),
     );
     const eligibleVoterIds = new Set(connectedNonTarget.map((p) => p._id));
 

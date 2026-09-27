@@ -25,14 +25,12 @@ test("adoptGuestPlayers moves a guest's seats onto the account", async () => {
         userId: "guest",
         gameId,
         displayName: "Ada",
-        lastAlive: 0,
       });
     }
     const otherPlayer = await ctx.db.insert("players", {
       userId: "host",
       gameId: first,
       displayName: "Host",
-      lastAlive: 0,
     });
     return { first, second, otherPlayer };
   });
@@ -81,7 +79,6 @@ test("adoptGuestPlayers keeps the guest's name when the account has none", async
       userId: "guest",
       gameId,
       displayName: "Ada",
-      lastAlive: 0,
     });
   });
 
@@ -112,13 +109,11 @@ test("adoptGuestPlayers retires the guest seat when the account already has one"
       userId: "account",
       gameId,
       displayName: "Ada",
-      lastAlive: 0,
     });
     const guestSeat = await ctx.db.insert("players", {
       userId: "guest",
       gameId,
       displayName: "Ada (phone)",
-      lastAlive: 0,
     });
     return { guestSeat, accountSeat };
   });

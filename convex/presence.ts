@@ -1,5 +1,6 @@
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, QueryCtx } from "./_generated/server";
+import { isConnected } from "../lib/presence";
 
 // Reads and writes of `playerPresence`, the table heartbeats land in. Kept
 // here, not in game.ts, because the cleanup cron reads presence too.
@@ -19,15 +20,30 @@ export async function loadPresence(
 }
 
 /**
- * A player's newest heartbeat. Players from before the presence table have no
- * row until their next beat; their `players.lastAlive` is the last one they
- * sent, so old games need no migration.
+ * Whether a player's newest heartbeat is recent enough to count as connected.
+ * A player with no presence row has no heartbeat on record, so is not.
  */
-export function lastAliveFor(
-  player: Doc<"players">,
+export function isPlayerConnected(
+  playerId: Id<"players">,
+  presence: PresenceByPlayer,
+  now: number,
+): boolean {
+  const lastAlive = presence.get(playerId);
+  return lastAlive !== undefined && isConnected(lastAlive, now);
+}
+
+/**
+ * The newest heartbeat among `players`, or 0 if none of them has a presence
+ * row: a player with no row adds no activity.
+ */
+export function newestHeartbeat(
+  players: Pick<Doc<"players">, "_id">[],
   presence: PresenceByPlayer,
 ): number {
-  return presence.get(player._id) ?? player.lastAlive;
+  return players.reduce(
+    (newest, p) => Math.max(newest, presence.get(p._id) ?? 0),
+    0,
+  );
 }
 
 /** Stamps a heartbeat, creating the player's row on the first one. */

@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import migrationsTest from "@convex-dev/migrations/test";
+import { expect, test, vi } from "vitest";
 import schema from "./schema";
-import { internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -34,7 +35,6 @@ test("backfillTimesSelected stores each scenario's exact selection count", async
       userId: "me",
       gameId,
       displayName: "Me",
-      lastAlive: 0,
     });
     for (const roundNumber of [1, 2]) {
       const roundId = await ctx.db.insert("gameRounds", {
@@ -80,4 +80,62 @@ test("backfillTimesSelected stores each scenario's exact selection count", async
   expect(
     await t.mutation(internal.migrations.backfillTimesSelected, {}),
   ).toEqual({ scenarios: 3, updated: 0 });
+});
+
+test("clearPlayersLastAlive clears the field and is safe to re-run", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = convexTest(schema, modules);
+    migrationsTest.register(t);
+
+    const { stamped, clean } = await t.run(async (ctx) => {
+      const gameId = await ctx.db.insert("games", {
+        joinCode: "MIG002",
+        totalRounds: 3,
+        isOpen: true,
+        createdBy: "me",
+      });
+      const stamped = await ctx.db.insert("players", {
+        userId: "me",
+        gameId,
+        displayName: "Me",
+        lastAlive: 1234,
+      });
+      const clean = await ctx.db.insert("players", {
+        userId: "friend",
+        gameId,
+        displayName: "Friend",
+      });
+      return { stamped, clean };
+    });
+
+    const readPlayers = () =>
+      t.run(async (ctx) => ({
+        stamped: await ctx.db.get(stamped),
+        clean: await ctx.db.get(clean),
+      }));
+
+    await t.mutation(internal.migrations.clearPlayersLastAlive, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const after = await readPlayers();
+    expect(after.stamped).not.toHaveProperty("lastAlive");
+    expect(after.stamped?.displayName).toBe("Me");
+    expect(after.clean).not.toHaveProperty("lastAlive");
+    // Under the name the deploy notes tell you to check.
+    const [status] = await t.query(components.migrations.lib.getStatus, {
+      names: ["migrations:clearPlayersLastAlive"],
+    });
+    expect(status.isDone).toBe(true);
+    expect(status.processed).toBe(2);
+
+    // A second run, from the start, finds nothing left to change.
+    await t.mutation(internal.migrations.clearPlayersLastAlive, {
+      reset: true,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await readPlayers()).toEqual(after);
+  } finally {
+    vi.useRealTimers();
+  }
 });

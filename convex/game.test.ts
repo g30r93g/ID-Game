@@ -22,13 +22,11 @@ async function seedLobby(t: ReturnType<typeof convexTest>) {
       userId: "creator",
       gameId,
       displayName: "Creator",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "member",
       gameId,
       displayName: "Member",
-      lastAlive: 0,
     });
     return gameId;
   });
@@ -55,7 +53,6 @@ async function seedGameWithRound(
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -109,7 +106,6 @@ test("transitionRoundPhase sets completedAt when the final round shows results",
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -154,7 +150,6 @@ async function seedRoundWithPhase(
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -404,7 +399,6 @@ test("finishRoundAndStartNext leaves finishing the round to its host", async () 
       userId: "guesser",
       gameId,
       displayName: "Guesser",
-      lastAlive: 0,
     }),
   );
 
@@ -429,7 +423,6 @@ test("finishRoundAndStartNext follows a host reassigned mid-round", async () => 
       userId: "new-host",
       gameId,
       displayName: "New Host",
-      lastAlive: 0,
     });
     await ctx.db.patch(roundId, { hostPlayerId: newHost });
   });
@@ -459,7 +452,6 @@ test("finishRoundAndStartNext lets any player start the next round once it has f
       userId: "guesser",
       gameId,
       displayName: "Guesser",
-      lastAlive: 0,
     }),
   );
 
@@ -502,13 +494,11 @@ async function seedRoundWithSelectedScenario(
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "guesser",
       gameId,
       displayName: "Guesser",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -612,13 +602,11 @@ async function seedCategoryRound(t: ReturnType<typeof convexTest>) {
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "guesser",
       gameId,
       displayName: "Guesser",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -872,25 +860,21 @@ async function seedGuessingRound(t: TestConvex<typeof schema>) {
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     const alice = await ctx.db.insert("players", {
       userId: "alice",
       gameId,
       displayName: "Alice",
-      lastAlive: 0,
     });
     const bob = await ctx.db.insert("players", {
       userId: "bob",
       gameId,
       displayName: "Bob",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "cara",
       gameId,
       displayName: "Cara",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -1037,7 +1021,6 @@ test("a guess that isn't the last leaves the round guessing", async () => {
       userId: "dan",
       gameId,
       displayName: "Dan",
-      lastAlive: 0,
     }),
   );
 
@@ -1113,7 +1096,6 @@ test("makeGuessForRound rejects a second guess from the same player", async () =
       userId: "dan",
       gameId,
       displayName: "Dan",
-      lastAlive: 0,
     }),
   );
 
@@ -1167,7 +1149,6 @@ test("makeGuessForRound rejects a game that isn't the round's", async () => {
       userId: "cara",
       gameId: otherGameId,
       displayName: "Cara",
-      lastAlive: 0,
     });
     return otherGameId;
   });
@@ -1313,7 +1294,6 @@ test("selectGameRoundScenario increments the scenario's timesSelected", async ()
       userId: "host",
       gameId,
       displayName: "Host",
-      lastAlive: 0,
     });
     const roundId = await ctx.db.insert("gameRounds", {
       gameId,
@@ -1407,7 +1387,6 @@ test("syncDisplayName renames the caller's players rows across their games", asy
         userId: identity.subject,
         gameId,
         displayName: "Unknown Player",
-        lastAlive: 0,
       });
     }
     // Another player in one of the same games must be left alone.
@@ -1415,7 +1394,6 @@ test("syncDisplayName renames the caller's players rows across their games", asy
       userId: "someone-else",
       gameId: second,
       displayName: "Unknown Player",
-      lastAlive: 0,
     });
   });
 
@@ -1457,7 +1435,6 @@ test("syncDisplayName leaves rows alone when the account has no name", async () 
       userId: identity.subject,
       gameId,
       displayName: "Unknown Player",
-      lastAlive: 0,
     });
   });
 
@@ -1490,7 +1467,6 @@ async function seedMemberGame(t: TestConvex<typeof schema>) {
       userId: "member",
       gameId,
       displayName: "Member",
-      lastAlive: 0,
     });
   });
 }
@@ -1566,13 +1542,11 @@ test("getInvite describes a game without exposing user ids", async () => {
       userId: "guest",
       gameId,
       displayName: "Guest",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "host",
       gameId,
       displayName: "George",
-      lastAlive: 0,
     });
   });
 
@@ -1636,7 +1610,6 @@ test("getInvite leaves out a host who left or never chose a name", async () => {
       userId: "host",
       gameId,
       displayName: "Unknown Player",
-      lastAlive: 0,
     });
   });
 

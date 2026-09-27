@@ -4,10 +4,31 @@ import schema from "./schema";
 import { api } from "./_generated/api";
 import { MAX_ACTIVE_SEATS, pickHost } from "./game";
 import { Id } from "./_generated/dataModel";
+import { MutationCtx } from "./_generated/server";
 import betterAuthSchema from "./betterAuth/schema";
 
 const modules = import.meta.glob("./**/*.*s");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
+
+// A players row with a heartbeat on record: its presence row says when.
+async function insertPlayerWithHeartbeat(
+  ctx: MutationCtx,
+  player: {
+    userId: string;
+    gameId: Id<"games">;
+    displayName: string;
+    active?: boolean;
+  },
+  lastAlive: number,
+) {
+  const playerId = await ctx.db.insert("players", player);
+  await ctx.db.insert("playerPresence", {
+    gameId: player.gameId,
+    playerId,
+    lastAlive,
+  });
+  return playerId;
+}
 
 test("presenceVotes rows and players.active persist", async () => {
   const t = convexTest(schema, modules);
@@ -23,14 +44,12 @@ test("presenceVotes rows and players.active persist", async () => {
       userId: "target",
       gameId,
       displayName: "Target",
-      lastAlive: 0,
       active: false,
     });
     const voter = await ctx.db.insert("players", {
       userId: "voter",
       gameId,
       displayName: "Voter",
-      lastAlive: 0,
     });
     await ctx.db.insert("presenceVotes", {
       gameId,
@@ -73,13 +92,11 @@ test("sendHeartbeat records presence only for the specified game and reactivates
       userId: "u1",
       gameId: g1,
       displayName: "P",
-      lastAlive: 0,
     });
     await ctx.db.insert("players", {
       userId: "u1",
       gameId: g2,
       displayName: "P",
-      lastAlive: 0,
       active: false,
     });
     return { g2 };
@@ -105,7 +122,7 @@ test("sendHeartbeat records presence only for the specified game and reactivates
   expect(rows.presence[0].lastAlive).toBeGreaterThan(0);
   // The removal is undone on the players row; the beat itself is not there.
   expect(rows.p2!.active).toBe(true);
-  expect(rows.p2!.lastAlive).toBe(0);
+  expect(rows.p2).not.toHaveProperty("lastAlive");
 });
 
 test("sendHeartbeat leaves an active player's row untouched", async () => {
@@ -121,7 +138,6 @@ test("sendHeartbeat leaves an active player's row untouched", async () => {
       userId: "u1",
       gameId,
       displayName: "P",
-      lastAlive: 0,
     });
     // Already has a presence row, so the beat takes the update path.
     await ctx.db.insert("playerPresence", { gameId, playerId, lastAlive: 1 });
@@ -142,32 +158,25 @@ test("sendHeartbeat leaves an active player's row untouched", async () => {
   expect(after.presence[0].lastAlive).toBeGreaterThan(1);
 });
 
-test("getPresenceForGame returns one row per player, falling back to players.lastAlive", async () => {
+test("getPresenceForGame returns a row per player with a heartbeat, and none for a player without", async () => {
   const t = convexTest(schema, modules);
-  const { gameId, withRow, withoutRow } = await t.run(async (ctx) => {
+  const { gameId, withRow } = await t.run(async (ctx) => {
     const gameId = await ctx.db.insert("games", {
       joinCode: "PRS001",
       totalRounds: 3,
       isOpen: true,
       createdBy: "a",
     });
-    const withRow = await ctx.db.insert("players", {
-      userId: "a",
-      gameId,
-      displayName: "A",
-      lastAlive: 100,
-    });
-    await ctx.db.insert("playerPresence", {
-      gameId,
-      playerId: withRow,
-      lastAlive: 500,
-    });
-    // From before the presence table: no row yet.
-    const withoutRow = await ctx.db.insert("players", {
+    const withRow = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "a", gameId, displayName: "A" },
+      500,
+    );
+    // No heartbeat on record, so nothing to report.
+    await ctx.db.insert("players", {
       userId: "b",
       gameId,
       displayName: "B",
-      lastAlive: 200,
     });
     // Another game's presence must not leak in.
     const otherGame = await ctx.db.insert("games", {
@@ -180,24 +189,17 @@ test("getPresenceForGame returns one row per player, falling back to players.las
       userId: "a",
       gameId: otherGame,
       displayName: "A",
-      lastAlive: 0,
     });
     await ctx.db.insert("playerPresence", {
       gameId: otherGame,
       playerId: other,
       lastAlive: 900,
     });
-    return { gameId, withRow, withoutRow };
+    return { gameId, withRow };
   });
 
   const presence = await t.query(api.game.getPresenceForGame, { gameId });
-  expect(presence).toHaveLength(2);
-  expect(presence).toEqual(
-    expect.arrayContaining([
-      { playerId: withRow, lastAlive: 500 },
-      { playerId: withoutRow, lastAlive: 200 },
-    ]),
-  );
+  expect(presence).toEqual([{ playerId: withRow, lastAlive: 500 }]);
 });
 
 test("createGame and joinGame record presence, leaveGame removes it", async () => {
@@ -233,12 +235,11 @@ test("getMyActiveGames returns only unfinished games the user still belongs to",
       isOpen: false,
       createdBy: "me",
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: active,
-      displayName: "Me",
-      lastAlive: Date.now(),
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: active, displayName: "Me" },
+      Date.now(),
+    );
     // finished game (completedAt set) — must be excluded
     const finished = await ctx.db.insert("games", {
       joinCode: "FIN002",
@@ -248,12 +249,11 @@ test("getMyActiveGames returns only unfinished games the user still belongs to",
       createdBy: "me",
       completedAt: Date.now(),
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: finished,
-      displayName: "Me",
-      lastAlive: Date.now(),
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: finished, displayName: "Me" },
+      Date.now(),
+    );
     // game the user was removed from (active:false) — must be excluded
     const removed = await ctx.db.insert("games", {
       joinCode: "RMV003",
@@ -266,7 +266,6 @@ test("getMyActiveGames returns only unfinished games the user still belongs to",
       userId: "me",
       gameId: removed,
       displayName: "Me",
-      lastAlive: 0,
       active: false,
     });
   });
@@ -295,12 +294,11 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
       createdBy: "me",
       startedAt: now - 5 * 60 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: stale,
-      displayName: "Me",
-      lastAlive: now - 4 * 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: stale, displayName: "Me" },
+      now - 4 * 60 * 60_000,
+    );
 
     // Lobby nobody has touched for an hour — abandoned.
     const idleLobby = await ctx.db.insert("games", {
@@ -309,12 +307,11 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
       isOpen: true,
       createdBy: "me",
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: idleLobby,
-      displayName: "Me",
-      lastAlive: now - 60 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: idleLobby, displayName: "Me" },
+      now - 60 * 60_000,
+    );
 
     // Left minutes ago and everyone is offline — still continuable.
     const empty = await ctx.db.insert("games", {
@@ -325,18 +322,16 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
       createdBy: "me",
       startedAt: now - 20 * 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: empty,
-      displayName: "Me",
-      lastAlive: now - 5 * 60_000,
-    });
-    await ctx.db.insert("players", {
-      userId: "friend",
-      gameId: empty,
-      displayName: "Friend",
-      lastAlive: now - 6 * 60_000,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: empty, displayName: "Me" },
+      now - 5 * 60_000,
+    );
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "friend", gameId: empty, displayName: "Friend" },
+      now - 6 * 60_000,
+    );
 
     // Someone is in there right now.
     const live = await ctx.db.insert("games", {
@@ -347,25 +342,16 @@ test("getMyActiveGames hides abandoned games but keeps empty fresh ones", async 
       createdBy: "me",
       startedAt: now - 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: live,
-      displayName: "Me",
-      lastAlive: now - 30 * 60_000,
-    });
-    // Online through presence alone: the players row only says when they
-    // joined. Everyone else here predates the table and falls back to it.
-    const friend = await ctx.db.insert("players", {
-      userId: "friend",
-      gameId: live,
-      displayName: "Friend",
-      lastAlive: now - 3 * 60 * 60_000,
-    });
-    await ctx.db.insert("playerPresence", {
-      gameId: live,
-      playerId: friend,
-      lastAlive: now,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: live, displayName: "Me" },
+      now - 30 * 60_000,
+    );
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "friend", gameId: live, displayName: "Friend" },
+      now,
+    );
   });
 
   const result = await t
@@ -394,12 +380,11 @@ test("getMyActiveGames finds a live game behind a long history of finished ones"
         startedAt: now - 60 * 60_000,
         completedAt: now - 30 * 60_000,
       });
-      await ctx.db.insert("players", {
-        userId: "me",
-        gameId: finished,
-        displayName: "Me",
-        lastAlive: now - 30 * 60_000,
-      });
+      await insertPlayerWithHeartbeat(
+        ctx,
+        { userId: "me", gameId: finished, displayName: "Me" },
+        now - 30 * 60_000,
+      );
     }
 
     const live = await ctx.db.insert("games", {
@@ -410,12 +395,11 @@ test("getMyActiveGames finds a live game behind a long history of finished ones"
       createdBy: "me",
       startedAt: now - 60_000,
     });
-    await ctx.db.insert("players", {
-      userId: "me",
-      gameId: live,
-      displayName: "Me",
-      lastAlive: now,
-    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: live, displayName: "Me" },
+      now,
+    );
   });
 
   const result = await t
@@ -423,6 +407,62 @@ test("getMyActiveGames finds a live game behind a long history of finished ones"
     .query(api.game.getMyActiveGames, {});
 
   expect(result.map((g) => g.joinCode)).toEqual(["LIV001"]);
+});
+
+test("getMyActiveGames treats a player with no presence row as offline and idle", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+
+  await t.run(async (ctx) => {
+    // Started a minute ago, but nobody here has a heartbeat on record, so it
+    // has no activity at all: hidden.
+    const silent = await ctx.db.insert("games", {
+      joinCode: "SIL001",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 60_000,
+    });
+    await ctx.db.insert("players", {
+      userId: "me",
+      gameId: silent,
+      displayName: "Me",
+    });
+    await ctx.db.insert("players", {
+      userId: "friend",
+      gameId: silent,
+      displayName: "Friend",
+    });
+
+    // The caller's own beat keeps this one live; the friend without a row
+    // isn't counted as online.
+    const live = await ctx.db.insert("games", {
+      joinCode: "LIV002",
+      totalRounds: 3,
+      currentRound: 1,
+      isOpen: false,
+      createdBy: "me",
+      startedAt: now - 60_000,
+    });
+    await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "me", gameId: live, displayName: "Me" },
+      now,
+    );
+    await ctx.db.insert("players", {
+      userId: "friend",
+      gameId: live,
+      displayName: "Friend",
+    });
+  });
+
+  const result = await t
+    .withIdentity({ subject: "me" })
+    .query(api.game.getMyActiveGames, {});
+
+  expect(result.map((g) => g.joinCode)).toEqual(["LIV002"]);
+  expect(result[0].othersOnline).toBe(0);
 });
 
 test("pickHost returns the least-hosted candidate", async () => {
@@ -439,13 +479,11 @@ test("pickHost returns the least-hosted candidate", async () => {
       userId: "p1",
       gameId,
       displayName: "P1",
-      lastAlive: 0,
     });
     const p2 = await ctx.db.insert("players", {
       userId: "p2",
       gameId,
       displayName: "P2",
-      lastAlive: 0,
     });
     // p1 has hosted round 1 already; p2 has hosted nothing.
     await ctx.db.insert("gameRounds", {
@@ -472,24 +510,21 @@ test("getGuessesStatusForRound ignores removed (inactive) non-host players", asy
       isOpen: false,
       createdBy: "host",
     });
-    const host = await ctx.db.insert("players", {
-      userId: "host",
-      gameId,
-      displayName: "Host",
-      lastAlive: Date.now(),
-    });
-    const a = await ctx.db.insert("players", {
-      userId: "a",
-      gameId,
-      displayName: "A",
-      lastAlive: Date.now(),
-    });
+    const host = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "host", gameId, displayName: "Host" },
+      Date.now(),
+    );
+    const a = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "a", gameId, displayName: "A" },
+      Date.now(),
+    );
     // B was removed by consensus.
     await ctx.db.insert("players", {
       userId: "b",
       gameId,
       displayName: "B",
-      lastAlive: 0,
       active: false,
     });
     const roundId = await ctx.db.insert("gameRounds", {
@@ -523,15 +558,12 @@ test("getGuessesStatusForRound ignores removed (inactive) non-host players", asy
 });
 
 /**
- * Seeds a game in round 1. Liveness goes in presence rows, with each players
- * row claiming the opposite so a reader that ignored presence would get every
- * answer wrong. `withPresence: false` seeds a game from before the presence
- * table instead, where the players row is all there is.
+ * Seeds a game in round 1, with each player's liveness in a presence row.
+ * `connected: "no-row"` seeds a player with no heartbeat on record at all.
  */
 async function seedRoundGame(
   t: ReturnType<typeof convexTest>,
-  players: { userId: string; connected: boolean; host?: boolean }[],
-  { withPresence = true }: { withPresence?: boolean } = {},
+  players: { userId: string; connected: boolean | "no-row"; host?: boolean }[],
 ) {
   return t.run(async (ctx) => {
     const now = Date.now();
@@ -545,18 +577,16 @@ async function seedRoundGame(
     });
     const ids: Record<string, Id<"players">> = {};
     for (const p of players) {
-      const lastAlive = p.connected ? now : stale;
       ids[p.userId] = await ctx.db.insert("players", {
         userId: p.userId,
         gameId,
         displayName: p.userId.toUpperCase(),
-        lastAlive: withPresence ? (p.connected ? stale : now) : lastAlive,
       });
-      if (withPresence) {
+      if (p.connected !== "no-row") {
         await ctx.db.insert("playerPresence", {
           gameId,
           playerId: ids[p.userId],
-          lastAlive,
+          lastAlive: p.connected ? now : stale,
         });
       }
     }
@@ -590,25 +620,25 @@ test("castPresenceVote reassigns the host when the host is stale and majority ag
   expect(round!.hostPlayerId).toBe(ids["alice"]);
 });
 
-test("castPresenceVote falls back to players.lastAlive without presence rows", async () => {
+test("castPresenceVote treats a player with no presence row as disconnected", async () => {
   const t = convexTest(schema, modules);
-  const { ids } = await seedRoundGame(
-    t,
-    [
-      { userId: "host", connected: true, host: true },
-      { userId: "alice", connected: true },
-      { userId: "bob", connected: false },
-    ],
-    { withPresence: false },
-  );
+  const { ids } = await seedRoundGame(t, [
+    { userId: "host", connected: true, host: true },
+    { userId: "alice", connected: true },
+    { userId: "bob", connected: "no-row" },
+    { userId: "carol", connected: "no-row" },
+  ]);
 
-  // Denominator = connected non-target players = {host, alice} = 2, needs > 1.
-  await t
+  // Bob, with no row, can be voted out. Carol, with no row either, is not a
+  // voter: denominator = connected non-target players = {host, alice} = 2,
+  // needs > 1.
+  const first = await t
     .withIdentity({ subject: "alice" })
     .mutation(api.game.castPresenceVote, {
       joinCode: "CPV001",
       targetPlayerId: ids["bob"],
     });
+  expect(first.resolved).toBe(false);
   const second = await t
     .withIdentity({ subject: "host" })
     .mutation(api.game.castPresenceVote, {
@@ -678,23 +708,20 @@ test("castPresenceVote ignores votes from a previous round", async () => {
       createdBy: "host",
     });
     const ids: Record<string, Id<"players">> = {};
-    ids["host"] = await ctx.db.insert("players", {
-      userId: "host",
-      gameId,
-      displayName: "HOST",
-      lastAlive: now,
-    });
-    ids["a"] = await ctx.db.insert("players", {
-      userId: "a",
-      gameId,
-      displayName: "A",
-      lastAlive: now,
-    });
+    ids["host"] = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "host", gameId, displayName: "HOST" },
+      now,
+    );
+    ids["a"] = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "a", gameId, displayName: "A" },
+      now,
+    );
     ids["b"] = await ctx.db.insert("players", {
       userId: "b",
       gameId,
       displayName: "B",
-      lastAlive: 0,
     });
     await ctx.db.insert("gameRounds", {
       gameId,
@@ -740,14 +767,12 @@ test("sendHeartbeat cancels votes targeting the reconnecting player", async () =
       userId: "x",
       gameId,
       displayName: "X",
-      lastAlive: 0,
     });
-    const voter = await ctx.db.insert("players", {
-      userId: "voter",
-      gameId,
-      displayName: "Voter",
-      lastAlive: Date.now(),
-    });
+    const voter = await insertPlayerWithHeartbeat(
+      ctx,
+      { userId: "voter", gameId, displayName: "Voter" },
+      Date.now(),
+    );
     await ctx.db.insert("presenceVotes", {
       gameId,
       roundNumber: 1,
@@ -796,7 +821,6 @@ test("finishRoundAndStartNext skips removed players when choosing a host", async
       userId: "p1",
       gameId,
       displayName: "P1",
-      lastAlive: 0,
     });
     // P2 (removed) has hosted nothing, so it would normally be picked as the
     // least-hosted candidate — but it must be skipped because it's inactive.
@@ -804,7 +828,6 @@ test("finishRoundAndStartNext skips removed players when choosing a host", async
       userId: "p2",
       gameId,
       displayName: "P2",
-      lastAlive: 0,
       active: false,
     });
     // P1 has hosted round 1 already.
