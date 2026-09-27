@@ -17,6 +17,7 @@ import type * as game from "../game.js";
 import type * as guests from "../guests.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
+import type * as presence from "../presence.js";
 import type * as scenariosMaintenance from "../scenariosMaintenance.js";
 
 import type {
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   guests: typeof guests;
   http: typeof http;
   migrations: typeof migrations;
+  presence: typeof presence;
   scenariosMaintenance: typeof scenariosMaintenance;
 }>;
 

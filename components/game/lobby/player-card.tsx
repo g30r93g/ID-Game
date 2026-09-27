@@ -10,18 +10,23 @@ import { authClient } from "@/lib/auth-client";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 import { useSaveDisplayName } from "@/lib/use-display-name";
 import PresenceDot from "@/components/game/presence/presence-dot";
+import { Id } from "@/convex/_generated/dataModel";
 
+// Liveness is not a prop: the dot reads it itself, so a heartbeat re-renders
+// the dot and leaves the card alone.
 interface PlayerCardProps {
+  gameId: Id<"games">;
+  playerId: Id<"players">;
   playerUserId: string;
   playerName: string;
-  lastAlive: number;
   active?: boolean;
 }
 
 export default function PlayerCard({
+  gameId,
+  playerId,
   playerUserId,
   playerName,
-  lastAlive,
   active,
 }: PlayerCardProps) {
   const { data: session } = authClient.useSession();
@@ -79,7 +84,7 @@ export default function PlayerCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-row items-center gap-2">
-          <PresenceDot lastAlive={lastAlive} active={active} />
+          <PresenceDot gameId={gameId} playerId={playerId} active={active} />
           {isCurrentUser ? (
             <Editable.Root
               value={value}

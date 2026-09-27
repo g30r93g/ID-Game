@@ -4,6 +4,12 @@ import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { shouldSetCompletedAt } from "../lib/admin/metrics";
 import { isConnected } from "../lib/presence";
+import {
+  deletePresence,
+  lastAliveFor,
+  loadPresence,
+  recordHeartbeat,
+} from "./presence";
 import { evaluateContinuity, findReusableLobby } from "../lib/continuable";
 
 function generateOTP(length = 6): string {
@@ -70,9 +76,16 @@ export const sendHeartbeat = mutation({
       throw new Error("No player found for authed user");
     }
 
-    // A live heartbeat means the player is present: refresh lastAlive and undo
-    // any consensus removal (they have reconnected).
-    await ctx.db.patch(player._id, { lastAlive: Date.now(), active: true });
+    // A live heartbeat means the player is present. The beat itself goes to
+    // `playerPresence`: nearly every game query reads `players`, so writing
+    // the player's row every 15s would re-run all of them for every client.
+    await recordHeartbeat(ctx, player, Date.now());
+
+    // Undo any consensus removal: they have reconnected. The only write to
+    // `players` a heartbeat makes, and only when there is something to undo.
+    if (player.active === false) {
+      await ctx.db.patch(player._id, { active: true });
+    }
 
     // Somebody is back, so the game is not abandoned after all. Patched only
     // when the mark is actually set — heartbeats land every 15s and must not
@@ -285,12 +298,14 @@ export const createGame = mutation({
     });
 
     // add player who created game to game
-    await ctx.db.insert("players", {
+    const now = Date.now();
+    const playerId = await ctx.db.insert("players", {
       userId: user.subject,
       gameId: gameId,
-      lastAlive: Date.now(),
+      lastAlive: now,
       displayName,
     });
+    await recordHeartbeat(ctx, { _id: playerId, gameId }, now);
 
     // return game
     return await ctx.db.get(gameId);
@@ -333,12 +348,14 @@ export const joinGame = mutation({
       const displayName = authUser?.name?.trim() || "Unknown Player";
 
       // Link player to game
-      await ctx.db.insert("players", {
+      const now = Date.now();
+      const playerId = await ctx.db.insert("players", {
         userId: user.subject,
         gameId: game._id,
-        lastAlive: Date.now(),
+        lastAlive: now,
         displayName,
       });
+      await recordHeartbeat(ctx, { _id: playerId, gameId: game._id }, now);
     }
   },
 });
@@ -406,6 +423,7 @@ export const leaveGame = mutation({
     }
 
     // Delete them from the list of players
+    await deletePresence(ctx, userPlayer._id);
     await ctx.db.delete(userPlayer._id);
   },
 });
@@ -455,6 +473,29 @@ export const getPlayersForGame = query({
 });
 
 /**
+ * Each player's newest heartbeat, one row per player. Apart from the join
+ * screen's `getMyActiveGames`, the only query a heartbeat invalidates, so only
+ * the components that show liveness subscribe to it; everything else reads
+ * `players`, which a beat no longer writes.
+ */
+export const getPresenceForGame = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const [players, presence] = await Promise.all([
+      ctx.db
+        .query("players")
+        .withIndex("byGame", (q) => q.eq("gameId", args.gameId))
+        .collect(),
+      loadPresence(ctx, args.gameId),
+    ]);
+    return players.map((player) => ({
+      playerId: player._id,
+      lastAlive: lastAliveFor(player, presence),
+    }));
+  },
+});
+
+/**
  * Seats `getMyActiveGames` looks at, newest first. A game only stays
  * continuable for a couple of hours after its last heartbeat
  * (lib/continuable.ts), so in practice a live game is among a user's most
@@ -492,18 +533,23 @@ export const getMyActiveGames = query({
         if (!game || game.completedAt !== undefined) return null;
         if (game.abandonedAt !== undefined) return null;
 
-        const players = await ctx.db
-          .query("players")
-          .withIndex("byGame", (q) => q.eq("gameId", game._id))
-          .collect();
+        const [players, presence] = await Promise.all([
+          ctx.db
+            .query("players")
+            .withIndex("byGame", (q) => q.eq("gameId", game._id))
+            .collect(),
+          loadPresence(ctx, game._id),
+        ]);
         const activePlayers = players.filter((p) => p.active !== false);
         // Others, not everyone: the caller is sitting on the join screen, where
         // no heartbeat is sent, so counting themselves would be misleading.
         const othersOnline = activePlayers.filter(
-          (p) => p._id !== myPlayer._id && isConnected(p.lastAlive, now),
+          (p) =>
+            p._id !== myPlayer._id &&
+            isConnected(lastAliveFor(p, presence), now),
         ).length;
         const lastActivityAt = activePlayers.reduce(
-          (newest, p) => Math.max(newest, p.lastAlive),
+          (newest, p) => Math.max(newest, lastAliveFor(p, presence)),
           0,
         );
 
@@ -1692,6 +1738,7 @@ export const castPresenceVote = mutation({
     }
 
     const now = Date.now();
+    const presence = await loadPresence(ctx, game._id);
 
     const existingVotes = await ctx.db
       .query("presenceVotes")
@@ -1701,7 +1748,7 @@ export const castPresenceVote = mutation({
       .collect();
 
     // If the target is back online, cancel any open vote and do nothing.
-    if (isConnected(target.lastAlive, now)) {
+    if (isConnected(lastAliveFor(target, presence), now)) {
       await Promise.all(
         existingVotes.map((voteRow) => ctx.db.delete(voteRow._id)),
       );
@@ -1738,7 +1785,7 @@ export const castPresenceVote = mutation({
       (p) =>
         p._id !== target._id &&
         p.active !== false &&
-        isConnected(p.lastAlive, now),
+        isConnected(lastAliveFor(p, presence), now),
     );
     const eligibleVoterIds = new Set(connectedNonTarget.map((p) => p._id));
 
