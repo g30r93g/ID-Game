@@ -2,13 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { LoadingButton } from "@/components/ui/loading-button";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -38,11 +38,12 @@ export default function GuessScenarioGamePhase({
   const [selectedScenario, setSelectedScenario] = useState<
     Id<"gameRoundScenarios"> | undefined
   >(undefined);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   // Optimistic overlay only, so the switch to the waiting view is instant. The
   // server value is what survives a refresh — holding this in component state
   // alone meant reloading mid-phase dropped you back into the guessing UI with
-  // your guess already recorded.
+  // your guess already recorded. It is set before the call, not after, so the
+  // switch doesn't wait on the round trip; that also takes the button away, so
+  // a second tap can't send a second guess.
   const [locallyGuessed, setLocallyGuessed] = useState<boolean>(false);
   const hasGuessed = locallyGuessed || guessStatus?.viewerHasGuessed === true;
 
@@ -53,34 +54,28 @@ export default function GuessScenarioGamePhase({
   async function performGuess() {
     if (!selectedScenario) return;
 
+    setLocallyGuessed(true);
     try {
-      setIsLoading(true);
       await makeGuess({
         game: gameId,
         gameRound: roundId,
         scenario: selectedScenario,
       });
-      setLocallyGuessed(true);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
+    } catch {
+      // Back to the guessing view, with the selection still made, so trying
+      // again is one tap.
+      setLocallyGuessed(false);
+      toast.error("Couldn't submit your guess", {
+        description: "Please try again.",
+      });
     }
   }
 
   const submitButton = (
-    <LoadingButton
-      disabled={!selectedScenario}
-      loading={isLoading}
-      onClick={performGuess}
-    >
-      {!isLoading && (
-        <>
-          Submit Guess
-          <Check />
-        </>
-      )}
-    </LoadingButton>
+    <Button disabled={!selectedScenario} onClick={performGuess}>
+      Submit Guess
+      <Check />
+    </Button>
   );
 
   return (

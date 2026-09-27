@@ -410,10 +410,37 @@ export const leaveGame = mutation({
   },
 });
 
+// Stop new players joining. Shared by startGame and the deprecated
+// closeGameToNewPlayers; callers do their own authorisation.
+async function closeLobby(ctx: MutationCtx, game: Doc<"games">) {
+  await ctx.db.patch(game._id, { isOpen: false });
+}
+
+/**
+ * @deprecated Superseded by {@link startGame}, which closes the lobby and
+ * starts round 1 in one transaction. The client no longer calls this.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still call it by name.
+ */
 export const closeGameToNewPlayers = mutation({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.game, { isOpen: false });
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to close a game.");
+    }
+
+    // Only the creator runs the lobby, so only they may close it. Game ids
+    // reach every client, so without this anyone could shut someone else's.
+    const game = await ctx.db.get(args.game);
+    if (!game) throw new Error("Game not found.");
+    if (game.createdBy !== userId) {
+      throw new Error("Only the game's creator can close it to new players.");
+    }
+
+    await closeLobby(ctx, game);
   },
 });
 
@@ -558,6 +585,14 @@ export const getCurrentGameRound = query({
   },
 });
 
+/**
+ * @deprecated The game screen now finds the host in the player list it already
+ * subscribes to. This subscription re-pushed the host's document to every
+ * client on each of their heartbeats, only for its display name.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still subscribe to it by name.
+ */
 export const getCurrentGameRoundHostPlayer = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
@@ -583,15 +618,123 @@ export const getCurrentGameRoundHostPlayer = query({
   },
 });
 
+// The caller's player row, which must be active. Every mutation that moves a
+// game between rounds requires one: game ids reach every client, so without
+// it anyone could skip rounds or pick the next host.
+async function requireActivePlayer(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  userId: string,
+): Promise<Doc<"players">> {
+  const caller = await ctx.db
+    .query("players")
+    .withIndex("byGameUser", (q) => q.eq("gameId", gameId).eq("userId", userId))
+    .first();
+  if (!caller || caller.active === false) {
+    throw new Error("Only active players in the game can start a round.");
+  }
+  return caller;
+}
+
+// Create the game's next round and point the game at it. Returns null once no
+// rounds are left. Shared by startGame, finishRoundAndStartNext and the
+// deprecated startNewGameRound; callers do their own authorisation.
+async function startNextRound(
+  ctx: MutationCtx,
+  game: Doc<"games">,
+  hostPlayer?: Id<"players">,
+): Promise<Id<"gameRounds"> | null> {
+  // define the variable to hold the player
+  let player: Id<"players"> | undefined;
+
+  // determine the new round number
+  const newRoundNumber = (game.currentRound ?? 0) + 1;
+
+  // No rounds left — the game is over (round counts are always >= 1, enforced in createGame).
+  if (newRoundNumber > game.totalRounds) {
+    return null;
+  }
+
+  // If player is manually provided, use it directly
+  if (hostPlayer) {
+    const existingPlayer = await ctx.db.get(hostPlayer);
+    if (!existingPlayer || existingPlayer.gameId !== game._id) {
+      throw new Error("Invalid player specified.");
+    }
+
+    player = existingPlayer._id;
+  }
+
+  // Step 0: If game has no rounds (newRoundNumber === 1), assign player that created game
+  if (newRoundNumber === 1) {
+    const creatorPlayer = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", game.createdBy),
+      )
+      .first();
+
+    if (creatorPlayer) {
+      player = creatorPlayer._id;
+    } else {
+      throw new Error("No players within game to select as host");
+    }
+  }
+
+  // if the player is still undefined, we pick the least-hosted player
+  if (!player) {
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", game._id))
+      .collect();
+    const activePlayers = players.filter((p) => p.active !== false);
+    player = await pickHost(ctx, game._id, activePlayers);
+  }
+
+  // ensure player is defined
+  if (!player) {
+    // this should never run
+    throw new Error("Next host player indeterminate");
+  }
+
+  const newGameRound = await ctx.db.insert("gameRounds", {
+    gameId: game._id,
+    roundNumber: newRoundNumber,
+    hostPlayerId: player,
+    phase: "create-scenarios",
+  });
+
+  // update the round number; stamp the game's start time on round 1
+  await ctx.db.patch(game._id, {
+    currentRound: newRoundNumber,
+    ...(newRoundNumber === 1 ? { startedAt: Date.now() } : {}),
+  });
+
+  return newGameRound;
+}
+
+/**
+ * @deprecated Superseded by {@link startGame} and
+ * {@link finishRoundAndStartNext}, which each move the game across a round
+ * boundary in one transaction. The client no longer calls this.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still call it by name.
+ */
 export const startNewGameRound = mutation({
   args: { game: v.id("games"), player: v.optional(v.id("players")) },
   handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to start a round.");
+    }
+
     // Fetch current game to get the latest round number
     const game = await ctx.db.get(args.game);
     if (!game) throw new Error("Game not found.");
 
-    // define the variable to hold the player
-    let player: Id<"players"> | undefined;
+    await requireActivePlayer(ctx, game._id, userId);
 
     // determine the new round number
     const newRoundNumber = (game.currentRound ?? 0) + 1;
@@ -601,71 +744,52 @@ export const startNewGameRound = mutation({
       return null;
     }
 
-    // If player is manually provided, use it directly
-    if (args.player) {
-      const existingPlayer = await ctx.db.get(args.player);
-      if (!existingPlayer || existingPlayer.gameId !== args.game) {
-        throw new Error("Invalid player specified.");
-      }
-
-      player = existingPlayer._id;
-    }
-
-    // Step 0: If game has no rounds (newRoundNumber === 1), assign player that created game
+    // Round 1 is the creator's to start, the same as closing the lobby. After
+    // that the current round must have finished: only its host can move it to
+    // "finished" (see transitionRoundPhase), and any player may then start the
+    // next one, so a host who drops between the two calls doesn't strand the
+    // game.
     if (newRoundNumber === 1) {
-      const creatorPlayer = await ctx.db
-        .query("players")
-        .withIndex("byGameUser", (q) =>
-          q.eq("gameId", args.game).eq("userId", game.createdBy),
+      if (game.createdBy !== userId) {
+        throw new Error("Only the game's creator can start the first round.");
+      }
+    } else {
+      const currentRound = await ctx.db
+        .query("gameRounds")
+        .withIndex("byGameRound", (q) =>
+          q.eq("gameId", args.game).eq("roundNumber", newRoundNumber - 1),
         )
-        .first();
-
-      if (creatorPlayer) {
-        player = creatorPlayer._id;
-      } else {
-        throw new Error("No players within game to select as host");
+        .unique();
+      if (currentRound?.phase !== "finished") {
+        throw new Error(
+          "The current round must finish before the next one starts.",
+        );
       }
     }
 
-    // if the player is still undefined, we pick the least-hosted player
-    if (!player) {
-      const players = await ctx.db
-        .query("players")
-        .withIndex("byGame", (q) => q.eq("gameId", args.game))
-        .collect();
-      const activePlayers = players.filter((p) => p.active !== false);
-      player = await pickHost(ctx, args.game, activePlayers);
-    }
-
-    // ensure player is defined
-    if (!player) {
-      // this should never run
-      throw new Error("Next host player indeterminate");
-    }
-
-    const newGameRound = await ctx.db.insert("gameRounds", {
-      gameId: game._id,
-      roundNumber: newRoundNumber,
-      hostPlayerId: player,
-      phase: "create-scenarios",
-    });
-
-    // update the round number; stamp the game's start time on round 1
-    await ctx.db.patch(game._id, {
-      currentRound: newRoundNumber,
-      ...(newRoundNumber === 1 ? { startedAt: Date.now() } : {}),
-    });
-
-    return newGameRound;
+    return await startNextRound(ctx, game, args.player);
   },
 });
 
+// The categories a host can draw from, sorted. A distinct walk of the
+// byCategory index: one seek per category rather than a read of every
+// scenario, so the timesSelected patch each lock-in makes no longer re-runs a
+// scan of the whole table for every host on this screen. It deliberately does
+// not read scenarioCategories: that table can hold categories with no
+// scenarios yet, which would show in the picker and then fail the draw.
 export const scenarioCategories = query({
   handler: async (ctx) => {
-    const scenarios = await ctx.db.query("scenarios").collect();
-
-    // Extract unique categories
-    return [...new Set(scenarios.map((s) => s.category))];
+    const categories: string[] = [];
+    let next = await ctx.db.query("scenarios").withIndex("byCategory").first();
+    while (next) {
+      const category = next.category;
+      categories.push(category);
+      next = await ctx.db
+        .query("scenarios")
+        .withIndex("byCategory", (q) => q.gt("category", category))
+        .first();
+    }
+    return categories;
   },
 });
 
@@ -729,7 +853,7 @@ export const selectScenariosForGameRound = mutation({
   args: {
     game: v.id("games"),
     gameRound: v.id("gameRounds"),
-    category: v.optional(v.string()),
+    category: v.string(),
   },
   handler: async (ctx, args) => {
     // Ensure user is authenticated
@@ -758,14 +882,12 @@ export const selectScenariosForGameRound = mutation({
       );
     }
 
-    // Fetch scenarios, leveraging index if a category is specified
-    const query = args.category
-      ? ctx.db
-          .query("scenarios")
-          .withIndex("byCategory", (q) => q.eq("category", args.category!))
-      : ctx.db.query("scenarios");
-
-    const scenarios = await query.collect();
+    // A category is required, so this is always an indexed read of one
+    // category and never the whole table.
+    const scenarios = await ctx.db
+      .query("scenarios")
+      .withIndex("byCategory", (q) => q.eq("category", args.category))
+      .collect();
 
     // Checked before anything is deleted, so a re-draw into a category that
     // turns out to be too small leaves the existing draw intact.
@@ -788,9 +910,15 @@ export const selectScenariosForGameRound = mutation({
     }
     await Promise.all(existingDraw.map((row) => ctx.db.delete(row._id)));
 
-    // Shuffle and pick 10 scenarios
-    const shuffledScenarios = scenarios.sort(() => Math.random() - 0.5);
-    const selectedScenarios = shuffledScenarios.slice(0, 10);
+    // Pick 10 uniformly at random with a partial Fisher–Yates shuffle: only
+    // the first 10 slots are settled, so it's O(10) swaps rather than a full
+    // sort, and unlike a random sort comparator it isn't biased.
+    const picks = Math.min(10, scenarios.length);
+    for (let i = 0; i < picks; i++) {
+      const j = i + Math.floor(Math.random() * (scenarios.length - i));
+      [scenarios[i], scenarios[j]] = [scenarios[j], scenarios[i]];
+    }
+    const selectedScenarios = scenarios.slice(0, picks);
 
     // Insert gameRoundScenarios entries for the selected scenarios
     await Promise.all(
@@ -807,6 +935,82 @@ export const selectScenariosForGameRound = mutation({
     return true;
   },
 });
+
+type RoundPhase = Doc<"gameRounds">["phase"];
+
+// Move a round to `toPhase`, enforcing the legal transitions, and stamp the
+// game complete when its final round reaches its end. Returns whether the
+// phase actually changed. Shared by transitionRoundPhase and
+// finishRoundAndStartNext; callers do their own authorisation.
+async function advanceRoundPhase(
+  ctx: MutationCtx,
+  gameRound: Doc<"gameRounds">,
+  toPhase: RoundPhase,
+): Promise<boolean> {
+  // Enforce a legal forward phase transition. Phases advance linearly; a skip,
+  // rewind, or unknown jump is rejected. A no-op to the same phase is allowed
+  // so a double-submit / mutation retry doesn't error.
+  const NEXT_PHASE: Partial<Record<RoundPhase, RoundPhase>> = {
+    "create-scenarios": "pick-scenario",
+    "pick-scenario": "rank-players",
+    "rank-players": "guess-scenario",
+    "guess-scenario": "display-results",
+    "display-results": "finished",
+  };
+  // The single sanctioned rewind: the host backing out of a category choice to
+  // pick a different one. Legal only while nothing has been locked in — after
+  // that `selectGameRoundScenario` has already bumped the scenario's
+  // timesSelected, and unwinding it is out of scope. Checked lazily so the
+  // extra read only happens for this one phase pair.
+  let isCategoryRewind = false;
+  if (gameRound.phase === "pick-scenario" && toPhase === "create-scenarios") {
+    const lockedIn = await ctx.db
+      .query("gameRoundScenarios")
+      .withIndex("byRoundSelected", (q) =>
+        q.eq("roundId", gameRound._id).eq("selected", true),
+      )
+      .first();
+    isCategoryRewind = lockedIn === null;
+  }
+
+  if (
+    toPhase !== gameRound.phase &&
+    NEXT_PHASE[gameRound.phase] !== toPhase &&
+    !isCategoryRewind
+  ) {
+    throw new Error(
+      `Illegal phase transition: ${gameRound.phase} -> ${toPhase}`,
+    );
+  }
+
+  // change phase. A no-op leaves the document alone, so a retry doesn't
+  // invalidate every subscriber to the round.
+  const changed = toPhase !== gameRound.phase;
+  if (changed) {
+    await ctx.db.patch(gameRound._id, { phase: toPhase });
+  }
+
+  // Mark the guesses in the same transaction as the reveal, so every player's
+  // first frame of results is already right. Doing it from the host's browser
+  // afterwards showed everyone all-wrong until it landed, or for good if the
+  // host had gone. Guesses can't arrive after this: makeGuessForRound only
+  // takes them during guess-scenario.
+  if (changed && toPhase === "display-results") {
+    await markGuesses(ctx, gameRound._id);
+  }
+
+  // stamp game completion when the final round finishes
+  const game = await ctx.db.get(gameRound.gameId);
+  if (
+    game &&
+    game.completedAt === undefined &&
+    shouldSetCompletedAt(toPhase, gameRound.roundNumber, game.totalRounds)
+  ) {
+    await ctx.db.patch(game._id, { completedAt: Date.now() });
+  }
+
+  return changed;
+}
 
 export const transitionRoundPhase = mutation({
   args: {
@@ -843,63 +1047,116 @@ export const transitionRoundPhase = mutation({
       throw new Error("Only game round host can transition a game round");
     }
 
-    // Enforce a legal forward phase transition. Phases advance linearly; a skip,
-    // rewind, or unknown jump is rejected. A no-op to the same phase is allowed
-    // so a double-submit / mutation retry doesn't error.
-    const NEXT_PHASE: Partial<
-      Record<Doc<"gameRounds">["phase"], Doc<"gameRounds">["phase"]>
-    > = {
-      "create-scenarios": "pick-scenario",
-      "pick-scenario": "rank-players",
-      "rank-players": "guess-scenario",
-      "guess-scenario": "display-results",
-      "display-results": "finished",
-    };
-    // The single sanctioned rewind: the host backing out of a category choice to
-    // pick a different one. Legal only while nothing has been locked in — after
-    // that `selectGameRoundScenario` has already bumped the scenario's
-    // timesSelected, and unwinding it is out of scope. Checked lazily so the
-    // extra read only happens for this one phase pair.
-    let isCategoryRewind = false;
-    if (
-      gameRound.phase === "pick-scenario" &&
-      args.toPhase === "create-scenarios"
-    ) {
-      const lockedIn = await ctx.db
-        .query("gameRoundScenarios")
-        .withIndex("byRoundSelected", (q) =>
-          q.eq("roundId", gameRound._id).eq("selected", true),
+    await advanceRoundPhase(ctx, gameRound, args.toPhase);
+  },
+});
+
+/**
+ * Close the lobby and start round 1, with the creator as its host, in one
+ * transaction. Chaining closeGameToNewPlayers and startNewGameRound cost two
+ * round trips, and every client rendered the closed-but-roundless game in
+ * between.
+ *
+ * Only the creator may call it. Calling it again once the game has started is
+ * a no-op that returns the current round, so a double-click or a retry never
+ * starts a second round.
+ */
+export const startGame = mutation({
+  args: { game: v.id("games") },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to start a game.");
+    }
+
+    // Only the creator runs the lobby, so only they may start the game.
+    const game = await ctx.db.get(args.game);
+    if (!game) throw new Error("Game not found.");
+    if (game.createdBy !== userId) {
+      throw new Error("Only the game's creator can start it.");
+    }
+
+    if (game.isOpen) {
+      await closeLobby(ctx, game);
+    }
+
+    const currentRoundNumber = game.currentRound;
+    if (currentRoundNumber) {
+      const currentRound = await ctx.db
+        .query("gameRounds")
+        .withIndex("byGameRound", (q) =>
+          q.eq("gameId", game._id).eq("roundNumber", currentRoundNumber),
         )
-        .first();
-      isCategoryRewind = lockedIn === null;
+        .unique();
+      return currentRound?._id ?? null;
     }
 
-    if (
-      args.toPhase !== gameRound.phase &&
-      NEXT_PHASE[gameRound.phase] !== args.toPhase &&
-      !isCategoryRewind
-    ) {
-      throw new Error(
-        `Illegal phase transition: ${gameRound.phase} -> ${args.toPhase}`,
-      );
+    return await startNextRound(ctx, game);
+  },
+});
+
+/**
+ * Finish a round and start the next one in one transaction. Chaining
+ * transitionRoundPhase and startNewGameRound cost two round trips, and every
+ * client rendered the "finished" phase in between. Returns the new round's id,
+ * or null on the final round, which is still moved to "finished" (and the game
+ * stamped complete). Normal play leaves the final round through "Finish Game"
+ * and the rating screen instead, so the client never calls this for it.
+ *
+ * The same rules as the two calls it replaces: only the round's host may
+ * finish it, and once it has finished any active player may start the next,
+ * so a host who dropped between the two old calls doesn't strand the game.
+ * Calling it again after the next round exists is a no-op that returns that
+ * round, so a double-click or a retry never starts a second one.
+ */
+export const finishRoundAndStartNext = mutation({
+  args: { round: v.id("gameRounds") },
+  handler: async (ctx, args) => {
+    // Ensure user is authenticated
+    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    if (!userId) {
+      throw new Error("User must be authenticated to finish a round.");
     }
 
-    // change phase
-    await ctx.db.patch(gameRound._id, { phase: args.toPhase });
+    // Get game round referenced
+    const round = await ctx.db.get(args.round);
+    if (!round) {
+      throw new Error("Game round does not exist");
+    }
 
-    // stamp game completion when the final round finishes
-    const game = await ctx.db.get(gameRound.gameId);
-    if (
-      game &&
-      game.completedAt === undefined &&
-      shouldSetCompletedAt(
-        args.toPhase,
-        gameRound.roundNumber,
-        game.totalRounds,
+    const game = await ctx.db.get(round.gameId);
+    if (!game) throw new Error("Game not found.");
+
+    await requireActivePlayer(ctx, game._id, userId);
+
+    // Already moved on: hand back the round that followed.
+    const nextRound = await ctx.db
+      .query("gameRounds")
+      .withIndex("byGameRound", (q) =>
+        q.eq("gameId", game._id).eq("roundNumber", round.roundNumber + 1),
       )
-    ) {
-      await ctx.db.patch(game._id, { completedAt: Date.now() });
+      .unique();
+    if (nextRound) {
+      return nextRound._id;
     }
+
+    if (game.currentRound !== round.roundNumber) {
+      throw new Error("Only the game's current round can be finished.");
+    }
+
+    if (round.phase !== "finished") {
+      // The host is read here rather than trusted from the client:
+      // castPresenceVote can reassign it mid-round.
+      const host = await ctx.db.get(round.hostPlayerId);
+      if (host?.userId !== userId) {
+        throw new Error("Only game round host can finish a game round");
+      }
+
+      await advanceRoundPhase(ctx, round, "finished");
+    }
+
+    return await startNextRound(ctx, game);
   },
 });
 
@@ -1041,6 +1298,49 @@ export const getPlayerRankingsForRound = query({
   },
 });
 
+// Record on each of the round's guesses whether it picked the host's scenario.
+// Returns false, marking nothing, when the round has no selected scenario.
+// Idempotent. Callers do their own authorisation.
+async function markGuesses(
+  ctx: MutationCtx,
+  roundId: Id<"gameRounds">,
+): Promise<boolean> {
+  // Fetch all guesses for this round
+  const guesses = await ctx.db
+    .query("gameRoundGuesses")
+    .withIndex("byRound", (q) => q.eq("roundId", roundId))
+    .collect();
+
+  // Get the selected scenario for the game round (assuming one selected scenario per round)
+  const selectedScenario = await ctx.db
+    .query("gameRoundScenarios")
+    .withIndex("byRoundSelected", (q) =>
+      q.eq("roundId", roundId).eq("selected", true),
+    )
+    .first();
+
+  if (!selectedScenario) {
+    return false;
+  }
+
+  // Determine correct guesses by comparing the guessed scenario ID with the selected scenario ID
+  await Promise.all(
+    guesses.map((guess) =>
+      ctx.db.patch(guess._id, {
+        isCorrect: guess.scenarioId === selectedScenario._id,
+      }),
+    ),
+  );
+  return true;
+}
+
+/**
+ * @deprecated Guesses are now marked by the transition to "display-results"
+ * itself (see advanceRoundPhase). The client no longer calls this.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still call it by name.
+ */
 export const markGuessesForRound = mutation({
   args: { roundId: v.id("gameRounds") },
   handler: async (ctx, args) => {
@@ -1068,40 +1368,9 @@ export const markGuessesForRound = mutation({
       throw new Error("Only the game round host can determine who was correct");
     }
 
-    // Fetch all guesses for this round
-    const guesses = await ctx.db
-      .query("gameRoundGuesses")
-      .withIndex("byRound", (q) => q.eq("roundId", args.roundId))
-      .collect();
-
-    // Get the selected scenario for the game round (assuming one selected scenario per round)
-    const selectedScenario = await ctx.db
-      .query("gameRoundScenarios")
-      .withIndex("byRoundSelected", (q) =>
-        q.eq("roundId", args.roundId).eq("selected", true),
-      )
-      .first();
-
-    if (!selectedScenario) {
+    if (!(await markGuesses(ctx, args.roundId))) {
       throw new Error("No selected scenario found for this round");
     }
-
-    // Determine correct guesses by comparing the guessed scenario ID with the selected scenario ID
-    const updatedGuesses = guesses.map((guess) => {
-      const isCorrect = guess.scenarioId === selectedScenario._id;
-
-      return {
-        ...guess,
-        isCorrect: isCorrect,
-      };
-    });
-
-    // Update all guesses with the 'correct' field
-    await Promise.all(
-      updatedGuesses.map((guess) =>
-        ctx.db.patch(guess._id, { isCorrect: guess.isCorrect }),
-      ),
-    );
   },
 });
 
@@ -1276,6 +1545,13 @@ export const makeGuessForRound = mutation({
       throw new Error("Game rounds hosts cannot submit guesses");
     }
 
+    // Guesses are marked when the round moves to its reveal, so one landing
+    // after that would stay unmarked. Before guessing opens there is nothing
+    // to guess at.
+    if (gameRound.phase !== "guess-scenario") {
+      throw new Error("Guesses can only be made while the round is guessing.");
+    }
+
     // Get the player associated with the user
     const player = await ctx.db
       .query("players")
@@ -1297,6 +1573,26 @@ export const makeGuessForRound = mutation({
       scenarioId: args.scenario,
       playerId: player._id,
     });
+
+    // The last guess reveals the results itself, marking them in the same
+    // transaction, so the reveal doesn't wait on the host's browser, or never
+    // come if the host has gone. "Everyone" is every active player bar the
+    // host, as in getGuessesStatusForRound. The host's own auto-advance then
+    // finds the phase already moved, which transitionRoundPhase allows.
+    const players = await ctx.db
+      .query("players")
+      .withIndex("byGame", (q) => q.eq("gameId", gameRound.gameId))
+      .collect();
+    const guesses = await ctx.db
+      .query("gameRoundGuesses")
+      .withIndex("byRound", (q) => q.eq("roundId", gameRound._id))
+      .collect();
+    const everyoneHasGuessed = players
+      .filter((p) => p._id !== gameRound.hostPlayerId && p.active !== false)
+      .every((p) => guesses.some((guess) => guess.playerId === p._id));
+    if (everyoneHasGuessed) {
+      await advanceRoundPhase(ctx, gameRound, "display-results");
+    }
   },
 });
 
