@@ -109,102 +109,6 @@ export const sendHeartbeat = mutation({
 });
 
 /**
- * @deprecated Superseded by {@link fetchGameAndMembership}, which answers this
- * and returns the game in the same round trip. Nothing calls this any more.
- *
- * Kept for one deploy cycle only: a browser tab loaded before the deploy still
- * holds a live subscription to the old pair, and Convex resolves subscriptions
- * by name. Delete both once no pre-deploy tabs can still be open.
- */
-export const isUserPlayer = query({
-  args: { joinCode: v.string() },
-  handler: async (ctx, args) => {
-    // Ensure user is authenticated
-    const user = await ctx.auth.getUserIdentity();
-    if (!user) {
-      throw new Error("User must be authenticated to join a game.");
-    }
-
-    // Ensure game exists
-    const game = await ctx.db
-      .query("games")
-      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
-      .first();
-    if (!game) {
-      throw new Error("Game does not exist.");
-    }
-
-    // Only add user if not already in game
-    const userPlayer = await ctx.db
-      .query("players")
-      .withIndex("byGameUser", (q) =>
-        q.eq("gameId", game._id).eq("userId", user.subject),
-      )
-      .first();
-
-    return !!userPlayer;
-  },
-});
-
-/**
- * @deprecated Superseded by {@link fetchGameAndMembership}. See the note on
- * {@link isUserPlayer} for why this is still exported.
- */
-export const fetchGameByJoinCode = query({
-  args: { joinCode: v.string() },
-  handler: async (ctx, args) => {
-    const game = await ctx.db
-      .query("games")
-      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
-      .unique();
-
-    if (!game) {
-      console.error(`No game found with join code: ${args.joinCode}`);
-      return null;
-    }
-
-    return game;
-  },
-});
-
-/**
- * @deprecated Split into {@link getGameForViewer}, the game screen's live read,
- * and {@link isPlayerInGame}, which the page checks once. Kept live, this read
- * the caller's players row in every subscription for a fact only the page's
- * first render needed.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still subscribe to it by name.
- */
-export const fetchGameAndMembership = query({
-  args: { joinCode: v.string() },
-  handler: async (ctx, args) => {
-    const user = await ctx.auth.getUserIdentity();
-    if (!user) {
-      throw new Error("User must be authenticated to load a game.");
-    }
-
-    const game = await ctx.db
-      .query("games")
-      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
-      .unique();
-
-    if (!game) {
-      return { game: null, isPlayer: false };
-    }
-
-    const userPlayer = await ctx.db
-      .query("players")
-      .withIndex("byGameUser", (q) =>
-        q.eq("gameId", game._id).eq("userId", user.subject),
-      )
-      .first();
-
-    return { game, isPlayer: !!userPlayer };
-  },
-});
-
-/**
  * The game screen's live read: the game behind a join code, and who is
  * looking at it. The page preloads it so the first paint has the game.
  *
@@ -483,40 +387,6 @@ export const leaveGame = mutation({
   },
 });
 
-// Stop new players joining. Shared by startGame and the deprecated
-// closeGameToNewPlayers; callers do their own authorisation.
-async function closeLobby(ctx: MutationCtx, game: Doc<"games">) {
-  await ctx.db.patch(game._id, { isOpen: false });
-}
-
-/**
- * @deprecated Superseded by {@link startGame}, which closes the lobby and
- * starts round 1 in one transaction. The client no longer calls this.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still call it by name.
- */
-export const closeGameToNewPlayers = mutation({
-  args: { game: v.id("games") },
-  handler: async (ctx, args) => {
-    // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
-    if (!userId) {
-      throw new Error("User must be authenticated to close a game.");
-    }
-
-    // Only the creator runs the lobby, so only they may close it. Game ids
-    // reach every client, so without this anyone could shut someone else's.
-    const game = await ctx.db.get(args.game);
-    if (!game) throw new Error("Game not found.");
-    if (game.createdBy !== userId) {
-      throw new Error("Only the game's creator can close it to new players.");
-    }
-
-    await closeLobby(ctx, game);
-  },
-});
-
 export const getPlayersForGame = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
@@ -636,43 +506,6 @@ export const getMyActiveGames = query({
   },
 });
 
-/**
- * @deprecated The game screen finds the caller in the player list it already
- * holds, using the `viewerUserId` from {@link getGameForViewer}, rather than
- * keeping a separate subscription per viewer.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still subscribe to it by name.
- */
-export const getPlayerForCurrentUserForGame = query({
-  args: { game: v.id("games") },
-  handler: async (ctx, args) => {
-    // Get current user
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
-    if (!userId) {
-      throw new Error("User must be authenticated.");
-    }
-
-    // Match user to player in game
-    return await ctx.db
-      .query("players")
-      .withIndex("byGameUser", (q) =>
-        q.eq("gameId", args.game).eq("userId", userId),
-      )
-      .first();
-  },
-});
-
-export const getGameRoundsForGame = query({
-  args: { game: v.id("games") },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("gameRounds")
-      .withIndex("byGameRound", (q) => q.eq("gameId", args.game))
-      .collect();
-  },
-});
-
 export const getCurrentGameRound = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {
@@ -691,39 +524,6 @@ export const getCurrentGameRound = query({
         q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber),
       )
       .unique();
-  },
-});
-
-/**
- * @deprecated The game screen now finds the host in the player list it already
- * subscribes to. This subscription re-pushed the host's document to every
- * client on each of their heartbeats, only for its display name.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still subscribe to it by name.
- */
-export const getCurrentGameRoundHostPlayer = query({
-  args: { game: v.id("games") },
-  handler: async (ctx, args) => {
-    // get game
-    const game = await ctx.db.get(args.game);
-    if (!game) return null;
-
-    // extract game's current round number
-    const currentRoundNumber = game.currentRound;
-    if (!currentRoundNumber) return null;
-
-    // get game round
-    const currentRound = await ctx.db
-      .query("gameRounds")
-      .withIndex("byGameRound", (q) =>
-        q.eq("gameId", args.game).eq("roundNumber", currentRoundNumber),
-      )
-      .unique();
-    if (!currentRound) return null;
-
-    // get host for round
-    return await ctx.db.get(currentRound.hostPlayerId);
   },
 });
 
@@ -746,12 +546,11 @@ async function requireActivePlayer(
 }
 
 // Create the game's next round and point the game at it. Returns null once no
-// rounds are left. Shared by startGame, finishRoundAndStartNext and the
-// deprecated startNewGameRound; callers do their own authorisation.
+// rounds are left. Shared by startGame and finishRoundAndStartNext; callers do
+// their own authorisation.
 async function startNextRound(
   ctx: MutationCtx,
   game: Doc<"games">,
-  hostPlayer?: Id<"players">,
 ): Promise<Id<"gameRounds"> | null> {
   // define the variable to hold the player
   let player: Id<"players"> | undefined;
@@ -762,16 +561,6 @@ async function startNextRound(
   // No rounds left — the game is over (round counts are always >= 1, enforced in createGame).
   if (newRoundNumber > game.totalRounds) {
     return null;
-  }
-
-  // If player is manually provided, use it directly
-  if (hostPlayer) {
-    const existingPlayer = await ctx.db.get(hostPlayer);
-    if (!existingPlayer || existingPlayer.gameId !== game._id) {
-      throw new Error("Invalid player specified.");
-    }
-
-    player = existingPlayer._id;
   }
 
   // Step 0: If game has no rounds (newRoundNumber === 1), assign player that created game
@@ -821,64 +610,6 @@ async function startNextRound(
 
   return newGameRound;
 }
-
-/**
- * @deprecated Superseded by {@link startGame} and
- * {@link finishRoundAndStartNext}, which each move the game across a round
- * boundary in one transaction. The client no longer calls this.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still call it by name.
- */
-export const startNewGameRound = mutation({
-  args: { game: v.id("games"), player: v.optional(v.id("players")) },
-  handler: async (ctx, args) => {
-    // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
-    if (!userId) {
-      throw new Error("User must be authenticated to start a round.");
-    }
-
-    // Fetch current game to get the latest round number
-    const game = await ctx.db.get(args.game);
-    if (!game) throw new Error("Game not found.");
-
-    await requireActivePlayer(ctx, game._id, userId);
-
-    // determine the new round number
-    const newRoundNumber = (game.currentRound ?? 0) + 1;
-
-    // No rounds left — the game is over (round counts are always >= 1, enforced in createGame).
-    if (newRoundNumber > game.totalRounds) {
-      return null;
-    }
-
-    // Round 1 is the creator's to start, the same as closing the lobby. After
-    // that the current round must have finished: only its host can move it to
-    // "finished" (see transitionRoundPhase), and any player may then start the
-    // next one, so a host who drops between the two calls doesn't strand the
-    // game.
-    if (newRoundNumber === 1) {
-      if (game.createdBy !== userId) {
-        throw new Error("Only the game's creator can start the first round.");
-      }
-    } else {
-      const currentRound = await ctx.db
-        .query("gameRounds")
-        .withIndex("byGameRound", (q) =>
-          q.eq("gameId", args.game).eq("roundNumber", newRoundNumber - 1),
-        )
-        .unique();
-      if (currentRound?.phase !== "finished") {
-        throw new Error(
-          "The current round must finish before the next one starts.",
-        );
-      }
-    }
-
-    return await startNextRound(ctx, game, args.player);
-  },
-});
 
 // The categories a host can draw from, sorted. A distinct walk of the
 // byCategory index: one seek per category rather than a read of every
@@ -1162,7 +893,7 @@ export const transitionRoundPhase = mutation({
 
 /**
  * Close the lobby and start round 1, with the creator as its host, in one
- * transaction. Chaining closeGameToNewPlayers and startNewGameRound cost two
+ * transaction. Closing the lobby and starting the round as two calls cost two
  * round trips, and every client rendered the closed-but-roundless game in
  * between.
  *
@@ -1186,8 +917,9 @@ export const startGame = mutation({
       throw new Error("Only the game's creator can start it.");
     }
 
+    // Stop new players joining.
     if (game.isOpen) {
-      await closeLobby(ctx, game);
+      await ctx.db.patch(game._id, { isOpen: false });
     }
 
     const currentRoundNumber = game.currentRound;
@@ -1207,10 +939,10 @@ export const startGame = mutation({
 
 /**
  * Finish a round and start the next one in one transaction. Chaining
- * transitionRoundPhase and startNewGameRound cost two round trips, and every
- * client rendered the "finished" phase in between. Returns the new round's id,
- * or null on the final round, which is still moved to "finished" (and the game
- * stamped complete). Normal play leaves the final round through "Finish Game"
+ * transitionRoundPhase and a separate start-round call cost two round trips,
+ * and every client rendered the "finished" phase in between. Returns the new
+ * round's id, or null on the final round, which is still moved to "finished"
+ * (and the game stamped complete). Normal play leaves the final round through "Finish Game"
  * and the rating screen instead, so the client never calls this for it.
  *
  * The same rules as the two calls it replaces: only the round's host may
@@ -1408,12 +1140,12 @@ export const getPlayerRankingsForRound = query({
 });
 
 // Record on each of the round's guesses whether it picked the host's scenario.
-// Returns false, marking nothing, when the round has no selected scenario.
-// Idempotent. Callers do their own authorisation.
+// Marks nothing when the round has no selected scenario. Idempotent. Callers
+// do their own authorisation.
 async function markGuesses(
   ctx: MutationCtx,
   roundId: Id<"gameRounds">,
-): Promise<boolean> {
+): Promise<void> {
   // Fetch all guesses for this round
   const guesses = await ctx.db
     .query("gameRoundGuesses")
@@ -1429,7 +1161,7 @@ async function markGuesses(
     .first();
 
   if (!selectedScenario) {
-    return false;
+    return;
   }
 
   // Determine correct guesses by comparing the guessed scenario ID with the selected scenario ID
@@ -1440,48 +1172,7 @@ async function markGuesses(
       }),
     ),
   );
-  return true;
 }
-
-/**
- * @deprecated Guesses are now marked by the transition to "display-results"
- * itself (see advanceRoundPhase). The client no longer calls this.
- *
- * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
- * tabs loaded before the deploy still call it by name.
- */
-export const markGuessesForRound = mutation({
-  args: { roundId: v.id("gameRounds") },
-  handler: async (ctx, args) => {
-    // Ensure user is authenticated
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
-    if (!userId) {
-      throw new Error(
-        "User must be authenticated to select a game round scenario.",
-      );
-    }
-
-    // Get game round referenced
-    const gameRound = await ctx.db.get(args.roundId);
-    if (!gameRound) {
-      throw new Error("Game round does not exist");
-    }
-
-    // Ensure current user is the round host
-    const gameRoundHostPlayer = await ctx.db.get(gameRound.hostPlayerId);
-    if (!gameRoundHostPlayer) {
-      throw new Error("Game round host does not exist");
-    }
-
-    if (userId !== gameRoundHostPlayer.userId) {
-      throw new Error("Only the game round host can determine who was correct");
-    }
-
-    if (!(await markGuesses(ctx, args.roundId))) {
-      throw new Error("No selected scenario found for this round");
-    }
-  },
-});
 
 export const getGuessesForRound = query({
   args: { roundId: v.id("gameRounds") },
