@@ -17,6 +17,35 @@ const eslintConfig = [
     },
   },
   {
+    // app/env.ts validates with t3-env and zod; imported from client code it
+    // ships both to every page. Client code reads lib/public-env.ts instead.
+    // (A `server-only` import in app/env.ts would say this more directly, but
+    // next.config.ts loads that file through jiti in plain Node, where
+    // `server-only` throws outside the react-server condition.)
+    files: ["components/**", "providers/**", "lib/**"],
+    ignores: [
+      // Server-only modules that legitimately read the validated env.
+      "lib/auth-server.ts",
+      "lib/invite.ts",
+      "lib/og.tsx",
+      "lib/posthog.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/app/env",
+              message:
+                "Client code must not import app/env.ts (it bundles zod). Use @/lib/public-env.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     ignores: [".next/**", "convex/_generated/**", "node_modules/**"],
   },
 ];

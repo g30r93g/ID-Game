@@ -14,10 +14,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { env } from "@/app/env";
 import { getToken } from "@/lib/auth-server";
 import { getInvite, inviteTitle, roundsLabel, type Invite } from "@/lib/invite";
 import { invitePath, normaliseJoinCode } from "@/lib/join-code";
 import { pageOpenGraph, SITE_DESCRIPTION } from "@/lib/metadata";
+import { PostHogIdentity } from "@/providers/PostHogIdentity";
 
 // The link the lobby shares. It lives outside the signed-in routes so that
 // link-preview crawlers, which never have a session, can read its tags and
@@ -110,7 +112,12 @@ export default async function JoinPage({ params }: Props) {
           </CardContent>
         )}
         {invite?.status === "open" ? (
-          <GuestJoin joinCode={invite.joinCode} signInHref={signIn} />
+          <>
+            <GuestJoin joinCode={invite.joinCode} signInHref={signIn} />
+            {/* Identifies the guest this page signs in, as the signed-in
+                layouts do. Production only, like PostHogProvider. */}
+            {env.NODE_ENV === "production" && <PostHogIdentity />}
+          </>
         ) : (
           <CardFooter className="flex flex-col gap-2">
             {invite?.status === "started" ? (
