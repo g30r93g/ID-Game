@@ -8,7 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { usePostHog } from "posthog-js/react";
+import { capture } from "@/lib/analytics";
 
 interface PickScenarioGamePhaseProps {
   gameRound: Id<"gameRounds">;
@@ -27,7 +27,6 @@ function PickScenarioGamePhase({
     api.game.selectGameRoundScenario,
   );
 
-  const posthog = usePostHog();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedScenario, setSelectedScenario] = useState<
     Id<"gameRoundScenarios"> | undefined
@@ -35,10 +34,9 @@ function PickScenarioGamePhase({
 
   useEffect(() => {
     if (!selectedScenario) return;
-    if (!posthog) return;
 
-    posthog.capture("game_scenario_select", { scenario: selectedScenario });
-  }, [selectedScenario, posthog]);
+    capture("game_scenario_select", { scenario: selectedScenario });
+  }, [selectedScenario]);
 
   async function handleScenarioSelection() {
     try {

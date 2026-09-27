@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { useConvexAuth, useMutation } from "convex/react";
-import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
+import { captureException } from "@/lib/analytics";
 import { authClient } from "@/lib/auth-client";
 
 /**
@@ -34,14 +34,11 @@ export type SaveDisplayName = {
  * Both halves of the save can fail without the user ever reaching a server log
  * — a rejected `updateUser` never gets past the browser, and a `syncDisplayName`
  * that is never dispatched leaves no trace in Convex at all. Without this the
- * only record is a `console.error` on someone else's device.
- *
- * Guarded on `__loaded` because the PostHog provider is mounted in production
- * only, so in development the client here is an uninitialised stub.
+ * only record is a `console.error` on someone else's device. (A no-op outside
+ * production, like the rest of lib/analytics.ts.)
  */
 const reportFailure = (error: unknown, stage: "account" | "propagate") => {
-  if (!posthog.__loaded) return;
-  posthog.captureException(error, { feature: "display-name", stage });
+  captureException(error, { feature: "display-name", stage });
 };
 
 /**

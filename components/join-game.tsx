@@ -24,7 +24,7 @@ import { api } from "@/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
-import { usePostHog } from "posthog-js/react";
+import { capture } from "@/lib/analytics";
 import { useTransition } from "react";
 
 const formSchema = z.object({
@@ -46,7 +46,6 @@ export default function JoinGame({
     },
   });
   const { replace } = useRouter();
-  const posthog = usePostHog();
   const performJoinGame = useMutation(api.game.joinGame);
   // Same reasoning as CreateGame: `replace` returns void, so a flag cleared
   // after it would re-enable Join while the game page is still loading and
@@ -56,9 +55,7 @@ export default function JoinGame({
 
   async function onSubmit({ joinCode }: z.infer<typeof formSchema>) {
     try {
-      if (posthog) {
-        posthog.capture("join_game", { joinCode });
-      }
+      capture("join_game", { joinCode });
 
       await performJoinGame({ joinCode });
 

@@ -29,7 +29,7 @@ import { Loader2, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
 import PlayersDialog from "@/components/game/players-dialog";
-import { usePostHog } from "posthog-js/react";
+import { capture } from "@/lib/analytics";
 import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 import GameShellSkeleton from "@/components/game/game-shell-skeleton";
 import { HEARTBEAT_INTERVAL_MS } from "@/lib/presence";
@@ -164,7 +164,6 @@ export function Game({
   const leaveGameFn = useMutation(api.game.leaveGame);
 
   const { replace } = useRouter();
-  const posthog = usePostHog();
   const [isLeavingInProgress, setIsLeavingInProgress] =
     useState<boolean>(false);
   // Header slot the non-host guess phase portals its "Submit Guess" button into,
@@ -229,12 +228,10 @@ export function Game({
     try {
       setIsLeavingInProgress(true);
 
-      if (posthog) {
-        posthog.capture("game_leave", {
-          phase: currentRound?.phase,
-          isFinished: isGameFinished(),
-        });
-      }
+      capture("game_leave", {
+        phase: currentRound?.phase,
+        isFinished: isGameFinished(),
+      });
 
       await leaveGameFn({ gameId: game!._id });
       replace("/game");
@@ -243,7 +240,7 @@ export function Game({
     } finally {
       setIsLeavingInProgress(false);
     }
-  }, [currentRound, game, isGameFinished, leaveGameFn, posthog, replace]);
+  }, [currentRound, game, isGameFinished, leaveGameFn, replace]);
 
   // `advanceGame` and `goBack` are handed to memoised phase components, so they
   // are keyed on primitives only: a push that leaves these alone (a player
@@ -280,9 +277,7 @@ export function Game({
       );
     }
 
-    if (posthog) {
-      posthog.capture("game_advance", { phase: roundPhase });
-    }
+    capture("game_advance", { phase: roundPhase });
 
     if (!roundId) return;
 
@@ -323,7 +318,6 @@ export function Game({
     isHost,
     roundId,
     roundPhase,
-    posthog,
     startGame,
     transitionRoundPhase,
     finishRoundAndStartNext,
@@ -334,15 +328,13 @@ export function Game({
   const goBack = useCallback(() => {
     if (!roundId) return;
 
-    if (posthog) {
-      posthog.capture("game_phase_rewind", { phase: roundPhase });
-    }
+    capture("game_phase_rewind", { phase: roundPhase });
 
     transitionRoundPhase({
       gameRoundId: roundId,
       toPhase: "create-scenarios",
     }).catch(() => toast("Couldn't go back to the categories."));
-  }, [roundId, roundPhase, posthog, transitionRoundPhase]);
+  }, [roundId, roundPhase, transitionRoundPhase]);
 
   if (isHost === undefined) {
     return <GameShellSkeleton />;
