@@ -55,7 +55,9 @@ function PostHogIdentity() {
   // Destructured so the effect re-runs when the name changes in the user tray,
   // rather than on every new session object.
   const userId = session?.user?.id;
-  const email = session?.user?.email;
+  const isGuest = !!session?.user?.isAnonymous;
+  // A guest's email is a generated placeholder; don't put it on the person.
+  const email = isGuest ? undefined : session?.user?.email;
   const name = session?.user?.name;
 
   useEffect(() => {
@@ -72,9 +74,13 @@ function PostHogIdentity() {
     if ((action === "identify" || action === "reidentify") && userId) {
       // This ID must match the server-side `game_join` capture, which uses the
       // Better Auth user document ID from api.auth.getCurrentUser.
-      posthog.identify(userId, { email, name });
+      posthog.identify(userId, {
+        ...(email ? { email } : {}),
+        name,
+        is_guest: isGuest,
+      });
     }
-  }, [isPending, userId, email, name]);
+  }, [isPending, userId, email, name, isGuest]);
 
   return null;
 }

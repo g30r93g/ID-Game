@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSessionCookie } from "better-auth/cookies";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GuestJoin } from "@/components/guest-join";
 import {
   Card,
   CardContent,
@@ -20,7 +21,9 @@ import { pageOpenGraph, SITE_DESCRIPTION } from "@/lib/metadata";
 
 // The link the lobby shares. It lives outside the signed-in routes so that
 // link-preview crawlers, which never have a session, can read its tags and
-// image; people who are signed in go straight through to the game.
+// image; people who are signed in (as a guest or with an account) go straight
+// through to the game. Everyone else can join an open game as a guest, or
+// sign in.
 
 type Props = { params: Promise<{ code: string }> };
 
@@ -66,7 +69,8 @@ export default async function JoinPage({ params }: Props) {
   const code = normaliseJoinCode((await params).code);
   if (!code) notFound();
 
-  // Signed in: the game page joins whoever arrives, so go straight there.
+  // Signed in, guest or account: the game page joins whoever arrives, so go
+  // straight there.
   // `getToken` always asks Convex, so it's only called when there's a session
   // cookie to check — crawlers, and most people opening an invite, have none.
   // If the check fails, the invite still renders and sign-in sorts it out.
@@ -105,23 +109,27 @@ export default async function JoinPage({ params }: Props) {
             <JoinCode code={invite.joinCode} />
           </CardContent>
         )}
-        <CardFooter className="flex flex-col gap-2">
-          {invite && invite.status !== "ended" ? (
-            <Button asChild className="w-full">
-              <Link href={signIn}>
-                {invite.status === "open" ? "Join game" : "Sign in"}
-                <ArrowRight />
-              </Link>
-            </Button>
-          ) : (
-            <Button asChild className="w-full">
-              <Link href="/game">
-                Start a new game
-                <ArrowRight />
-              </Link>
-            </Button>
-          )}
-        </CardFooter>
+        {invite?.status === "open" ? (
+          <GuestJoin joinCode={invite.joinCode} signInHref={signIn} />
+        ) : (
+          <CardFooter className="flex flex-col gap-2">
+            {invite?.status === "started" ? (
+              <Button asChild className="w-full">
+                <Link href={signIn}>
+                  Sign in
+                  <ArrowRight />
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild className="w-full">
+                <Link href="/game">
+                  Start a new game
+                  <ArrowRight />
+                </Link>
+              </Button>
+            )}
+          </CardFooter>
+        )}
       </Card>
     </div>
   );

@@ -250,6 +250,12 @@ export const createGame = mutation({
     if (!user) {
       throw new Error("User must be authenticated to create a game.");
     }
+    // Guests can join games but not host them: accounts are what keep bots
+    // from creating and abandoning games. The claim comes from the signed
+    // Convex JWT, which carries the Better Auth user row's `isAnonymous`.
+    if (user.isAnonymous === true) {
+      throw new Error("Guests can't create games. Create an account to host.");
+    }
 
     const authUser = await authComponent.safeGetAuthUser(ctx);
     const displayName = authUser?.name?.trim() || "Unknown Player";

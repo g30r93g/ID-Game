@@ -4,13 +4,29 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { StatCard } from "@/components/admin/stat-card";
+import { Badge } from "@/components/ui/badge";
 import { AdminDataTable, type Column } from "@/components/admin/admin-data-table";
 
-type UserRow = { id: string; name: string; email: string; createdAt: number };
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+  isGuest: boolean;
+};
 
 const columns: Column<UserRow>[] = [
-  { header: "Name", cell: (u) => u.name || "—" },
-  { header: "Email", cell: (u) => u.email },
+  {
+    header: "Name",
+    cell: (u) => (
+      <span className="inline-flex items-center gap-2">
+        {u.name || "—"}
+        {u.isGuest && <Badge variant="outline">Guest</Badge>}
+      </span>
+    ),
+  },
+  // A guest's address is a generated placeholder on a reserved domain.
+  { header: "Email", cell: (u) => (u.isGuest ? "—" : u.email) },
   { header: "Joined", cell: (u) => new Date(u.createdAt).toLocaleDateString() },
 ];
 

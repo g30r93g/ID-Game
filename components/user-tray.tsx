@@ -1,13 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Fingerprint, LogOut } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Fingerprint, LogOut, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { clearPasskeyNudge } from "@/lib/passkey-nudge";
+import { upgradePath } from "@/lib/guest";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 import { useSaveDisplayName } from "@/lib/use-display-name";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,15 +30,19 @@ import { cn } from "@/lib/utils";
 /**
  * A frosted-glass identity bar shown above the game card: greeting + avatar on
  * the left, sign out on the right. Clicking the greeting opens a dialog to
- * change the display name. The container styling is a floating header
+ * change the display name. Guests (anonymous accounts) get a "Guest" badge and
+ * a "Create account" button in place of the passkey controls: a passkey on a
+ * guest would still leave them a guest. The container styling is a floating header
  * (semi-transparent fill, hairline ring, layered soft shadow); the contents
  * are shadcn primitives. Pass `className` to control how it layers against the
  * card below it (e.g. a negative bottom margin so it emerges from behind the
  * card's top edge).
  */
 export function UserTray({ className }: { className?: string }) {
+  const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
+  const isGuest = !!user?.isAnonymous;
 
   const { save: saveDisplayName, ready } = useSaveDisplayName();
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -47,7 +55,8 @@ export function UserTray({ className }: { className?: string }) {
   const { data: passkeys, isPending: passkeysPending } =
     authClient.useListPasskeys();
   const [addingPasskey, setAddingPasskey] = React.useState(false);
-  const hasNoPasskey = !passkeysPending && (passkeys?.length ?? 0) === 0;
+  const hasNoPasskey =
+    !isGuest && !passkeysPending && (passkeys?.length ?? 0) === 0;
 
   const addPasskey = async () => {
     setAddingPasskey(true);
@@ -67,7 +76,8 @@ export function UserTray({ className }: { className?: string }) {
   };
 
   const firstName = user?.name?.trim().split(/\s+/)[0];
-  const email = user?.email;
+  // A guest's address is a generated placeholder, not something to show.
+  const email = isGuest ? undefined : user?.email;
   const initial = (firstName?.[0] ?? email?.[0] ?? "?").toUpperCase();
   const greeting = firstName ? `Hey ${firstName} 👋` : "Welcome 👋";
 
@@ -137,6 +147,7 @@ export function UserTray({ className }: { className?: string }) {
             <span className="truncate text-sm font-medium decoration-muted-foreground/50 underline-offset-4 hover:underline">
               {isPending ? " " : greeting}
             </span>
+            {isGuest && <Badge variant="outline">Guest</Badge>}
           </button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-sm">
@@ -145,7 +156,8 @@ export function UserTray({ className }: { className?: string }) {
               <DialogTitle>Change your display name</DialogTitle>
               <DialogDescription>
                 This is the name other players see, in the games you&apos;re
-                already in as well as any you create or join later.
+                already in as well as any you {isGuest ? "" : "create or "}join
+                later.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
@@ -167,50 +179,52 @@ export function UserTray({ className }: { className?: string }) {
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label>Passkeys</Label>
-              {passkeysPending ? (
-                <p className="text-sm text-muted-foreground">Checking…</p>
-              ) : hasNoPasskey ? (
-                <p className="text-sm text-muted-foreground">
-                  None yet. Add one to sign in with your fingerprint, face, or
-                  device PIN instead of waiting on an emailed code.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {passkeys?.map((passkey) => (
-                    <li
-                      key={passkey.id}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
-                        {passkey.name ?? "Passkey"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={addingPasskey}
-                onClick={() => void addPasskey()}
-              >
-                {addingPasskey ? (
-                  <>
-                    <Icons.spinner className="mr-2 size-4 animate-spin" />
-                    Waiting for your device…
-                  </>
+            {!isGuest && (
+              <div className="space-y-2">
+                <Label>Passkeys</Label>
+                {passkeysPending ? (
+                  <p className="text-sm text-muted-foreground">Checking…</p>
+                ) : hasNoPasskey ? (
+                  <p className="text-sm text-muted-foreground">
+                    None yet. Add one to sign in with your fingerprint, face, or
+                    device PIN instead of waiting on an emailed code.
+                  </p>
                 ) : (
-                  <>
-                    <Fingerprint className="mr-2 size-4" />
-                    {hasNoPasskey ? "Add a passkey" : "Add another passkey"}
-                  </>
+                  <ul className="space-y-1">
+                    {passkeys?.map((passkey) => (
+                      <li
+                        key={passkey.id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate">
+                          {passkey.name ?? "Passkey"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={addingPasskey}
+                  onClick={() => void addPasskey()}
+                >
+                  {addingPasskey ? (
+                    <>
+                      <Icons.spinner className="mr-2 size-4 animate-spin" />
+                      Waiting for your device…
+                    </>
+                  ) : (
+                    <>
+                      <Fingerprint className="mr-2 size-4" />
+                      {hasNoPasskey ? "Add a passkey" : "Add another passkey"}
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
             <DialogFooter>
               <Button
                 type="button"
@@ -232,6 +246,20 @@ export function UserTray({ className }: { className?: string }) {
         </DialogContent>
       </Dialog>
       <div className="flex shrink-0 items-center gap-1">
+        {isGuest && (
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            title="Keep your games and host your own"
+          >
+            <Link href={upgradePath(pathname ?? "/game")}>
+              <UserPlus />
+              <span className="hidden sm:inline">Create account</span>
+            </Link>
+          </Button>
+        )}
         {user && hasNoPasskey && (
           <Button
             variant="ghost"

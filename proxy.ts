@@ -48,7 +48,7 @@ export default function proxy(req: NextRequest) {
     const sessionCookie = getSessionCookie(req);
     if (!sessionCookie) {
       // A shared game link goes to its public invite page, which link-preview
-      // crawlers can read and which sends people on to sign in from there.
+      // crawlers can read and where people join as a guest or sign in.
       const invite = inviteRedirectFor(req.nextUrl.pathname);
       if (invite) return NextResponse.redirect(new URL(invite, req.url));
 

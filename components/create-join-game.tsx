@@ -10,14 +10,20 @@ import {
 import JoinGame from "@/components/join-game";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import CreateGame from "@/components/create-game";
 import { UserTray } from "@/components/user-tray";
 import ActiveGames from "@/components/active-games";
+import { authClient } from "@/lib/auth-client";
+import { upgradePath } from "@/lib/guest";
 
 export default function CreateJoinGame({ joinCode }: { joinCode?: string }) {
   const [view, setView] = useState<"join" | "create">("join");
+  // Guests can join games but not host them; `createGame` refuses them too.
+  const { data: session } = authClient.useSession();
+  const isGuest = !!session?.user?.isAnonymous;
 
   return (
     <div className="w-full md:w-[50%] flex flex-col gap-4">
@@ -60,6 +66,30 @@ export default function CreateJoinGame({ joinCode }: { joinCode?: string }) {
                 >
                   Create New Game
                   <Plus />
+                </Button>
+              </CardContent>
+            </>
+          ) : isGuest ? (
+            <>
+              <CardHeader>
+                <CardTitle>Hosting needs an account</CardTitle>
+                <CardDescription>
+                  You&apos;re playing as a guest, which is fine for joining
+                  friends&apos; games. To start your own, create a free account
+                  — the games you&apos;re already in come with you.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                <Button asChild className="w-full">
+                  <Link href={upgradePath("/game")}>
+                    <UserPlus />
+                    Create an account
+                  </Link>
+                </Button>
+                <Button asChild variant="link" size="sm">
+                  <Link href="/sign-in?next=%2Fgame">
+                    Already have one? Sign in
+                  </Link>
                 </Button>
               </CardContent>
             </>

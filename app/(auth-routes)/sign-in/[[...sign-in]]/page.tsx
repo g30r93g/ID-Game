@@ -28,6 +28,7 @@ import {
   isPasskeyNudgeDue,
 } from "@/lib/passkey-nudge";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
+import { isGuestPlaceholderName } from "@/lib/guest";
 
 // "redirecting" covers the window between a credential being accepted and the
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
@@ -84,7 +85,11 @@ export default function SignInPage() {
 
   const [step, setStep] = React.useState<Step>("start");
   const { data: session, isPending: sessionPending } = authClient.useSession();
-  const signedIn = !sessionPending && Boolean(session?.user);
+  // A guest is here to sign in or sign up for real; signing in carries their
+  // game seats across (see `onLinkAccount` in convex/auth.ts). Only an
+  // account session counts as already signed in.
+  const guest = session?.user?.isAnonymous ? session.user : null;
+  const signedIn = !sessionPending && Boolean(session?.user) && !guest;
 
   // Already signed in — a reload of a stalled sign-in page, a bookmarked
   // /sign-in, a shared link opened while logged in — goes straight to the
@@ -105,6 +110,16 @@ export default function SignInPage() {
   const [showEmailFlow, setShowEmailFlow] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [name, setName] = React.useState("");
+  // Offer the name a guest has been playing under as their account's name.
+  // Once only, so clearing the field doesn't refill it.
+  const guestName =
+    guest && !isGuestPlaceholderName(guest.name) ? guest.name : null;
+  const prefilledName = React.useRef(false);
+  React.useEffect(() => {
+    if (!guestName || prefilledName.current) return;
+    prefilledName.current = true;
+    setName((current) => current || guestName);
+  }, [guestName]);
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   // Set once a passkey attempt ends without a credential, which flips the email
@@ -309,9 +324,11 @@ export default function SignInPage() {
                   {mode === "sign-in" ? "Welcome back" : "Create your account"}
                 </CardTitle>
                 <CardDescription>
-                  {mode === "sign-in"
-                    ? "Let's get you playing again"
-                    : "Let's get you playing"}
+                  {guest
+                    ? "Keep your games, and host your own"
+                    : mode === "sign-in"
+                      ? "Let's get you playing again"
+                      : "Let's get you playing"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-y-4">

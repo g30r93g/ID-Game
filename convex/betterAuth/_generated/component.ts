@@ -38,6 +38,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   email: string;
                   emailVerified: boolean;
                   image?: null | string;
+                  isAnonymous?: null | boolean;
                   name: string;
                   role?: null | string;
                   updatedAt: number;
@@ -139,6 +140,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "banned"
                     | "banReason"
                     | "banExpires"
+                    | "isAnonymous"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -402,6 +404,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "banned"
                     | "banReason"
                     | "banExpires"
+                    | "isAnonymous"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -747,6 +750,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   email?: string;
                   emailVerified?: boolean;
                   image?: null | string;
+                  isAnonymous?: null | boolean;
                   name?: string;
                   role?: null | string;
                   updatedAt?: number;
@@ -765,6 +769,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "banned"
                     | "banReason"
                     | "banExpires"
+                    | "isAnonymous"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -1073,6 +1078,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   email?: string;
                   emailVerified?: boolean;
                   image?: null | string;
+                  isAnonymous?: null | boolean;
                   name?: string;
                   role?: null | string;
                   updatedAt?: number;
@@ -1091,6 +1097,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "banned"
                     | "banReason"
                     | "banExpires"
+                    | "isAnonymous"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
