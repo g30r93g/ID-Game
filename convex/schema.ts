@@ -6,10 +6,6 @@ export default defineSchema({
     userId: v.string(),
     gameId: v.id("games"),
     displayName: v.string(),
-    // No longer read or written: heartbeats live in `playerPresence`. Optional
-    // until `migrations:clearPlayersLastAlive` has cleared it everywhere, then
-    // dropped.
-    lastAlive: v.optional(v.number()),
     // Set to false when the player is removed from the game by consensus while
     // disconnected. Absent/true = participating. Reset to true on reconnect.
     active: v.optional(v.boolean()),
