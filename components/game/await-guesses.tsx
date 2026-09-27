@@ -1,6 +1,6 @@
 "use client";
 
-import GuessTally from "@/components/game/guess-tally";
+import GuessTally from "@/components/game/guess-tally-lazy";
 import ScenarioBanner from "@/components/game/scenario-banner";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";

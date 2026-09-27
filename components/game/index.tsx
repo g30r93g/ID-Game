@@ -8,7 +8,6 @@ import {
 } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import PickScenarioGamePhase from "@/components/game/pick-scenario";
-import RankPlayersGamePhase from "@/components/game/rank-players";
 import GuessScenarioGamePhase from "@/components/game/guess-scenario";
 import DisplayResultsGamePhase from "@/components/game/display-results";
 import LobbyGamePhase from "@/components/game/lobby";
@@ -26,7 +25,7 @@ import WaitGamePhase from "@/components/game/wait";
 import AwaitGuessesGamePhase from "@/components/game/await-guesses";
 import { useRouter } from "next/navigation";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { LogOut } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import GameInstructions from "@/components/game/game-instructions";
 import PlayersDialog from "@/components/game/players-dialog";
@@ -35,6 +34,24 @@ import DisconnectPrompt from "@/components/game/presence/disconnect-prompt";
 import GameShellSkeleton from "@/components/game/game-shell-skeleton";
 import { HEARTBEAT_INTERVAL_MS } from "@/lib/presence";
 import { Doc } from "@/convex/_generated/dataModel";
+import dynamic from "next/dynamic";
+import { preloadGuessTally } from "@/components/game/guess-tally-lazy";
+
+// Host-only, and the only screen that needs dnd-kit, so it is split out of the
+// page chunk: most players never download it. The fallback is the spinner the
+// phase itself shows while its player list loads, so loading looks the same
+// either way. Warmed a phase early below, so a host rarely sees it.
+const loadRankPlayers = () => import("@/components/game/rank-players");
+const RankPlayersGamePhase = dynamic(
+  () => import("@/components/game/rank-players"),
+  {
+    loading: () => (
+      <div className={"flex grow items-center justify-center py-8"}>
+        <Loader2 className={"size-6 animate-spin text-muted-foreground"} />
+      </div>
+    ),
+  },
+);
 
 type RoundPhase = Doc<"gameRounds">["phase"];
 
@@ -232,6 +249,17 @@ export function Game({ preloadedGame }: GameProps) {
   const gameIsOpen = game?.isOpen;
   const roundId = currentRound?._id;
   const roundPhase = currentRound?.phase;
+
+  // Fetch the next phase's split-out code while this one is on screen, so the
+  // switch doesn't wait on the network: the ranking screen while the host picks
+  // a scenario, and the tally from ranking on, since the guessing and results
+  // screens after it both show one.
+  useEffect(() => {
+    if (roundPhase === "pick-scenario" && isHost) void loadRankPlayers();
+    if (roundPhase === "rank-players" || roundPhase === "guess-scenario") {
+      preloadGuessTally();
+    }
+  }, [roundPhase, isHost]);
 
   const advanceGame = useCallback(() => {
     if (!gameId) {
