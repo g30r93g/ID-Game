@@ -18,6 +18,7 @@
   "dependencies": {
     "@better-auth/infra": "0.4.9",
     "@better-auth/passkey": "1.6.23",
+    "@convex-dev/aggregate": "^0.2.2",
     "@convex-dev/better-auth": "^0.12.5",
     "@convex-dev/migrations": "^0.3.5",
     "@convex-dev/resend": "^0.2.5",

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { createFunctionHandle } from "convex/server";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { evaluateContinuity } from "../lib/continuable";
@@ -137,6 +138,10 @@ export const deleteExpiredGuests = internalMutation({
       },
     });
 
+    // A direct adapter call runs no triggers unless handed one, and the guest
+    // count (convex/userCounts.ts) would drift without it.
+    const onDeleteHandle = await createFunctionHandle(internal.auth.onDelete);
+
     let inspected = 0;
     let deleted = 0;
     let reachedGracePeriod = false;
@@ -176,6 +181,7 @@ export const deleteExpiredGuests = internalMutation({
           model: "user",
           where: [{ field: "_id", value: guest._id }],
         },
+        onDeleteHandle,
       });
       deleted += 1;
     }

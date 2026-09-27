@@ -172,6 +172,9 @@ importers:
       '@better-auth/passkey':
         specifier: 1.6.23
         version: 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.6.23(next@16.3.5(@babel/core@7.29.7)(@types/node@25.9.4)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.11(@edge-runtime/vm@5.0.0)(@types/node@25.9.4)(vite@8.1.4(@types/node@25.9.4)(esbuild@0.27.0)(jiti@2.7.0))))(better-call@1.3.7(zod@4.4.3))(nanostores@1.4.0)
+      '@convex-dev/aggregate':
+        specifier: ^0.2.2
+        version: 0.2.2(convex@1.42.1(@clerk/clerk-react@5.61.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.11.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7))
       '@convex-dev/better-auth':
         specifier: ^0.12.5
         version: 0.12.5(@standard-schema/spec@1.1.0)(better-auth@1.6.23(next@16.3.5(@babel/core@7.29.7)(@types/node@25.9.4)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.11(@edge-runtime/vm@5.0.0)(@types/node@25.9.4)(vite@8.1.4(@types/node@25.9.4)(esbuild@0.27.0)(jiti@2.7.0))))(convex@1.42.1(@clerk/clerk-react@5.61.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.11.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
@@ -510,6 +513,7 @@ packages:
   '@clerk/clerk-react@5.61.8':
     resolution: {integrity: sha512-n+k3q3xeyDkIPGTVA1J4Pd0+6MbS9Ia04qNlecOztTHwFfcirO5hy4TpOXrpGnO+GzYBuUMp7pYc3//ybMdEfg==}
     engines: {node: '>=18.17.0'}
+    deprecated: 'This package is no longer supported. Please use @clerk/react instead. See the upgrade guide for more info: https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3'
     peerDependencies:
       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
       react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
@@ -544,6 +548,11 @@ packages:
         optional: true
       react-dom:
         optional: true
+
+  '@convex-dev/aggregate@0.2.2':
+    resolution: {integrity: sha512-9sskfPZdiH0mdc33Obcf2+gQSPDpyHqUDkYmXDsUqhqe5lLwGKYbrxw7LgxHmYm9c1YLbaXqxKiM1CgucfKAAw==}
+    peerDependencies:
+      convex: ^1.24.8
 
   '@convex-dev/better-auth@0.12.5':
     resolution: {integrity: sha512-YFUbGk04OlINno9FpOTNZN67AP+kSQsblfep5zs1f/WTgMWjD5FymU6rSSh3mu52gukmDNnBJTjC/lj4QRpjlQ==}
@@ -1905,36 +1914,42 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-arm64-musl@1.1.5':
     resolution: {integrity: sha512-lAryqH7IteztmCXQXk0etKj4wBQ7Gx5S6LjKhsgp9zb8I5bsuvU/2llH1hDQcjsFeqIsovMVN339/8pUDDBXxA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-linux-ppc64-gnu@1.1.5':
     resolution: {integrity: sha512-fsK/sNBnxzBlL4O1JNrZakVQxPspqpED5dLtNsZS9oOKmtSpdNIzxH2kkol5HYTWJN47sE20ztMJPxfZ89qGOg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-s390x-gnu@1.1.5':
     resolution: {integrity: sha512-gLYb4BIadlfTOYT5gO503n8zQjXflgzpD0FcyKh0Mzx3rqCZKnHoJWV9xe1KXUJ5lx2JfcSHr/mhzS0PC/McAA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-gnu@1.1.5':
     resolution: {integrity: sha512-FjcpEKUyJygHgs1o50VYNvkt5+7Le/VEdYt0AkRpkL33MnyQfwr8l5mXwMmfmTbyMPr5vJLC+8/Gd9gXnwU1QQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.1.5':
     resolution: {integrity: sha512-Me+PfPI2TMeOQk0gYWfLQZtTktrmzbr8cDboqX83XKc7UrgAi55gF+2dUkWdxd19n55Essp2yeca+O9N5rBxHg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-openharmony-arm64@1.1.5':
     resolution: {integrity: sha512-yc5WrLzXks6zCQfn9Oxr8pORKyl/pF+QjHmW/Qx3qu0oyrrNC+y2JLTU1E2rcWYAmzlnqngWXHQjy51VzW70Vw==}
@@ -3313,6 +3328,7 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.32.0:
     resolution: {integrity: sha512-UpQkoenr4UJEzgVIYpI80lDFvRmPVg6oqboNHfoH4CQIfNA+HOrZ7Mo7KZP02dC6LjghPQJeBsvXhJod/wnIBg==}
@@ -3325,6 +3341,7 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.32.0:
     resolution: {integrity: sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==}
@@ -3337,6 +3354,7 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.32.0:
     resolution: {integrity: sha512-bYcLp+Vb0awsiXg/80uCRezCYHNg1/l3mt0gzHnWV9XP1W5sKa5/TCdGWaR/zBM2PeF/HbsQv/j2URNOiVuxWg==}
@@ -3349,6 +3367,7 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution: {integrity: sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==}
@@ -4445,6 +4464,10 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
     optional: true
+
+  '@convex-dev/aggregate@0.2.2(convex@1.42.1(@clerk/clerk-react@5.61.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.11.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7))':
+    dependencies:
+      convex: 1.42.1(@clerk/clerk-react@5.61.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.11.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
 
   '@convex-dev/better-auth@0.12.5(@standard-schema/spec@1.1.0)(better-auth@1.6.23(next@16.3.5(@babel/core@7.29.7)(@types/node@25.9.4)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.11(@edge-runtime/vm@5.0.0)(@types/node@25.9.4)(vite@8.1.4(@types/node@25.9.4)(esbuild@0.27.0)(jiti@2.7.0))))(convex@1.42.1(@clerk/clerk-react@5.61.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@clerk/react@6.11.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7))(react@19.2.7)(typescript@6.0.3)':
     dependencies:

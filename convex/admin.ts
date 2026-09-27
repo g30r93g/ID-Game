@@ -2,9 +2,12 @@ import { v } from "convex/values";
 import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { authComponent, createAuthOptions, createAuth } from "./auth";
+import { components } from "./_generated/api";
+import { authComponent, createAuthOptions } from "./auth";
 import { requireAdmin } from "./adminAuth";
+import { readUserCounts } from "./userCounts";
 import {
+  FOURTEEN_DAYS_MS,
   activePlayerCount,
   computeGameStats,
   gameDurationMs,
@@ -71,9 +74,17 @@ export const createScenario = mutation({
  * Pure enough to unit test: reads our own `players` table only (no
  * Better Auth component dependency), delegating the dedupe/window logic to
  * the pure `activePlayerCount` helper.
+ *
+ * The built-in `by_creation_time` index bounds the read to the window, so the
+ * cost tracks recent players rather than every player row ever written.
  */
 export async function activePlayers14dCore(ctx: QueryCtx, now: number) {
-  const players = await ctx.db.query("players").collect();
+  const players = await ctx.db
+    .query("players")
+    .withIndex("by_creation_time", (q) =>
+      q.gte("_creationTime", now - FOURTEEN_DAYS_MS),
+    )
+    .collect();
   return activePlayerCount(players, now);
 }
 
@@ -81,59 +92,82 @@ export const userStats = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    const [listed, guests] = await Promise.all([
-      auth.api.listUsers({ headers, query: { limit: 1 } }),
-      // Counted on the user table's `isAnonymous` index. `deleteExpiredGuests`
-      // removes guests nobody can use any more, so this stays small.
-      auth.api.listUsers({
-        headers,
-        query: { limit: 1, filterField: "isAnonymous", filterValue: true },
-      }),
-    ]);
+    // Maintained counts, so no user rows are read (see convex/userCounts.ts).
+    const { accounts, guests } = await readUserCounts(ctx);
     return {
       // Guests share the user table but aren't sign-ups; count them apart.
-      totalUsers: listed.total - guests.total,
-      guests: guests.total,
+      totalUsers: accounts,
+      guests,
       activePlayers14d: await activePlayers14dCore(ctx, Date.now()),
     };
   },
 });
 
+type AuthUserRow = {
+  _id: string;
+  name?: string | null;
+  email: string;
+  createdAt: number;
+  isAnonymous?: boolean | null;
+};
+
+/**
+ * One page of users, newest first. Reads the component's user table directly:
+ * `auth.api.listUsers` built Better Auth, re-checked the admin session and
+ * counted the whole table on every call. The component maps a `createdAt`
+ * sort onto the built-in `by_creation_time` index, so a page reads only its
+ * own rows.
+ */
 export const listUsers = query({
-  args: { limit: v.number(), offset: v.number() },
-  handler: async (ctx, { limit, offset }) => {
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
     await requireAdmin(ctx);
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    // The Convex Better Auth adapter's findMany throws on any nonzero offset,
-    // and better-auth's listUsers route swallows that into an empty result.
-    // So we fetch a bounded window (capped at 1000 users - a known limitation
-    // of this admin view) with offset 0, then sort/page in memory instead of
-    // passing the requested offset through to the adapter.
-    const listed = await auth.api.listUsers({
-      headers,
-      query: { limit: 1000 },
+    const result = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      sortBy: { field: "createdAt", direction: "desc" },
+      paginationOpts,
     });
-    const sorted = [...listed.users].sort(
-      (a, b) => Number(b.createdAt) - Number(a.createdAt),
-    );
-    const page = sorted.slice(offset, offset + limit);
     return {
-      total: listed.total,
-      users: page.map((u) => ({
-        id: u.id,
+      page: (result.page as AuthUserRow[]).map((u) => ({
+        id: u._id,
         name: u.name ?? "",
         email: u.email,
         createdAt: Number(u.createdAt),
-        isGuest: (u as { isAnonymous?: boolean | null }).isAnonymous === true,
+        isGuest: u.isAnonymous === true,
       })),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
     };
   },
 });
 
+/**
+ * Reads only the games each stat can count, one index range per stat, instead
+ * of every game ever. The three sets overlap (a live game can also have started
+ * this fortnight), so they are merged by id before `computeGameStats` applies
+ * the same rules as before.
+ */
 export async function gameStatsCore(ctx: QueryCtx, now: number) {
-  const games = await ctx.db.query("games").collect();
-  return computeGameStats(games, now);
+  const since = now - FOURTEEN_DAYS_MS;
+  const sets = await Promise.all([
+    ctx.db
+      .query("games")
+      .withIndex("byIsOpenAbandonedAt", (q) =>
+        q.eq("isOpen", true).eq("abandonedAt", undefined),
+      )
+      .collect(),
+    // A `gte` range skips games whose timestamp is still unset.
+    ctx.db
+      .query("games")
+      .withIndex("byStartedAt", (q) => q.gte("startedAt", since))
+      .collect(),
+    ctx.db
+      .query("games")
+      .withIndex("byCompletedAt", (q) => q.gte("completedAt", since))
+      .collect(),
+  ]);
+  const games = new Map(sets.flat().map((g) => [g._id, g]));
+  return computeGameStats([...games.values()], now);
 }
 
 export const gameStats = query({
@@ -181,12 +215,10 @@ const SCENARIO_SORTS = ["popular-desc", "popular-asc", "newest", "oldest"] as co
 
 /**
  * `scenarioSortToQuery` reports the target index as either "byTimesSelected"
- * or the system creation-time index. The `scenarios` table only defines a
- * "byTimesSelected" index (see convex/schema.ts) - there is no
- * "by_creation_time" index to pass to `.withIndex`, and Convex's generated
- * types reject that string there. So for the creation-time sorts we fall
- * back to the default (unindexed) query, which is already ordered by
- * creation time, and just apply `.order()`.
+ * or the system creation-time index. Every table has the built-in
+ * "by_creation_time" index and `.withIndex` accepts it, but a query with no
+ * index already reads through it in creation order, so for the creation-time
+ * sorts the default query plus `.order()` is the same read.
  */
 export async function listScenariosPage(
   ctx: QueryCtx,
