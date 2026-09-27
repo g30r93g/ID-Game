@@ -168,16 +168,13 @@ export const fetchGameByJoinCode = query({
 });
 
 /**
- * The game page's single read: the game behind a join code, plus whether the
- * caller is already one of its players.
+ * @deprecated Split into {@link getGameForViewer}, the game screen's live read,
+ * and {@link isPlayerInGame}, which the page checks once. Kept live, this read
+ * the caller's players row in every subscription for a fact only the page's
+ * first render needed.
  *
- * Both facts used to come from separate calls — `fetchGameByJoinCode` and
- * `isUserPlayer` — which cost the page two sequential network round trips and
- * looked the same game up twice. The page blocks on this before it can render,
- * so the second trip was dead time on every navigation into a game.
- *
- * An unknown join code is returned as `game: null` rather than thrown, so the
- * page can redirect; `isUserPlayer` threw, which surfaced a server error screen.
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still subscribe to it by name.
  */
 export const fetchGameAndMembership = query({
   args: { joinCode: v.string() },
@@ -204,6 +201,64 @@ export const fetchGameAndMembership = query({
       .first();
 
     return { game, isPlayer: !!userPlayer };
+  },
+});
+
+/**
+ * The game screen's live read: the game behind a join code, and who is
+ * looking at it. The page preloads it so the first paint has the game.
+ *
+ * `viewerUserId` lets the screen find the caller in the player list it already
+ * holds, instead of subscribing to its own row separately. It reads no players
+ * row itself, so it only re-runs when the game document changes.
+ *
+ * An unknown join code is returned as `game: null` rather than thrown, so the
+ * page can redirect.
+ */
+export const getGameForViewer = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to load a game.");
+    }
+
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .unique();
+
+    return { game, viewerUserId: user.subject };
+  },
+});
+
+/**
+ * Whether the caller already has a seat in the game behind a join code; false
+ * for an unknown code. The page asks once, to decide whether to join the
+ * caller before rendering. It is not subscribed to.
+ */
+export const isPlayerInGame = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User must be authenticated to load a game.");
+    }
+
+    const game = await ctx.db
+      .query("games")
+      .withIndex("byJoinCode", (q) => q.eq("joinCode", args.joinCode))
+      .unique();
+    if (!game) return false;
+
+    const userPlayer = await ctx.db
+      .query("players")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", user.subject),
+      )
+      .first();
+
+    return !!userPlayer;
   },
 });
 
@@ -581,6 +636,14 @@ export const getMyActiveGames = query({
   },
 });
 
+/**
+ * @deprecated The game screen finds the caller in the player list it already
+ * holds, using the `viewerUserId` from {@link getGameForViewer}, rather than
+ * keeping a separate subscription per viewer.
+ *
+ * Kept for one deploy cycle only, for the same reason as {@link isUserPlayer}:
+ * tabs loaded before the deploy still subscribe to it by name.
+ */
 export const getPlayerForCurrentUserForGame = query({
   args: { game: v.id("games") },
   handler: async (ctx, args) => {

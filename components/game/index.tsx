@@ -69,33 +69,36 @@ const OPTIMISTIC_NEXT_PHASE: Partial<Record<RoundPhase, RoundPhase>> = {
 };
 
 interface GameProps {
-  preloadedGame: Preloaded<typeof api.game.fetchGameAndMembership>;
+  preloadedGame: Preloaded<typeof api.game.getGameForViewer>;
+  preloadedPlayers: Preloaded<typeof api.game.getPlayersForGame>;
+  preloadedRound: Preloaded<typeof api.game.getCurrentGameRound>;
 }
 
-export function Game({ preloadedGame }: GameProps) {
-  // The page preloads the game and the caller's membership in one query; only
-  // the game is needed here, but the subscription stays live for both.
-  const { game } = usePreloadedQuery(preloadedGame);
-  const players =
-    useQuery(api.game.getPlayersForGame, game ? { game: game._id } : "skip") ??
-    [];
-  const userPlayer = useQuery(
-    api.game.getPlayerForCurrentUserForGame,
-    game ? { game: game._id } : "skip",
-  );
-  const currentRound = useQuery(
-    api.game.getCurrentGameRound,
-    game ? { game: game._id } : "skip",
-  );
+export function Game({
+  preloadedGame,
+  preloadedPlayers,
+  preloadedRound,
+}: GameProps) {
+  // All three are preloaded by the page, so the first render, on the server
+  // too, already has the game, its players and the round: it draws the real
+  // phase rather than a skeleton. They stay live from there, on the same
+  // subscriptions the phase components share.
+  const { game, viewerUserId } = usePreloadedQuery(preloadedGame);
+  const players = usePreloadedQuery(preloadedPlayers);
+  const currentRound = usePreloadedQuery(preloadedRound);
 
-  // Undefined until everything needed to answer has loaded, so no control is
-  // drawn for the wrong person in the meantime: the lobby is the creator's, a
-  // round is its host's. A closed game with no round yet is the gap between
-  // closing the lobby and round 1 existing, so it stays undefined there too.
+  // The caller's own seat, from the list already held rather than a
+  // subscription of its own. Undefined if they have left the game.
+  const userPlayer = players.find((p) => p.userId === viewerUserId);
+
+  // Undefined when there is no answer yet, so no control is drawn for the wrong
+  // person: the lobby is the creator's, a round is its host's. A closed game
+  // with no round yet is the gap between closing the lobby and round 1
+  // existing, so it stays undefined there.
   let isHost: boolean | undefined;
-  if (game && userPlayer !== undefined) {
+  if (game) {
     if (game.isOpen) {
-      isHost = game.createdBy === userPlayer?.userId;
+      isHost = game.createdBy === viewerUserId;
     } else if (currentRound) {
       isHost = currentRound.hostPlayerId === userPlayer?._id;
     }
@@ -408,7 +411,7 @@ export function Game({ preloadedGame }: GameProps) {
               active: p.active,
             };
           })}
-          viewerUserId={userPlayer?.userId}
+          viewerUserId={viewerUserId}
           isHost={isHost}
           advanceGame={advanceGame}
         />

@@ -1654,11 +1654,10 @@ test("syncDisplayName requires an authenticated caller", async () => {
   );
 });
 
-// The game page used to spend two round trips answering one question: what is
-// this game, and is the caller already in it? `fetchGameAndMembership` answers
-// both from a single subscription so the page pays one network hop, not two.
-test("fetchGameAndMembership returns the game and membership together", async () => {
-  const t = convexTest(schema, modules);
+// The game page asks two things: what is this game (kept live, preloaded for
+// first paint), and is the caller already in it (asked once, to decide whether
+// to join them). `getGameForViewer` and `isPlayerInGame` answer them.
+async function seedMemberGame(t: TestConvex<typeof schema>) {
   await t.run(async (ctx) => {
     const gameId = await ctx.db.insert("games", {
       joinCode: "MEM001",
@@ -1673,52 +1672,62 @@ test("fetchGameAndMembership returns the game and membership together", async ()
       lastAlive: 0,
     });
   });
+}
 
-  const result = await t
-    .withIdentity({ subject: "member" })
-    .query(api.game.fetchGameAndMembership, { joinCode: "MEM001" });
+test("getGameForViewer returns the game and who is asking", async () => {
+  const t = convexTest(schema, modules);
+  await seedMemberGame(t);
 
-  expect(result.game?.joinCode).toBe("MEM001");
-  expect(result.isPlayer).toBe(true);
+  // Membership plays no part: a stranger gets the same game, with their own id.
+  for (const subject of ["member", "stranger"]) {
+    const result = await t
+      .withIdentity({ subject })
+      .query(api.game.getGameForViewer, { joinCode: "MEM001" });
+    expect(result.game?.joinCode).toBe("MEM001");
+    expect(result.viewerUserId).toBe(subject);
+  }
 });
 
-test("fetchGameAndMembership reports a non-member as not a player", async () => {
+test("isPlayerInGame tells a member from a non-member", async () => {
   const t = convexTest(schema, modules);
-  await t.run(async (ctx) => {
-    await ctx.db.insert("games", {
-      joinCode: "MEM002",
-      totalRounds: 4,
-      isOpen: true,
-      createdBy: "owner",
-    });
-  });
+  await seedMemberGame(t);
 
-  const result = await t
-    .withIdentity({ subject: "stranger" })
-    .query(api.game.fetchGameAndMembership, { joinCode: "MEM002" });
-
-  expect(result.game?.joinCode).toBe("MEM002");
-  expect(result.isPlayer).toBe(false);
+  expect(
+    await t
+      .withIdentity({ subject: "member" })
+      .query(api.game.isPlayerInGame, { joinCode: "MEM001" }),
+  ).toBe(true);
+  expect(
+    await t
+      .withIdentity({ subject: "stranger" })
+      .query(api.game.isPlayerInGame, { joinCode: "MEM001" }),
+  ).toBe(false);
 });
 
 // An unknown join code comes back as data, not an exception. The page redirects
 // on a null game; `isUserPlayer` threw here, which surfaced a server error.
-test("fetchGameAndMembership returns a null game for an unknown join code", async () => {
+test("an unknown join code is a null game and no membership", async () => {
   const t = convexTest(schema, modules);
+  const asMember = t.withIdentity({ subject: "member" });
 
-  const result = await t
-    .withIdentity({ subject: "member" })
-    .query(api.game.fetchGameAndMembership, { joinCode: "NOPE01" });
-
+  const result = await asMember.query(api.game.getGameForViewer, {
+    joinCode: "NOPE01",
+  });
   expect(result.game).toBeNull();
-  expect(result.isPlayer).toBe(false);
+  expect(
+    await asMember.query(api.game.isPlayerInGame, { joinCode: "NOPE01" }),
+  ).toBe(false);
 });
 
-test("fetchGameAndMembership requires an authenticated caller", async () => {
+test("getGameForViewer and isPlayerInGame require an authenticated caller", async () => {
   const t = convexTest(schema, modules);
+  await seedMemberGame(t);
 
   await expect(
-    t.query(api.game.fetchGameAndMembership, { joinCode: "MEM001" }),
+    t.query(api.game.getGameForViewer, { joinCode: "MEM001" }),
+  ).rejects.toThrow(/must be authenticated/);
+  await expect(
+    t.query(api.game.isPlayerInGame, { joinCode: "MEM001" }),
   ).rejects.toThrow(/must be authenticated/);
 });
 

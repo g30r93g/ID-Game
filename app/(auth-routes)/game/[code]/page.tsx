@@ -1,6 +1,7 @@
 import { Game } from "@/components/game";
 import { api } from "@/convex/_generated/api";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { preloadedQueryResult } from "convex/nextjs";
 import {
   fetchAuthMutation,
@@ -35,32 +36,26 @@ export default async function GamePage({
     redirect("/game");
   }
 
-  // Neither read depends on the other, so they go out together. Run in series
-  // this was the bulk of the delay after "Create New Game": nothing renders
-  // until both land, so the page paid for them one after the other.
+  // The game the screen keeps live, and whether the caller is in it yet, asked
+  // together. Membership is asked once rather than kept live: only this page
+  // needs it, to decide whether to join the caller first.
   //
-  // The game read catches its own failure so a rejection can't take the batch
-  // down with it — a token that got past `getToken` but is rejected by Convex
-  // ended in a redirect before, and still should. It is logged, not swallowed.
-  const [user, preloadedGame] = await Promise.all([
-    fetchAuthQuery(api.auth.getCurrentUser, {}),
-    preloadAuthQuery(api.game.fetchGameAndMembership, { joinCode }).catch(
-      (error) => {
-        console.error("Failed to load game", joinCode, error);
-        return null;
-      },
-    ),
-  ]);
-
-  if (!user) {
-    console.error("No user is found");
+  // A failure is caught so a rejection can't take the page down with it: a
+  // token that got past `getToken` but is rejected by Convex ends in a
+  // redirect. It is logged, not swallowed.
+  const loaded = await Promise.all([
+    preloadAuthQuery(api.game.getGameForViewer, { joinCode }),
+    fetchAuthQuery(api.game.isPlayerInGame, { joinCode }),
+  ]).catch((error) => {
+    console.error("Failed to load game", joinCode, error);
+    return null;
+  });
+  if (!loaded) {
     redirect("/game");
   }
-  if (!preloadedGame) {
-    redirect("/game");
-  }
+  const [preloadedGame, isPlayer] = loaded;
 
-  const { game, isPlayer } = preloadedQueryResult(preloadedGame);
+  const { game } = preloadedQueryResult(preloadedGame);
   if (!game) {
     console.error(`No game found with join code: ${joinCode}`);
     redirect("/game");
@@ -69,37 +64,61 @@ export default async function GamePage({
   // Ensure the current user is a player, otherwise join them. Whoever created
   // the game is already one, so this whole branch is skipped on the create path.
   if (!isPlayer) {
-    // `distinctId` is the Better Auth user ID, which is what the browser
-    // identifies as too (see providers/Posthog.tsx), so this lands on the same
-    // person as the rest of the session.
-    const posthog = PostHogClient();
-    posthog.capture({
-      distinctId: user.id,
-      event: "game_join",
-      properties: {
-        joinCode,
-      },
-    });
-
-    // A serverless invocation can be frozen the moment the response is sent,
-    // leaving the event queued and unsent, so the flush has to be awaited —
-    // but alongside the join rather than in front of it, since this path is
-    // down to a single round trip and analytics should not cost another one.
-    // Its failure is logged, never thrown: it must not keep someone out of a
-    // game they are joining.
-    const flush = posthog.shutdown().catch((error) => {
-      console.error("Could not record game_join in PostHog", error);
-    });
+    // Only needed here, for the analytics id, so everyone else skips it.
+    const user = await fetchAuthQuery(api.auth.getCurrentUser, {});
+    if (!user) {
+      console.error("No user is found");
+      redirect("/game");
+    }
 
     try {
-      await Promise.all([
-        fetchAuthMutation(api.game.joinGame, { joinCode }),
-        flush,
-      ]);
+      await fetchAuthMutation(api.game.joinGame, { joinCode });
     } catch {
       redirect("/game");
     }
+
+    // Recorded once the join has gone through, and flushed after the response
+    // is sent: `after` keeps the invocation alive until the flush finishes, so
+    // the event isn't lost to a frozen function, and a slow PostHog no longer
+    // holds up the page. `distinctId` is the Better Auth user ID, which is what
+    // the browser identifies as too (see providers/Posthog.tsx), so this lands
+    // on the same person as the rest of the session. A failure is logged, never
+    // thrown.
+    after(async () => {
+      const posthog = PostHogClient();
+      posthog.capture({
+        distinctId: user.id,
+        event: "game_join",
+        properties: {
+          joinCode,
+        },
+      });
+      await posthog.shutdown().catch((error) => {
+        console.error("Could not record game_join in PostHog", error);
+      });
+    });
   }
 
-  return <Game preloadedGame={preloadedGame} />;
+  // Everything the screen needs for its first paint, so it renders the real
+  // phase instead of a skeleton and waits on no client-side round trips. Read
+  // after any join above, so a new player is already in the list.
+  const screen = await Promise.all([
+    preloadAuthQuery(api.game.getPlayersForGame, { game: game._id }),
+    preloadAuthQuery(api.game.getCurrentGameRound, { game: game._id }),
+  ]).catch((error) => {
+    console.error("Failed to load game", joinCode, error);
+    return null;
+  });
+  if (!screen) {
+    redirect("/game");
+  }
+  const [preloadedPlayers, preloadedRound] = screen;
+
+  return (
+    <Game
+      preloadedGame={preloadedGame}
+      preloadedPlayers={preloadedPlayers}
+      preloadedRound={preloadedRound}
+    />
+  );
 }
