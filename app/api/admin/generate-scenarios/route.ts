@@ -3,6 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
+import { ADMIN_ACCESS_REQUIRED, isAdminAccessError } from "@/lib/admin/access";
 
 // Generate candidate scenarios via the Vercel AI Gateway (xAI Grok by default).
 // Admin-guarded; returns candidates only — the client reviews them and inserts
@@ -23,11 +24,6 @@ const outputSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const user = await fetchAuthQuery(api.auth.getCurrentUser, {});
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-  }
-
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -35,9 +31,19 @@ export async function POST(req: Request) {
   const { instructions, category, count } = parsed.data;
 
   // Per-category style brief (set/edited in the admin "Manage categories" UI).
-  const { brief } = await fetchAuthQuery(api.admin.getCategoryBrief, {
-    name: category,
-  });
+  // This is also the admin check: getCategoryBrief runs requireAdmin, so a
+  // separate getCurrentUser read would be a second round trip for nothing.
+  let brief: string;
+  try {
+    ({ brief } = await fetchAuthQuery(api.admin.getCategoryBrief, {
+      name: category,
+    }));
+  } catch (e) {
+    if (isAdminAccessError(e)) {
+      return NextResponse.json({ error: ADMIN_ACCESS_REQUIRED }, { status: 403 });
+    }
+    throw e;
+  }
 
   const system =
     `You write short "Most likely to..." prompts for an adult (18+) party game called The ID Game, played by consenting adults who are calling out their friends. ` +

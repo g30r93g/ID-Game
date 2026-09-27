@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/auth-server";
+import { getSessionToken } from "@/lib/auth-server";
 import { env } from "@/app/env";
 import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
 import { PostHogIdentity } from "@/providers/PostHogIdentity";
@@ -11,7 +11,9 @@ export default async function GameLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const token = await getToken();
+  // Signed-out visitors (most of /sign-in) have no session cookie, so they
+  // skip the token lookup entirely.
+  const token = await getSessionToken();
 
   return (
     <div className={"min-h-svh max-h-svh flex items-center justify-center"}>

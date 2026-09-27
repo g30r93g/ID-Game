@@ -13,6 +13,7 @@ import {
   setCategoryBriefCore,
 } from "./admin";
 import { FOURTEEN_DAYS_MS } from "../lib/admin/metrics";
+import { isAdminAccessError } from "../lib/admin/access";
 
 const modules = import.meta.glob("./**/*.*s");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.*s");
@@ -195,6 +196,24 @@ test("userStats counts guests apart from accounts", async () => {
     const stats = await t.withIdentity(admin).query(api.admin.userStats, {});
     expect(stats.totalUsers).toBe(2);
     expect(stats.guests).toBe(3);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+// The admin API routes map this refusal to a 403 (lib/admin/access.ts), which
+// only works if it arrives as a ConvexError: Convex redacts a plain Error's
+// message in production.
+test("requireAdmin refuses a signed-out caller with a ConvexError", async () => {
+  vi.stubEnv("SITE_URL", "http://localhost:3000");
+  vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-test-secret-test-secret");
+  try {
+    const t = convexTest(schema, modules);
+    t.registerComponent("betterAuth", betterAuthSchema, betterAuthModules);
+    const error = await t
+      .query(api.admin.getCategoryBrief, { name: "Work" })
+      .catch((e: unknown) => e);
+    expect(isAdminAccessError(error)).toBe(true);
   } finally {
     vi.unstubAllEnvs();
   }
