@@ -387,6 +387,281 @@ test("transitionRoundPhase tolerates a no-op transition to the same phase", asyn
   expect(round?.phase).toBe("guess-scenario");
 });
 
+async function roundsOf(t: TestConvex<typeof schema>, gameId: Id<"games">) {
+  return t.run((ctx) =>
+    ctx.db
+      .query("gameRounds")
+      .withIndex("byGame", (q) => q.eq("gameId", gameId))
+      .collect(),
+  );
+}
+
+test("startGame closes the lobby and starts round 1 with the creator as host", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+
+  const roundId = await t
+    .withIdentity({ subject: "creator" })
+    .mutation(api.game.startGame, { game: gameId });
+
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.isOpen).toBe(false);
+  expect(game?.currentRound).toBe(1);
+  expect(typeof game?.startedAt).toBe("number");
+
+  const round = await t.run((ctx) => ctx.db.get(roundId!));
+  const host = await t.run((ctx) => ctx.db.get(round!.hostPlayerId));
+  expect(round?.roundNumber).toBe(1);
+  expect(round?.phase).toBe("create-scenarios");
+  expect(host?.userId).toBe("creator");
+});
+
+test("startGame twice is a no-op that returns the same round", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+  const asCreator = t.withIdentity({ subject: "creator" });
+
+  const first = await asCreator.mutation(api.game.startGame, { game: gameId });
+  const second = await asCreator.mutation(api.game.startGame, { game: gameId });
+
+  expect(second).toBe(first);
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.currentRound).toBe(1);
+});
+
+test("startGame rejects an unauthenticated caller", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+
+  await expect(
+    t.mutation(api.game.startGame, { game: gameId }),
+  ).rejects.toThrow(/authenticated/);
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.isOpen).toBe(true);
+});
+
+test("startGame rejects a player who isn't the creator", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+
+  await expect(
+    t.withIdentity({ subject: "member" }).mutation(api.game.startGame, {
+      game: gameId,
+    }),
+  ).rejects.toThrow(/creator/);
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.isOpen).toBe(true);
+  expect(await roundsOf(t, gameId)).toHaveLength(0);
+});
+
+test("startGame rejects a non-member", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+
+  await expect(
+    t.withIdentity({ subject: "outsider" }).mutation(api.game.startGame, {
+      game: gameId,
+    }),
+  ).rejects.toThrow(/creator/);
+  expect(await roundsOf(t, gameId)).toHaveLength(0);
+});
+
+test("finishRoundAndStartNext finishes a middle round and starts the next", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+  });
+
+  const nextId = await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.finishRoundAndStartNext, { round: roundId });
+
+  const finished = await t.run((ctx) => ctx.db.get(roundId));
+  const next = await t.run((ctx) => ctx.db.get(nextId!));
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(finished?.phase).toBe("finished");
+  expect(next?.roundNumber).toBe(2);
+  expect(next?.phase).toBe("create-scenarios");
+  expect(game?.currentRound).toBe(2);
+  expect(game?.completedAt).toBeUndefined();
+});
+
+test("finishRoundAndStartNext on the final round returns null and completes the game", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 3,
+  });
+  const result = await t
+    .withIdentity({ subject: "host" })
+    .mutation(api.game.finishRoundAndStartNext, { round: roundId });
+
+  expect(result).toBeNull();
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.currentRound).toBe(3);
+  expect(typeof game?.completedAt).toBe("number");
+});
+
+test("finishRoundAndStartNext twice is a no-op that returns the same round", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+  });
+  const asHost = t.withIdentity({ subject: "host" });
+
+  const first = await asHost.mutation(api.game.finishRoundAndStartNext, {
+    round: roundId,
+  });
+  const second = await asHost.mutation(api.game.finishRoundAndStartNext, {
+    round: roundId,
+  });
+
+  expect(second).toBe(first);
+  expect(await roundsOf(t, gameId)).toHaveLength(2);
+  const game = await t.run((ctx) => ctx.db.get(gameId));
+  expect(game?.currentRound).toBe(2);
+});
+
+test("finishRoundAndStartNext twice on the final round is a no-op", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 3,
+  });
+  const asHost = t.withIdentity({ subject: "host" });
+
+  await asHost.mutation(api.game.finishRoundAndStartNext, { round: roundId });
+  const again = await asHost.mutation(api.game.finishRoundAndStartNext, {
+    round: roundId,
+  });
+
+  expect(again).toBeNull();
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+});
+
+test("finishRoundAndStartNext rejects an unauthenticated caller", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+  });
+
+  await expect(
+    t.mutation(api.game.finishRoundAndStartNext, { round: roundId }),
+  ).rejects.toThrow(/authenticated/);
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+});
+
+test("finishRoundAndStartNext rejects a non-member", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+    phase: "finished",
+  });
+
+  await expect(
+    t
+      .withIdentity({ subject: "outsider" })
+      .mutation(api.game.finishRoundAndStartNext, { round: roundId }),
+  ).rejects.toThrow(/Only active players/);
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+});
+
+test("finishRoundAndStartNext leaves finishing the round to its host", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+  });
+  await t.run((ctx) =>
+    ctx.db.insert("players", {
+      userId: "guesser",
+      gameId,
+      displayName: "Guesser",
+      lastAlive: 0,
+    }),
+  );
+
+  await expect(
+    t
+      .withIdentity({ subject: "guesser" })
+      .mutation(api.game.finishRoundAndStartNext, { round: roundId }),
+  ).rejects.toThrow(/host/);
+  const round = await t.run((ctx) => ctx.db.get(roundId));
+  expect(round?.phase).toBe("display-results");
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+});
+
+test("finishRoundAndStartNext follows a host reassigned mid-round", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+  });
+  await t.run(async (ctx) => {
+    const newHost = await ctx.db.insert("players", {
+      userId: "new-host",
+      gameId,
+      displayName: "New Host",
+      lastAlive: 0,
+    });
+    await ctx.db.patch(roundId, { hostPlayerId: newHost });
+  });
+
+  await expect(
+    t
+      .withIdentity({ subject: "host" })
+      .mutation(api.game.finishRoundAndStartNext, { round: roundId }),
+  ).rejects.toThrow(/host/);
+
+  const nextId = await t
+    .withIdentity({ subject: "new-host" })
+    .mutation(api.game.finishRoundAndStartNext, { round: roundId });
+  const next = await t.run((ctx) => ctx.db.get(nextId!));
+  expect(next?.roundNumber).toBe(2);
+});
+
+test("finishRoundAndStartNext lets any player start the next round once it has finished", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedGameWithRound(t, {
+    totalRounds: 3,
+    roundNumber: 1,
+    phase: "finished",
+  });
+  await t.run((ctx) =>
+    ctx.db.insert("players", {
+      userId: "guesser",
+      gameId,
+      displayName: "Guesser",
+      lastAlive: 0,
+    }),
+  );
+
+  const nextId = await t
+    .withIdentity({ subject: "guesser" })
+    .mutation(api.game.finishRoundAndStartNext, { round: roundId });
+
+  const next = await t.run((ctx) => ctx.db.get(nextId!));
+  expect(next?.roundNumber).toBe(2);
+});
+
+test("finishRoundAndStartNext refuses to skip a round's remaining phases", async () => {
+  const t = convexTest(schema, modules);
+  const { gameId, roundId } = await seedRoundWithPhase(t, "guess-scenario");
+
+  await expect(
+    t
+      .withIdentity({ subject: "host" })
+      .mutation(api.game.finishRoundAndStartNext, { round: roundId }),
+  ).rejects.toThrow(/Illegal phase transition/);
+  expect(await roundsOf(t, gameId)).toHaveLength(1);
+});
+
 // A round with the answer already chosen, plus a non-host player, so the
 // "can a guesser see the answer" question can be asked in any phase.
 async function seedRoundWithSelectedScenario(
