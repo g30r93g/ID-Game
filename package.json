@@ -16,7 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@better-auth/infra": "0.4.11",
+    "@better-auth/infra": "0.4.17",
     "@better-auth/passkey": "1.6.33",
     "@convex-dev/aggregate": "^0.3.1",
     "@convex-dev/better-auth": "^0.12.5",
