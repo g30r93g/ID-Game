@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { Output, streamText } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import {
   action,
@@ -31,13 +31,17 @@ import {
 //   reserveGeneration  checks everything and inserts a `pending` row, which
 //                      is what takes the credit. One transaction, so two tabs
 //                      can't both spend the last one.
-//   appendScenario     stores each scenario as the model finishes it; the
-//                      host's screen follows them in through roundGeneration.
-//   commitGeneration   makes them the round's draw and marks it `succeeded`.
+//   commitGeneration   stores the batch, makes it the round's draw and marks
+//                      it `succeeded`.
 //   failGeneration     marks it `failed`, which is the refund.
 // The model runs in an action, between the mutations, so a host closing their
 // tab mid-run changes nothing. An action that dies outright leaves a pending
-// row, which sweepStaleGenerations refunds.
+// row, which sweepStaleGenerations refunds, as does the host's next attempt.
+//
+// The model is called with generateText rather than streamText. On a failed
+// call streamText rejects promises nobody awaits, which Convex treats as an
+// uncaught error: it ended the action before the refund was written, leaving
+// the generation stuck pending.
 //
 // Needs AI_GATEWAY_API_KEY in the Convex environment (and optionally
 // AI_SCENARIO_MODEL). Without the key the feature is off: the quota query
@@ -182,12 +186,18 @@ export const reserveGeneration = internalMutation({
     if (lockedIn) refuse("A scenario has already been selected.");
 
     // One at a time per round: a second would race the first for the draw.
+    // A pending generation past STALE_PENDING_MS belongs to an action that
+    // died, so it is refunded here rather than blocking the host until the
+    // sweep gets to it.
+    const now = Date.now();
     const latest = await latestForRound(ctx, round._id);
     if (latest?.status === "pending") {
-      refuse("Your scenarios are already being written.");
+      if (latest.createdAt > now - STALE_PENDING_MS) {
+        refuse("Your scenarios are already being written.");
+      }
+      await markFailed(ctx, latest, STALE_ERROR);
     }
 
-    const now = Date.now();
     const period = generationPeriod(now);
     if ((await countUsed(ctx, userId, period)) >= FREE_GENERATIONS_PER_MONTH) {
       refuse(
@@ -242,28 +252,13 @@ export const reserveGeneration = internalMutation({
   },
 });
 
-export const appendScenario = internalMutation({
-  args: {
-    generationId: v.id("scenarioGenerations"),
-    description: v.string(),
-  },
-  handler: async (ctx, { generationId, description }) => {
-    const generation = await ctx.db.get(generationId);
-    // Refunded by the sweep while the model was still going: drop the rest.
-    if (generation?.status !== "pending") return false;
-    await ctx.db.insert("customScenarios", { generationId, description });
-    return true;
-  },
-});
+const STALE_ERROR = "We couldn't write your scenarios just now.";
 
 async function markFailed(
   ctx: MutationCtx,
   generation: Doc<"scenarioGenerations">,
   error: string,
 ) {
-  // The scenarios go with it: nothing can reach a failed batch.
-  const written = await scenariosFor(ctx, generation._id);
-  await Promise.all(written.map((row) => ctx.db.delete(row._id)));
   await ctx.db.patch(generation._id, { status: "failed", error });
 }
 
@@ -282,8 +277,11 @@ export const failGeneration = internalMutation({
  * nothing for the credit.
  */
 export const commitGeneration = internalMutation({
-  args: { generationId: v.id("scenarioGenerations") },
-  handler: async (ctx, { generationId }) => {
+  args: {
+    generationId: v.id("scenarioGenerations"),
+    descriptions: v.array(v.string()),
+  },
+  handler: async (ctx, { generationId, descriptions }) => {
     const generation = await ctx.db.get(generationId);
     if (generation?.status !== "pending") return false;
 
@@ -309,25 +307,27 @@ export const commitGeneration = internalMutation({
       return false;
     }
 
-    const scenarios = await scenariosFor(ctx, generationId);
-    if (scenarios.length < SCENARIOS_PER_ROUND) {
+    if (descriptions.length < SCENARIOS_PER_ROUND) {
       await markFailed(ctx, generation, "Not enough scenarios were written.");
       return false;
     }
 
     // Replaces whatever the round had, a category draw or an earlier batch,
-    // the same way a category re-draw does.
+    // the same way a category re-draw does. Inserted in order, so the host
+    // sees them as the model wrote them.
     await Promise.all(draw.map((row) => ctx.db.delete(row._id)));
-    await Promise.all(
-      scenarios.slice(0, SCENARIOS_PER_ROUND).map((scenario) =>
-        ctx.db.insert("gameRoundScenarios", {
-          gameId: round.gameId,
-          roundId: round._id,
-          scenarioId: scenario._id,
-          selected: false,
-        }),
-      ),
-    );
+    for (const description of descriptions.slice(0, SCENARIOS_PER_ROUND)) {
+      const scenarioId = await ctx.db.insert("customScenarios", {
+        generationId,
+        description,
+      });
+      await ctx.db.insert("gameRoundScenarios", {
+        gameId: round.gameId,
+        roundId: round._id,
+        scenarioId,
+        selected: false,
+      });
+    }
     await ctx.db.patch(generationId, { status: "succeeded" });
     return true;
   },
@@ -357,48 +357,35 @@ export const generateRoundScenarios = action({
     // still going.
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), GENERATION_TIMEOUT_MS);
+    let descriptions: string[] = [];
     let failure: unknown;
-    let written = 0;
     try {
-      const result = streamText({
+      const { output } = await generateText({
         model: process.env.AI_SCENARIO_MODEL ?? DEFAULT_SCENARIO_MODEL,
         output: Output.array({ element: scenarioSchema }),
         instructions: system,
         prompt,
         temperature: 0.9,
         abortSignal: abort.signal,
-        // Model errors arrive in the stream rather than being thrown, and the
-        // element stream skips them, so keep the error to report at the end.
-        onError: ({ error }) => {
-          failure = error;
-        },
       });
-      for await (const { description } of result.elementStream) {
-        const trimmed = description.trim();
-        if (!trimmed) continue;
-        await ctx.runMutation(internal.generation.appendScenario, {
-          generationId,
-          description: trimmed,
-        });
-        if (++written >= SCENARIOS_PER_ROUND) break;
-      }
+      descriptions = output
+        .map(({ description }) => description.trim())
+        .filter(Boolean)
+        .slice(0, SCENARIOS_PER_ROUND);
     } catch (e) {
-      failure ??= e;
+      failure = e;
     } finally {
       clearTimeout(timeout);
-      // A no-op once the model has finished; otherwise it stops generating
-      // what would be thrown away.
-      abort.abort();
     }
 
-    if (written < SCENARIOS_PER_ROUND) {
+    if (descriptions.length < SCENARIOS_PER_ROUND) {
       if (failure !== undefined) console.error("Generation failed:", failure);
       await ctx.runMutation(internal.generation.failGeneration, {
         generationId,
         // A short batch with no error is the model declining the description.
         error:
           failure !== undefined
-            ? "We couldn't write your scenarios just now."
+            ? STALE_ERROR
             : "We couldn't write scenarios for that description. Try describing your group differently.",
       });
       return { succeeded: false };
@@ -406,7 +393,7 @@ export const generateRoundScenarios = action({
 
     const succeeded: boolean = await ctx.runMutation(
       internal.generation.commitGeneration,
-      { generationId },
+      { generationId, descriptions },
     );
     return { succeeded };
   },
@@ -427,7 +414,7 @@ export const sweepStaleGenerations = internalMutation({
       )
       .take(100);
     for (const generation of stale) {
-      await markFailed(ctx, generation, "We couldn't write your scenarios just now.");
+      await markFailed(ctx, generation, STALE_ERROR);
     }
     return stale.length;
   },

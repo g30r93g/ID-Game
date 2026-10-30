@@ -16,10 +16,10 @@ export const MAX_PROMPT_LENGTH = 200;
  * sweep refunds it.
  */
 export const GENERATION_TIMEOUT_MS = 60_000;
-export const STALE_PENDING_MS = 5 * 60_000;
+export const STALE_PENDING_MS = 2 * 60_000;
 
 /** Vercel AI Gateway model id; `AI_SCENARIO_MODEL` overrides it everywhere. */
-export const DEFAULT_SCENARIO_MODEL = "xai/grok-4.1-fast-non-reasoning";
+export const DEFAULT_SCENARIO_MODEL = "spacexai/grok-4.20-non-reasoning";
 
 /** The month a generation at `now` counts against, as "YYYY-MM" in UTC. */
 export function generationPeriod(now: number): string {
