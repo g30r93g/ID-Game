@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   activePlayerCount,
   computeGameStats,
+  computeRatingStats,
   formatDuration,
+  formatRating,
   gameDurationMs,
   groupTimesSelected,
   scenarioSortToQuery,
@@ -121,4 +123,44 @@ describe("groupTimesSelected", () => {
     expect(m.get("x")).toBe(2);
     expect(m.get("y")).toBe(1);
   });
+});
+
+describe("computeRatingStats", () => {
+  it("is empty with no ratings", () =>
+    expect(computeRatingStats([], NOW)).toEqual({
+      total: 0,
+      average: null,
+      ratings14d: 0,
+      average14d: null,
+      distribution: [0, 0, 0, 0, 0],
+    }));
+  it("averages all-time and the 14-day window separately", () => {
+    const old = NOW - FOURTEEN_DAYS_MS - 1;
+    expect(
+      computeRatingStats(
+        [
+          { rating: 1, _creationTime: old },
+          { rating: 4, _creationTime: NOW },
+          { rating: 5, _creationTime: NOW },
+          { rating: 5, _creationTime: NOW },
+        ],
+        NOW,
+      ),
+    ).toEqual({
+      total: 4,
+      average: 15 / 4,
+      ratings14d: 3,
+      average14d: 14 / 3,
+      distribution: [1, 0, 0, 1, 2],
+    });
+  });
+  it("leaves out-of-range ratings out of the distribution", () =>
+    expect(
+      computeRatingStats([{ rating: 7, _creationTime: NOW }], NOW).distribution,
+    ).toEqual([0, 0, 0, 0, 0]));
+});
+
+describe("formatRating", () => {
+  it("dashes a missing average", () => expect(formatRating(null)).toBe("—"));
+  it("rounds to two places", () => expect(formatRating(14 / 3)).toBe("4.67 ★"));
 });

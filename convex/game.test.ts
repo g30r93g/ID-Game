@@ -1659,3 +1659,30 @@ test("joinGame lets guests in", async () => {
   );
   expect(players.map((p) => p.userId)).toEqual(["guest"]);
 });
+
+test("submitRating replaces a player's earlier rating instead of adding another", async () => {
+  const t = convexTest(schema, modules);
+  const gameId = await seedLobby(t);
+  const member = t.withIdentity({ subject: "member" });
+
+  await member.mutation(api.game.submitRating, { joinCode: "LBY123", rating: 2 });
+  await member.mutation(api.game.submitRating, { joinCode: "LBY123", rating: 5 });
+
+  const ratings = await t.run((ctx) => ctx.db.query("gameRating").collect());
+  expect(ratings).toHaveLength(1);
+  expect(ratings[0]).toMatchObject({ gameId, userId: "member", rating: 5 });
+});
+
+test("submitRating rejects ratings outside 1–5 or not whole", async () => {
+  const t = convexTest(schema, modules);
+  await seedLobby(t);
+  const member = t.withIdentity({ subject: "member" });
+
+  for (const rating of [0, 6, 3.5, -1]) {
+    await expect(
+      member.mutation(api.game.submitRating, { joinCode: "LBY123", rating }),
+    ).rejects.toThrow("Rating must be a whole number from 1 to 5.");
+  }
+  const ratings = await t.run((ctx) => ctx.db.query("gameRating").collect());
+  expect(ratings).toHaveLength(0);
+});

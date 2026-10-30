@@ -113,3 +113,34 @@ export function groupTimesSelected(
     counts.set(r.scenarioId, (counts.get(r.scenarioId) ?? 0) + 1);
   return counts;
 }
+
+/**
+ * Count, mean and per-star breakdown of game ratings. `distribution[i]` is the
+ * number of ratings of `i + 1` stars; anything outside 1–5 is counted in the
+ * total and mean but not bucketed (`submitRating` doesn't validate the value).
+ */
+export function computeRatingStats(
+  ratings: { rating: number; _creationTime: number }[],
+  now: number,
+) {
+  const mean = (rs: { rating: number }[]) =>
+    rs.length ? rs.reduce((a, r) => a + r.rating, 0) / rs.length : null;
+  const recent = ratings.filter((r) => withinWindow(r._creationTime, now));
+  const distribution = [0, 0, 0, 0, 0];
+  for (const r of ratings) {
+    if (Number.isInteger(r.rating) && r.rating >= 1 && r.rating <= 5) {
+      distribution[r.rating - 1]++;
+    }
+  }
+  return {
+    total: ratings.length,
+    average: mean(ratings),
+    ratings14d: recent.length,
+    average14d: mean(recent),
+    distribution,
+  };
+}
+
+export function formatRating(avg: number | null): string {
+  return avg === null ? "—" : `${avg.toFixed(2)} ★`;
+}

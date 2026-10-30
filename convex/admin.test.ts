@@ -14,6 +14,7 @@ import {
   gameStatsCore,
   listCategoriesWithCountsCore,
   listScenariosPage,
+  ratingStatsCore,
   renameCategoryCore,
   scenarioCategoriesForAdminCore,
   setCategoryBriefCore,
@@ -489,4 +490,18 @@ test("the user queries reject non-admins", async () => {
   await expect(
     asUser.query(api.admin.listUsers, { paginationOpts: { numItems: 10, cursor: null } }),
   ).rejects.toThrow(/Admin access required/);
+});
+
+test("ratingStatsCore summarises every rating", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    const gameId = await ctx.db.insert("games", {
+      joinCode: "RATE", totalRounds: 1, isOpen: false, createdBy: "a",
+    });
+    await ctx.db.insert("players", { userId: "a", gameId, displayName: "Alice" });
+    await ctx.db.insert("gameRating", { gameId, userId: "a", rating: 4 });
+    await ctx.db.insert("gameRating", { gameId, userId: "gone", rating: 2 });
+  });
+  const stats = await t.run((ctx) => ratingStatsCore(ctx, Date.now()));
+  expect(stats).toMatchObject({ total: 2, average: 3, distribution: [0, 1, 0, 1, 0] });
 });
