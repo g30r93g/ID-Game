@@ -22,7 +22,7 @@ import {
 //
 // Requires `AI_GATEWAY_API_KEY` in the environment (auto-provided on Vercel;
 // set it in `.env.local` for local dev). Override the model with
-// `AI_SCENARIO_MODEL` (defaults to "xai/grok-4.1-fast-non-reasoning").
+// `AI_SCENARIO_MODEL` (defaults to DEFAULT_SCENARIO_MODEL in lib/generation.ts).
 
 const bodySchema = z.object({
   instructions: z.string().default(""),

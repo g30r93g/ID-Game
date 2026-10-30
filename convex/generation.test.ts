@@ -1,6 +1,6 @@
 import { convexTest, type TestConvex } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { MockLanguageModelV4, convertArrayToReadableStream } from "ai/test";
+import { MockLanguageModelV4 } from "ai/test";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -12,14 +12,8 @@ import {
 
 const modules = import.meta.glob("./**/*.*s");
 
-// The provider package isn't a direct dependency, so take its stream part type
-// from the mock model.
-type StreamResult = Awaited<ReturnType<MockLanguageModelV4["doStream"]>>;
-type LanguageModelV4StreamPart =
-  StreamResult["stream"] extends ReadableStream<infer Part> ? Part : never;
-
 // Swap the gateway model id for a scripted one; everything else about the
-// streamText call is the action's own.
+// generateText call is the action's own.
 const model = vi.hoisted(() => ({
   current: undefined as unknown,
   calls: [] as { prompt: unknown }[],
@@ -28,11 +22,11 @@ vi.mock("ai", async (importOriginal) => {
   const ai = await importOriginal<typeof import("ai")>();
   return {
     ...ai,
-    streamText: ((options) =>
-      ai.streamText({
+    generateText: ((options) =>
+      ai.generateText({
         ...options,
         model: model.current as typeof options.model,
-      })) as typeof ai.streamText,
+      })) as typeof ai.generateText,
   };
 });
 
@@ -41,33 +35,23 @@ const usage = {
   outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
 
-/** A model that answers with these descriptions, or fails part-way. */
-function scriptModel(descriptions: string[], opts: { failAfter?: number } = {}) {
-  const items = descriptions
-    .slice(0, opts.failAfter)
-    .map((description) => JSON.stringify({ description }));
-  const text = `{"elements":[${items.join(",")}${opts.failAfter === undefined ? "]}" : ""}`;
+/**
+ * A model that answers with these descriptions, or that fails the way the
+ * gateway does for an unknown model: the call itself rejects.
+ */
+function scriptModel(descriptions: string[], opts: { fail?: boolean } = {}) {
+  const text = JSON.stringify({
+    elements: descriptions.map((description) => ({ description })),
+  });
   model.current = new MockLanguageModelV4({
-    doStream: async (options) => {
+    doGenerate: async (options) => {
       model.calls.push({ prompt: options.prompt });
+      if (opts.fail) throw new Error("Model not found");
       return {
-        stream: convertArrayToReadableStream<LanguageModelV4StreamPart>([
-          { type: "stream-start", warnings: [] },
-          { type: "text-start", id: "t" },
-          { type: "text-delta", id: "t", delta: text },
-          ...(opts.failAfter !== undefined
-            ? ([
-                { type: "error", error: new Error("Gateway fell over") },
-              ] satisfies LanguageModelV4StreamPart[])
-            : ([
-                { type: "text-end", id: "t" },
-                {
-                  type: "finish",
-                  usage,
-                  finishReason: { unified: "stop", raw: "stop" },
-                },
-              ] satisfies LanguageModelV4StreamPart[])),
-        ]),
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage,
+        warnings: [],
       };
     },
   });
@@ -270,7 +254,7 @@ describe("generateRoundScenarios", () => {
     const { roundId } = await seedRound(t);
     const asHost = t.withIdentity({ subject: "host" });
     const before = await drawDescriptions(t, roundId);
-    scriptModel(TEN, { failAfter: 4 });
+    scriptModel(TEN, { fail: true });
 
     const result = await asHost.action(api.generation.generateRoundScenarios, {
       roundId,
@@ -416,19 +400,64 @@ describe("commitGeneration", () => {
         status: "pending",
         createdAt: Date.now(),
       });
-      for (const description of TEN) {
-        await ctx.db.insert("customScenarios", { generationId: id, description });
-      }
       await ctx.db.patch(roundId, { phase: "pick-scenario" });
       return id;
     });
 
     expect(
-      await t.mutation(internal.generation.commitGeneration, { generationId }),
+      await t.mutation(internal.generation.commitGeneration, {
+        generationId,
+        descriptions: TEN,
+      }),
     ).toBe(false);
     const generation = await t.run((ctx) => ctx.db.get(generationId));
     expect(generation).toMatchObject({ status: "failed" });
     expect(await drawDescriptions(t, roundId)).not.toContain(TEN[0]);
+  });
+});
+
+describe("a generation left pending by a dead action", () => {
+  test("blocks a second attempt only while it could still be running", async () => {
+    const t = convexTest(schema, modules);
+    const { gameId, roundId } = await seedRound(t);
+    const asHost = t.withIdentity({ subject: "host" });
+    const pending = (createdAt: number) =>
+      t.run((ctx) =>
+        ctx.db.insert("scenarioGenerations", {
+          userId: "host",
+          period: generationPeriod(Date.now()),
+          gameId,
+          roundId,
+          prompt: "Uni friends",
+          status: "pending",
+          createdAt,
+        }),
+      );
+
+    const live = await pending(Date.now());
+    await expect(
+      asHost.action(api.generation.generateRoundScenarios, {
+        roundId,
+        prompt: "Uni friends",
+      }),
+    ).rejects.toThrow(/already being written/);
+
+    // Once it's stale, the next attempt refunds it and goes ahead.
+    await t.run((ctx) =>
+      ctx.db.patch(live, { createdAt: Date.now() - STALE_PENDING_MS - 1000 }),
+    );
+    expect(
+      await asHost.action(api.generation.generateRoundScenarios, {
+        roundId,
+        prompt: "Uni friends",
+      }),
+    ).toEqual({ succeeded: true });
+    expect(await t.run((ctx) => ctx.db.get(live))).toMatchObject({
+      status: "failed",
+    });
+    expect(
+      (await asHost.query(api.generation.getGenerationQuota, {}))!.used,
+    ).toBe(1);
   });
 });
 

@@ -167,7 +167,7 @@ interface GenerateScenariosPanelProps {
   /** Existing categories, offered as the tone; their admin briefs steer the model. */
   tones: string[];
   status: GenerationStatus;
-  /** Streams in during "generating", complete in "review". */
+  /** The batch, once written; empty while "generating". */
   scenarios: string[];
   /**
    * What the scenarios were written from, as the server has it. Shown while
@@ -301,7 +301,7 @@ export function GenerateScenariosPanel({
         <div className={"flex flex-col gap-2"}>
           <LoadingButton loading={busy} disabled={busy} onClick={onUse}>
             {busy ? (
-              `Writing ${scenarios.length} of ${SCENARIOS_PER_ROUND}…`
+              "Writing your scenarios…"
             ) : (
               <>
                 Use these scenarios

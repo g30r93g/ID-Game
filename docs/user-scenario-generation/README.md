@@ -124,18 +124,22 @@ used = rows byUserPeriod(userId, period(now)) where status !== "failed"
 | `reserveGeneration` | internal mutation | Checks: signed in, not `isAnonymous`, caller is the round host, the phase is `create-scenarios`, nothing locked in yet, `used < allowance`, prompt is 3–200 chars. Inserts a `pending` row. Returns the generation id and the tone's category brief. |
 | `commitGeneration` | internal mutation | Inserts the 10 `customScenarios`, replaces the round's draw (the same delete-then-insert as `selectScenariosForGameRound`, with the same "already locked in" guard), and marks the row `succeeded`. |
 | `failGeneration` | internal mutation | Marks the row `failed`, which is the refund. |
-| `sweepStalePendingGenerations` | cron, every 5 min | Marks `pending` rows older than about 2 min as `failed`, so an action that died mid-run doesn't keep a credit. |
+| `sweepStaleGenerations` | cron, every 10 min | Marks `pending` rows older than 2 min as `failed`, so an action that died mid-run doesn't keep a credit. The host's next attempt does the same for their round straight away. |
 
 **Why a Convex action rather than another Next route like
 `app/api/admin/generate-scenarios`:** the reserve, commit and refund steps all
 live next to the data, so the host's browser closing mid-run can't leave a
-credit taken with nothing to show for it. The scenarios also reach the screen
-through Convex reactivity rather than an NDJSON stream. The action can insert
-each scenario as it completes, so the "arriving one by one" view in the
-prototype comes from a plain `useQuery`. It needs `AI_GATEWAY_API_KEY` (and
+credit taken with nothing to show for it. It needs `AI_GATEWAY_API_KEY` (and
 optionally `AI_SCENARIO_MODEL`) set in the Convex environment as well as
-Vercel's. The model call, `streamText` with `Output.array`, is the same as the
-admin route's. Move the shared prompt-building into `lib/` so both use it.
+Vercel's. The prompt-building is shared with the admin route in `lib/`.
+
+**Why `generateText`, not `streamText`:** the first version streamed, so
+scenarios arrived one by one. When the model call failed, `streamText` left
+rejected promises that Convex treats as an uncaught error. That ended the
+action before the refund was written, leaving the generation stuck pending
+and the host told "already being written" on every retry. `generateText`
+throws the failure straight to the action, which refunds it. The batch now
+appears all at once.
 
 ### Prompting and safety
 
@@ -160,7 +164,8 @@ The admin route's system prompt is the base, with these changes:
 ### Cost check
 
 One generation is about 10 short lines, roughly 1–2k tokens in and out on
-`grok-4.1-fast-non-reasoning`, so a fraction of a cent. The worst case is 5 a
+`spacexai/grok-4.20-non-reasoning` ($1.25 / $2.50 per million tokens), so
+about a quarter of a cent. The worst case is 5 a
 month × every account. The limit is a product lever more than a cost one.
 
 ## UI
@@ -171,7 +176,7 @@ The flow, all on the host's existing card:
 |---|---|
 | **1. Category screen.** A "Make your own" tile, the same height as the category buttons, sits above them with an animated rainbow glow behind it and "3 left" on the right. The glow dims when there are no credits left or the host is a guest, and holds still for reduced motion. | ![](1-categories.png) |
 | **2. Compose.** The host writes a ≤200-character theme (with quick-pick idea chips) and can pick a tone, which reuses the existing categories so their admin briefs steer the model. The meter shows credits left and the reset date. | ![](2-compose.png) |
-| **3. Generating.** 10 numbered slots fill in as each scenario arrives. The main button reads "Writing 4 of 10…". | ![](3-generating.png) |
+| **3. Generating.** 10 numbered placeholder slots, filled in together when the batch is written. The main button reads "Writing your scenarios…". | ![](3-generating.png) |
 | **4. Review.** "Use these scenarios" moves to the normal pick-scenario screen. Re-roll asks for confirmation because it costs a credit. | ![](4-review.png) |
 | **5. Out of credits.** The tile shows "Resets 1 Nov" with a dimmed glow. Opening it explains why and points back to the categories. | ![](5-exhausted.png) |
 | **6. Failure.** The error says the run was refunded, and the host's text stays in place for a retry. | ![](6-error.png) |

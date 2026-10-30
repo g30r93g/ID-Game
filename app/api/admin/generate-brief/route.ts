@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { z } from "zod";
 import { fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
+import { DEFAULT_SCENARIO_MODEL } from "@/lib/generation";
 
 // Meta-prompt: draft a reusable STYLE BRIEF for a category. The admin reviews /
 // edits it, then saves it (admin.setCategoryBrief); later generations use the
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
 
   try {
     const { text } = await generateText({
-      model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4.1-fast-non-reasoning",
+      model: process.env.AI_SCENARIO_MODEL ?? DEFAULT_SCENARIO_MODEL,
       system,
       prompt,
       temperature: 0.8,
