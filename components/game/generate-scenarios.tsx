@@ -106,54 +106,59 @@ export function MakeYourOwnTile({
   const exhausted = !isGuest && quota !== undefined && left === 0;
 
   return (
-    <button
-      type={"button"}
-      onClick={onOpen}
-      className={cn(
-        "group relative isolate flex h-11 w-full items-center gap-2 rounded-md border px-4 text-sm font-medium",
-        "focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]",
-      )}
-    >
-      {/* The glow: a blurred rainbow behind the tile rather than a border, so
-          it reads as light spilling out. Dimmed once there's nothing to
-          spend, and held still for reduced motion. */}
-      <span
-        aria-hidden
+    // The padding is room for the glow. The tile is the first thing in the
+    // card's scrolling content, which clips anything above its top edge.
+    <div className={"pt-3"}>
+      <button
+        type={"button"}
+        onClick={onOpen}
         className={cn(
-          "absolute -inset-1 -z-10 rounded-lg blur-md transition-opacity",
-          "animate-[rainbow-glow_6s_linear_infinite] motion-reduce:animate-none",
-          isGuest || exhausted
-            ? "opacity-25"
-            : "opacity-60 group-hover:opacity-90",
+          "group relative isolate flex h-11 w-full items-center gap-2 rounded-md border px-4 text-sm font-medium",
+          "focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]",
         )}
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, #ff4d4d, #ffa64d, #ffe14d, #4dff88, #4dc3ff, #9b4dff, #ff4dd2, #ff4d4d)",
-          backgroundSize: "200% 100%",
-        }}
-      />
-      {/* The tile's own fill. It can't sit on the button: inside the isolated
-          stacking context a -z child paints over its parent's background, so
-          the glow would show through the face of the tile. */}
-      <span aria-hidden className={"bg-card absolute inset-0 -z-10 rounded-md"} />
-      {isGuest ? (
-        <Lock className={"size-4"} />
-      ) : (
-        <WandSparkles className={"size-4"} />
-      )}
-      <span className={"grow text-left"}>Make your own</span>
-      <span className={"text-muted-foreground text-xs font-normal tabular-nums"}>
-        {isGuest
-          ? "Create an account"
-          : quota &&
-            (exhausted ? `Resets ${formatReset(quota.resetsAt)}` : `${left} left`)}
-      </span>
-      <ArrowRight
-        className={
-          "text-muted-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-        }
-      />
-    </button>
+      >
+        {/* The glow: a blurred rainbow behind the tile rather than a border, so
+            it reads as light spilling out. Dimmed once there's nothing to
+            spend, and held still for reduced motion. It sits low, so it
+            spills mostly downwards and needs little room above. */}
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -inset-x-1 top-1.5 -bottom-2 -z-10 rounded-lg blur-md transition-opacity",
+            "animate-[rainbow-glow_6s_linear_infinite] motion-reduce:animate-none",
+            isGuest || exhausted
+              ? "opacity-25"
+              : "opacity-60 group-hover:opacity-90",
+          )}
+          style={{
+            backgroundImage:
+              "linear-gradient(90deg, #ff4d4d, #ffa64d, #ffe14d, #4dff88, #4dc3ff, #9b4dff, #ff4dd2, #ff4d4d)",
+            backgroundSize: "200% 100%",
+          }}
+        />
+        {/* The tile's own fill. It can't sit on the button: inside the isolated
+            stacking context a -z child paints over its parent's background, so
+            the glow would show through the face of the tile. */}
+        <span aria-hidden className={"bg-card absolute inset-0 -z-10 rounded-md"} />
+        {isGuest ? (
+          <Lock className={"size-4"} />
+        ) : (
+          <WandSparkles className={"size-4"} />
+        )}
+        <span className={"grow text-left"}>Make your own</span>
+        <span className={"text-muted-foreground text-xs font-normal tabular-nums"}>
+          {isGuest
+            ? "Create an account"
+            : quota &&
+              (exhausted ? `Resets ${formatReset(quota.resetsAt)}` : `${left} left`)}
+        </span>
+        <ArrowRight
+          className={
+            "text-muted-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+          }
+        />
+      </button>
+    </div>
   );
 }
 
