@@ -108,7 +108,7 @@ export function MakeYourOwnTile({
   return (
     // The padding is room for the glow. The tile is the first thing in the
     // card's scrolling content, which clips anything above its top edge.
-    <div className={"pt-3"}>
+    <div className={"pt-6"}>
       <button
         type={"button"}
         onClick={onOpen}
@@ -124,7 +124,7 @@ export function MakeYourOwnTile({
         <span
           aria-hidden
           className={cn(
-            "absolute -inset-x-1 top-1.5 -bottom-2 -z-10 rounded-lg blur-md transition-opacity",
+            "absolute -inset-1 -z-10 rounded-lg blur-md transition-opacity",
             "animate-[rainbow-glow_6s_linear_infinite] motion-reduce:animate-none",
             isGuest || exhausted
               ? "opacity-25"
