@@ -5,6 +5,10 @@ import { fetchAuthQuery } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
 import { ADMIN_ACCESS_REQUIRED, isAdminAccessError } from "@/lib/admin/access";
 import { NDJSON_CONTENT_TYPE, ndjsonLine } from "@/lib/ndjson";
+import {
+  adminScenarioPrompts,
+  DEFAULT_SCENARIO_MODEL,
+} from "@/lib/generation";
 
 // Generate candidate scenarios via the Vercel AI Gateway (xAI Grok by default).
 // Admin-guarded; returns candidates only — the client reviews them and inserts
@@ -50,16 +54,12 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  const system =
-    `You write short "Most likely to..." prompts for an adult (18+) party game called The ID Game, played by consenting adults who are calling out their friends. ` +
-    `Each item is a single sentence that completes the phrase "Most likely to...". They can be cheeky, risqué, crude, and lewd — this is an adult game — but must NEVER involve minors, non-consent, illegal acts, real named individuals, or hateful/harassing content toward protected groups. ` +
-    `Target category: "${category}". ` +
-    (brief.trim()
-      ? `Style brief for this category (follow it closely): ${brief.trim()}`
-      : `No specific brief is set for this category — infer an appropriate style from the category name.`);
-  const prompt =
-    `Generate exactly ${count} distinct, punchy scenarios for the "${category}" category. ` +
-    `Extra steer for this batch: ${instructions.trim() || "(none)"}.`;
+  const { system, prompt } = adminScenarioPrompts({
+    category,
+    brief,
+    instructions,
+    count,
+  });
 
   // Stops the model once `count` scenarios are out, or if the admin's browser
   // goes away mid-stream.
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   let failure: unknown;
 
   const result = streamText({
-    model: process.env.AI_SCENARIO_MODEL ?? "xai/grok-4.1-fast-non-reasoning",
+    model: process.env.AI_SCENARIO_MODEL ?? DEFAULT_SCENARIO_MODEL,
     output: Output.array({ element: scenarioSchema }),
     instructions: system,
     prompt,

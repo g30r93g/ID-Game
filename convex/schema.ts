@@ -112,10 +112,47 @@ export default defineSchema({
     // prefix, so there is no separate byGame index to write on each round.
     .index("byGameRound", ["gameId", "roundNumber"]),
 
+  // One row per player-generated batch ("Make your own"). Both the quota
+  // ledger, counted per user per UTC month, and the audit trail of what was
+  // asked for. `failed` rows are refunds: they don't count against the month.
+  scenarioGenerations: defineTable({
+    userId: v.string(),
+    // "YYYY-MM" in UTC: the month this generation counts against.
+    period: v.string(),
+    gameId: v.id("games"),
+    roundId: v.id("gameRounds"),
+    // The host's description of their group, as typed.
+    prompt: v.string(),
+    // An existing category name, whose brief steers the batch's tone.
+    tone: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("byUserPeriod", ["userId", "period"])
+    // The round's newest generation, which the host's screen follows.
+    .index("byRound", ["roundId"])
+    // The stale-pending sweep's candidate set.
+    .index("byStatusCreatedAt", ["status", "createdAt"]),
+
+  // Scenarios written for one group. Kept out of `scenarios` on purpose: that
+  // table is the shared pool every game draws from and the category list is
+  // read off, and these are private one-offs that may name the friends who
+  // asked for them.
+  customScenarios: defineTable({
+    generationId: v.id("scenarioGenerations"),
+    description: v.string(),
+  }).index("byGeneration", ["generationId"]),
+
   gameRoundScenarios: defineTable({
     gameId: v.id("games"),
     roundId: v.id("gameRounds"),
-    scenarioId: v.id("scenarios"),
+    // A shared-pool scenario from a category draw, or one of the host's own.
+    scenarioId: v.union(v.id("scenarios"), v.id("customScenarios")),
     selected: v.boolean(),
   })
     .index("byRound", ["roundId"])

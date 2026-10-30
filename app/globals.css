@@ -128,3 +128,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Slides the rainbow behind the "Make your own" tile so the glow drifts
+   through the colours. The gradient repeats at 200% width, so a full slide
+   loops seamlessly. */
+@keyframes rainbow-glow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
