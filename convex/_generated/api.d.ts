@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as crons from "../crons.js";
 import type * as game from "../game.js";
+import type * as generation from "../generation.js";
 import type * as guests from "../guests.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   cleanup: typeof cleanup;
   crons: typeof crons;
   game: typeof game;
+  generation: typeof generation;
   guests: typeof guests;
   http: typeof http;
   migrations: typeof migrations;

@@ -663,9 +663,20 @@ export const gameRoundScenarios = query({
       scenarioIds.map((id) => ctx.db.get(id)),
     );
 
-    // Map scenario documents by ID for quick lookup
+    // Map scenario documents by ID for quick lookup. A draw holds either
+    // shared-pool scenarios or the host's own generated ones; only the pool
+    // has a category, so the details are narrowed to one shape for both.
     const scenarioMap = new Map(
-      scenarioDocs.filter(Boolean).map((s) => [s!._id, s]),
+      scenarioDocs
+        .filter((s) => s !== null)
+        .map((s) => [
+          s._id as string,
+          {
+            _id: s._id,
+            description: s.description,
+            category: "category" in s ? s.category : undefined,
+          },
+        ]),
     );
 
     // Attach scenario details to each gameRoundScenario entry. `selected` is
@@ -1048,8 +1059,13 @@ export const selectGameRoundScenario = mutation({
     // Change selected state for the chosen scenario
     await ctx.db.patch(args.gameRoundScenarioId, { selected: true });
 
-    // Increment the popularity counter on the underlying scenario
-    const scenario = await ctx.db.get(selectedGameRoundScenario.scenarioId);
+    // Increment the popularity counter on the underlying scenario. Only the
+    // shared pool keeps one: a host's own generated scenarios are one-offs.
+    const poolScenarioId = ctx.db.normalizeId(
+      "scenarios",
+      selectedGameRoundScenario.scenarioId,
+    );
+    const scenario = poolScenarioId ? await ctx.db.get(poolScenarioId) : null;
     if (scenario) {
       await ctx.db.patch(scenario._id, {
         timesSelected: (scenario.timesSelected ?? 0) + 1,

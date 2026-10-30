@@ -15,17 +15,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { cn } from "@/lib/utils";
+import {
+  MAX_PROMPT_LENGTH,
+  MIN_PROMPT_LENGTH,
+  SCENARIOS_PER_ROUND,
+} from "@/lib/generation";
 
-// PROTOTYPE — presentational only. The UI for a round host writing their own
-// theme and having the model draft the round's 10 scenarios, metered at
-// FREE_GENERATIONS_PER_MONTH a calendar month per account. Everything it shows
-// arrives through props, so it can be driven by the preview page now and by
-// the Convex quota query and generation action later. See
-// docs/user-scenario-generation.md for the backend this is meant to sit on.
-
-export const FREE_GENERATIONS_PER_MONTH = 5;
-export const SCENARIOS_PER_ROUND = 10;
-export const MAX_PROMPT_LENGTH = 200;
+// The "Make your own" UI: a round host describes their group and the model
+// writes the round's 10 scenarios, metered per account per month. Purely
+// presentational; create-scenarios.tsx feeds it from convex/generation.ts.
 
 export interface GenerationQuota {
   used: number;
@@ -166,6 +164,12 @@ interface GenerateScenariosPanelProps {
   status: GenerationStatus;
   /** Streams in during "generating", complete in "review". */
   scenarios: string[];
+  /**
+   * What the scenarios were written from, as the server has it. Shown while
+   * generating and in review; falls back to what was typed here, which is
+   * gone after a reload.
+   */
+  theme?: { prompt: string; tone?: string };
   error?: string;
   onGenerate: (input: { prompt: string; tone: string | undefined }) => void;
   /** Lock the generated set in as this round's draw and move to pick-scenario. */
@@ -182,6 +186,7 @@ export function GenerateScenariosPanel({
   tones,
   status,
   scenarios,
+  theme,
   error,
   onGenerate,
   onUse,
@@ -193,7 +198,10 @@ export function GenerateScenariosPanel({
 
   const left = remaining(quota);
   const busy = status === "generating";
-  const canGenerate = left > 0 && prompt.trim().length >= 3 && !busy;
+  const canGenerate =
+    left > 0 && prompt.trim().length >= MIN_PROMPT_LENGTH && !busy;
+  const shownPrompt = theme?.prompt ?? prompt;
+  const shownTone = theme ? theme.tone : tone;
 
   if (left === 0 && status === "idle") {
     return (
@@ -223,10 +231,10 @@ export function GenerateScenariosPanel({
             Your theme
           </span>
           <p className={"font-medium"}>
-            {prompt}
-            {tone && (
+            {shownPrompt}
+            {shownTone && (
               <Badge variant={"outline"} className={"ml-2 align-middle"}>
-                {tone}
+                {shownTone}
               </Badge>
             )}
           </p>
@@ -268,7 +276,7 @@ export function GenerateScenariosPanel({
                   size={"sm"}
                   onClick={() => {
                     setConfirmingReroll(false);
-                    onGenerate({ prompt, tone });
+                    onGenerate({ prompt: shownPrompt, tone: shownTone });
                   }}
                 >
                   Re-roll

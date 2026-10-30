@@ -643,7 +643,9 @@ async function drawnCategories(
     const scenarios = await Promise.all(
       rows.map((row) => ctx.db.get(row.scenarioId)),
     );
-    return scenarios.map((scenario) => scenario?.category);
+    return scenarios.map((scenario) =>
+      scenario && "category" in scenario ? scenario.category : undefined,
+    );
   });
 }
 

@@ -1,15 +1,16 @@
 # Player-generated scenarios ("Make your own")
 
-**Status:** proposal + UI prototype. Nothing here is wired to the backend yet.
+**Status:** built, and switched off until `AI_GATEWAY_API_KEY` is set in the
+Convex environment. See "Turning it on" below.
 
 **Goal:** let a round host describe their group ("six of us who met at uni,
 now turning 30 in Lisbon"). The model then writes that round's 10 scenarios.
 Each account gets **5 generations per calendar month for free**.
 
-- Prototype components: `components/game/generate-scenarios.tsx`
-- Dev-only preview: `/prototype/generate-scenarios` (`app/prototype/…`, which
-  returns 404 in production). It has toggles for guest/account, credits used,
-  and a failing run.
+- Backend: `convex/generation.ts` (tests in `convex/generation.test.ts`), with
+  the allowance, month and prompts in `lib/generation.ts`
+- UI: `components/game/generate-scenarios.tsx`, wired up in
+  `components/game/create-scenarios.tsx`
 
 ## Where it fits in the game
 
@@ -162,7 +163,7 @@ One generation is about 10 short lines, roughly 1–2k tokens in and out on
 `grok-4.1-fast-non-reasoning`, so a fraction of a cent. The worst case is 5 a
 month × every account. The limit is a product lever more than a cost one.
 
-## UI prototype
+## UI
 
 The flow, all on the host's existing card:
 
@@ -176,23 +177,39 @@ The flow, all on the host's existing card:
 | **6. Failure.** The error says the run was refunded, and the host's text stays in place for a retry. | ![](6-error.png) |
 | **7. Guest host.** The tile shows a lock, "Create an account" and a dimmed glow, and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
 
-To run it: `pnpm dev`, then open `/prototype/generate-scenarios`.
+(Screenshots are from the prototype this was built from; the shipped screens
+are the same components.)
 
-## Build order
+## Turning it on
 
-1. Schema (`scenarioGenerations`, `customScenarios`, widen
-   `gameRoundScenarios.scenarioId`) and the `timesSelected` guard. Tests in
-   `convex/game.test.ts`.
-2. `getGenerationQuota` plus reserve, commit and fail, with `convex-test`
-   coverage: quota boundary at 5, refund on failure, month rollover, guest
-   rejected, non-host rejected, rejected after lock-in.
-3. The `generateRoundScenarios` action and shared prompt code. Set
-   `AI_GATEWAY_API_KEY` in Convex.
-4. Wire `MakeYourOwnTile` and `GenerateScenariosPanel` into
-   `components/game/create-scenarios.tsx`, and add a title/description case in
-   `components/game/index.tsx`. Ship it behind a PostHog feature flag.
-5. Stale-pending cron job, admin "Generations" view, analytics events.
-6. Delete `app/prototype/`.
+The feature is off until the Convex deployment has an AI Gateway key: the
+quota query returns null, which hides the tile, and the action refuses.
+
+```bash
+npx convex env set AI_GATEWAY_API_KEY <key>
+```
+
+Optionally set `AI_SCENARIO_MODEL` there too; it defaults to the same model
+as the admin generator. Unset the key to switch the feature off again.
+
+## Decisions made while building
+
+- **Names:** the model may use the names of the active players in the game and
+  names in the description, but not public figures, and must not single
+  anyone out for race, religion, sexuality, disability or appearance.
+- **Moderation:** no separate moderation call. The description goes to the
+  model as delimited data, and the model is told to return nothing for a
+  description that breaks the rules. A batch short of 10 is refunded, with a
+  message asking the host to describe their group differently.
+- **Guests:** can't generate; the tile sends them to sign up.
+- **Re-roll:** one full credit.
+
+## Still to do
+
+- An admin "Generations" view of prompts and outcomes. The data is all in
+  `scenarioGenerations`.
+- The card's title still reads "Pick Scenario Category" while the host is in
+  the generation panel.
 
 ## Open questions
 

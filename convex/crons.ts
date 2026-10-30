@@ -22,4 +22,13 @@ crons.daily(
   {},
 );
 
+// Refunds player generations whose action died mid-run. Ten minutes is
+// plenty: a credit stuck pending only blocks that round's host until it runs.
+crons.interval(
+  "refund stale scenario generations",
+  { minutes: 10 },
+  internal.generation.sweepStaleGenerations,
+  {},
+);
+
 export default crons;
