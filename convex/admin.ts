@@ -10,6 +10,7 @@ import {
   FOURTEEN_DAYS_MS,
   activePlayerCount,
   computeGameStats,
+  computeRatingStats,
   gameDurationMs,
   scenarioSortToQuery,
   type ScenarioSort,
@@ -204,6 +205,58 @@ export const listGames = query({
           totalRounds: game.totalRounds,
           finished: game.completedAt !== undefined,
           durationMs: gameDurationMs(game),
+        };
+      }),
+    );
+    return { ...result, page };
+  },
+});
+
+/**
+ * Reads every rating: one small row per player per finished game, so the
+ * table stays far smaller than `players` or `games`.
+ */
+export async function ratingStatsCore(ctx: QueryCtx, now: number) {
+  const ratings = await ctx.db.query("gameRating").collect();
+  return computeRatingStats(ratings, now);
+}
+
+export const ratingStats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return ratingStatsCore(ctx, Date.now());
+  },
+});
+
+/** One page of ratings, newest first, with the game and rater's name. */
+export const listRatings = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
+    await requireAdmin(ctx);
+    const result = await ctx.db
+      .query("gameRating")
+      .order("desc")
+      .paginate(paginationOpts);
+
+    const page = await Promise.all(
+      result.page.map(async (r) => {
+        const [game, player] = await Promise.all([
+          ctx.db.get(r.gameId),
+          ctx.db
+            .query("players")
+            .withIndex("byGameUser", (q) =>
+              q.eq("gameId", r.gameId).eq("userId", r.userId),
+            )
+            .first(),
+        ]);
+        return {
+          _id: r._id,
+          _creationTime: r._creationTime,
+          rating: r.rating,
+          userId: r.userId,
+          playerName: player?.displayName ?? null,
+          joinCode: game?.joinCode ?? null,
         };
       }),
     );
