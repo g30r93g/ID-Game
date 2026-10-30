@@ -168,13 +168,13 @@ The flow, all on the host's existing card:
 
 | | |
 |---|---|
-| **1. Category screen.** A "Make your own" tile sits above the existing category grid, with a "3 left" badge. | ![](1-categories.png) |
+| **1. Category screen.** A "Make your own" tile, the same height as the category buttons, sits above them with an animated rainbow glow behind it and "3 left" on the right. The glow dims when there are no credits left or the host is a guest, and holds still for reduced motion. | ![](1-categories.png) |
 | **2. Compose.** The host writes a ≤200-character theme (with quick-pick idea chips) and can pick a tone, which reuses the existing categories so their admin briefs steer the model. The meter shows credits left and the reset date. | ![](2-compose.png) |
 | **3. Generating.** 10 numbered slots fill in as each scenario arrives. The main button reads "Writing 4 of 10…". | ![](3-generating.png) |
 | **4. Review.** "Use these scenarios" moves to the normal pick-scenario screen. Re-roll asks for confirmation because it costs a credit. | ![](4-review.png) |
-| **5. Out of credits.** The tile shows "Resets 1 Nov". Opening it explains why and points back to the categories. | ![](5-exhausted.png) |
+| **5. Out of credits.** The tile shows "Resets 1 Nov" with a dimmed glow. Opening it explains why and points back to the categories. | ![](5-exhausted.png) |
 | **6. Failure.** The error says the run was refunded, and the host's text stays in place for a retry. | ![](6-error.png) |
-| **7. Guest host.** The tile is locked and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
+| **7. Guest host.** The tile shows a lock, "Needs an account" and a dimmed glow, and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
 
 To run it: `pnpm dev`, then open `/prototype/generate-scenarios`.
 

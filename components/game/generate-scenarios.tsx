@@ -112,32 +112,44 @@ export function MakeYourOwnTile({
       type={"button"}
       onClick={onOpen}
       className={cn(
-        "group relative flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors",
-        "border-warning/40 bg-warning/10 hover:bg-warning/15",
+        "group relative isolate flex h-11 w-full items-center gap-2 rounded-md border px-4 text-sm font-medium",
         "focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]",
-        exhausted && "opacity-70",
       )}
     >
+      {/* The glow: a blurred rainbow behind the tile rather than a border, so
+          it reads as light spilling out. Dimmed once there's nothing to
+          spend, and held still for reduced motion. */}
       <span
-        className={
-          "bg-warning text-white flex size-10 shrink-0 items-center justify-center rounded-md"
-        }
-      >
-        {isGuest ? <Lock className={"size-5"} /> : <WandSparkles className={"size-5"} />}
-      </span>
-      <span className={"flex min-w-0 grow flex-col gap-0.5"}>
-        <span className={"font-semibold"}>Make your own</span>
-        <span className={"text-muted-foreground text-sm"}>
-          {isGuest
-            ? "Create a free account to write scenarios about your group."
-            : "Tell us who's playing and we'll write 10 scenarios about you."}
-        </span>
-      </span>
-      {!isGuest && quota && (
-        <Badge variant={exhausted ? "outline" : "secondary"} className={"tabular-nums"}>
-          {exhausted ? `Resets ${formatReset(quota.resetsAt)}` : `${left} left`}
-        </Badge>
+        aria-hidden
+        className={cn(
+          "absolute -inset-1 -z-10 rounded-lg blur-md transition-opacity",
+          "animate-[rainbow-glow_6s_linear_infinite] motion-reduce:animate-none",
+          isGuest || exhausted
+            ? "opacity-25"
+            : "opacity-60 group-hover:opacity-90",
+        )}
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg, #ff4d4d, #ffa64d, #ffe14d, #4dff88, #4dc3ff, #9b4dff, #ff4dd2, #ff4d4d)",
+          backgroundSize: "200% 100%",
+        }}
+      />
+      {/* The tile's own fill. It can't sit on the button: inside the isolated
+          stacking context a -z child paints over its parent's background, so
+          the glow would show through the face of the tile. */}
+      <span aria-hidden className={"bg-card absolute inset-0 -z-10 rounded-md"} />
+      {isGuest ? (
+        <Lock className={"size-4"} />
+      ) : (
+        <WandSparkles className={"size-4"} />
       )}
+      <span className={"grow text-left"}>Make your own</span>
+      <span className={"text-muted-foreground text-xs font-normal tabular-nums"}>
+        {isGuest
+          ? "Needs an account"
+          : quota &&
+            (exhausted ? `Resets ${formatReset(quota.resetsAt)}` : `${left} left`)}
+      </span>
       <ArrowRight
         className={
           "text-muted-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
