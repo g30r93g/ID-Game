@@ -1463,6 +1463,22 @@ export const submitRating = mutation({
       throw new Error("Game does not exist.");
     }
 
+    if (!Number.isInteger(args.rating) || args.rating < 1 || args.rating > 5) {
+      throw new Error("Rating must be a whole number from 1 to 5.");
+    }
+
+    // A player rates a game once; rating again replaces their earlier score.
+    const existing = await ctx.db
+      .query("gameRating")
+      .withIndex("byGameUser", (q) =>
+        q.eq("gameId", game._id).eq("userId", userId),
+      )
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { rating: args.rating });
+      return existing._id;
+    }
+
     // create game rating entry
     return await ctx.db.insert("gameRating", {
       gameId: game._id,

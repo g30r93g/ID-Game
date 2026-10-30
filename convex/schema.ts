@@ -141,5 +141,8 @@ export default defineSchema({
     gameId: v.id("games"),
     userId: v.string(),
     rating: v.number(),
-  }),
+  })
+    // One rating per player per game: `submitRating` looks up the caller's
+    // existing row here and updates it instead of adding another.
+    .index("byGameUser", ["gameId", "userId"]),
 });
