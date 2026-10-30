@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Lock,
-  RefreshCw,
+  PencilLine,
   Sparkles,
   WandSparkles,
 } from "lucide-react";
@@ -33,14 +33,6 @@ export interface GenerationQuota {
 }
 
 export type GenerationStatus = "idle" | "generating" | "review" | "error";
-
-const PROMPT_IDEAS = [
-  "Our uni house, 2019",
-  "The Ibiza trip",
-  "Work Christmas party",
-  "Wedding weekend",
-  "Five-a-side lads",
-];
 
 function remaining(quota: GenerationQuota) {
   return Math.max(0, quota.allowance - quota.used);
@@ -184,7 +176,8 @@ interface GenerateScenariosPanelProps {
 
 /**
  * The whole flow in one card body: write a theme, pick a tone, generate,
- * watch the 10 arrive, then use them or spend another credit on a re-roll.
+ * then use the batch or change the description and generate again. Fills the
+ * card's height so the list scrolls and the buttons stay on screen.
  */
 export function GenerateScenariosPanel({
   quota,
@@ -199,7 +192,9 @@ export function GenerateScenariosPanel({
 }: GenerateScenariosPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [tone, setTone] = useState<string | undefined>(undefined);
-  const [confirmingReroll, setConfirmingReroll] = useState(false);
+  // Back on the form from a finished batch, to change the description before
+  // generating again. The batch stays the round's draw until a new one lands.
+  const [editing, setEditing] = useState(false);
 
   const left = remaining(quota);
   const busy = status === "generating";
@@ -228,10 +223,10 @@ export function GenerateScenariosPanel({
     );
   }
 
-  if (status === "generating" || status === "review") {
+  if (busy || (status === "review" && !editing)) {
     return (
-      <div className={"flex flex-col gap-6"}>
-        <div className={"flex flex-col gap-1"}>
+      <div className={"flex h-full min-h-0 flex-col gap-4"}>
+        <div className={"flex shrink-0 flex-col gap-1"}>
           <span className={"text-muted-foreground text-xs uppercase tracking-wide"}>
             Your theme
           </span>
@@ -245,14 +240,19 @@ export function GenerateScenariosPanel({
           </p>
         </div>
 
-        <ol className={"flex flex-col gap-2"} aria-label={"Most likely to…"} aria-live={"polite"} aria-busy={busy}>
+        <ol
+          className={"flex min-h-0 grow flex-col gap-2 overflow-y-auto"}
+          aria-label={"Most likely to…"}
+          aria-live={"polite"}
+          aria-busy={busy}
+        >
           {Array.from({ length: SCENARIOS_PER_ROUND }, (_, i) => {
             const text = scenarios[i];
             return (
               <li
                 key={i}
                 className={cn(
-                  "flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm",
+                  "flex min-h-11 shrink-0 items-center gap-3 rounded-md border px-3 py-2 text-sm",
                   text && "animate-in fade-in slide-in-from-bottom-1 duration-300",
                 )}
               >
@@ -269,36 +269,7 @@ export function GenerateScenariosPanel({
           })}
         </ol>
 
-        {status === "review" && confirmingReroll ? (
-          <Alert variant={"warning"}>
-            <RefreshCw />
-            <AlertTitle>Re-roll uses another generation</AlertTitle>
-            <AlertDescription className={"gap-3"}>
-              You&apos;ll have {Math.max(0, left - 1)} of {quota.allowance} left
-              this month.
-              <div className={"flex gap-2"}>
-                <Button
-                  size={"sm"}
-                  onClick={() => {
-                    setConfirmingReroll(false);
-                    onGenerate({ prompt: shownPrompt, tone: shownTone });
-                  }}
-                >
-                  Re-roll
-                </Button>
-                <Button
-                  size={"sm"}
-                  variant={"ghost"}
-                  onClick={() => setConfirmingReroll(false)}
-                >
-                  Keep these
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        <div className={"flex flex-col gap-2"}>
+        <div className={"flex shrink-0 flex-col gap-2"}>
           <LoadingButton loading={busy} disabled={busy} onClick={onUse}>
             {busy ? (
               "Writing your scenarios…"
@@ -322,11 +293,17 @@ export function GenerateScenariosPanel({
             <Button
               variant={"ghost"}
               className={"grow"}
-              disabled={busy || left === 0 || confirmingReroll}
-              onClick={() => setConfirmingReroll(true)}
+              disabled={busy || left === 0}
+              onClick={() => {
+                // Start from what these were written from, which after a
+                // reload is only the server's copy.
+                setPrompt(shownPrompt);
+                setTone(shownTone);
+                setEditing(true);
+              }}
             >
-              <RefreshCw />
-              Re-roll
+              <PencilLine />
+              Edit prompt
             </Button>
           </div>
           <GenerationQuotaMeter quota={quota} className={"justify-center"} />
@@ -353,25 +330,9 @@ export function GenerateScenariosPanel({
             "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
           )}
         />
-        <div className={"flex items-start justify-between gap-2"}>
-          <div className={"flex flex-wrap gap-1.5"}>
-            {PROMPT_IDEAS.map((idea) => (
-              <button
-                key={idea}
-                type={"button"}
-                onClick={() => setPrompt(idea)}
-                className={
-                  "hover:bg-accent rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-                }
-              >
-                {idea}
-              </button>
-            ))}
-          </div>
-          <span className={"text-muted-foreground shrink-0 text-xs tabular-nums"}>
-            {prompt.length}/{MAX_PROMPT_LENGTH}
-          </span>
-        </div>
+        <span className={"text-muted-foreground self-end text-xs tabular-nums"}>
+          {prompt.length}/{MAX_PROMPT_LENGTH}
+        </span>
       </div>
 
       <div className={"flex flex-col gap-2"}>
@@ -403,15 +364,28 @@ export function GenerateScenariosPanel({
       )}
 
       <div className={"flex flex-col gap-2"}>
-        <Button disabled={!canGenerate} onClick={() => onGenerate({ prompt, tone })}>
+        <Button
+          disabled={!canGenerate}
+          onClick={() => {
+            setEditing(false);
+            onGenerate({ prompt, tone });
+          }}
+        >
           <Sparkles />
-          Generate {SCENARIOS_PER_ROUND} scenarios
+          {editing ? "Regenerate" : "Generate"} {SCENARIOS_PER_ROUND} scenarios
         </Button>
         <GenerationQuotaMeter quota={quota} className={"justify-center"} />
-        <Button variant={"ghost"} onClick={onBack}>
-          <ArrowLeft />
-          Back to categories
-        </Button>
+        {editing ? (
+          <Button variant={"ghost"} onClick={() => setEditing(false)}>
+            <ArrowLeft />
+            Keep the ones I have
+          </Button>
+        ) : (
+          <Button variant={"ghost"} onClick={onBack}>
+            <ArrowLeft />
+            Back to categories
+          </Button>
+        )}
       </div>
     </div>
   );

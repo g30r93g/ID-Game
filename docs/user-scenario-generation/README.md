@@ -175,12 +175,12 @@ The flow, all on the host's existing card:
 | | |
 |---|---|
 | **1. Category screen.** A "Make your own" tile, the same height as the category buttons, sits above them with an animated rainbow glow behind it and "3 left" on the right. The glow dims when there are no credits left or the host is a guest, and holds still for reduced motion. | ![](1-categories.png) |
-| **2. Compose.** The host writes a ≤200-character theme (with quick-pick idea chips) and can pick a tone, which reuses the existing categories so their admin briefs steer the model. The meter shows credits left and the reset date. | ![](2-compose.png) |
+| **2. Compose.** The host writes a ≤200-character theme and can pick a tone, which reuses the existing categories so their admin briefs steer the model. The meter shows credits left and the reset date. | ![](2-compose.png) |
 | **3. Generating.** 10 numbered placeholder slots, filled in together when the batch is written. The main button reads "Writing your scenarios…". | ![](3-generating.png) |
-| **4. Review.** "Use these scenarios" moves to the normal pick-scenario screen. Re-roll asks for confirmation because it costs a credit. | ![](4-review.png) |
+| **4. Review.** The list scrolls inside the card and the buttons stay below it, so the screen itself never scrolls on a phone. "Use these scenarios" moves to the normal pick-scenario screen. "Edit prompt" goes back to the form with the description and tone filled in; nothing is spent until "Regenerate", and "Keep the ones I have" goes back without spending. | ![](4-review.png) |
 | **5. Out of credits.** The tile shows "Resets 1 Nov" with a dimmed glow. Opening it explains why and points back to the categories. | ![](5-exhausted.png) |
 | **6. Failure.** The error says the run was refunded, and the host's text stays in place for a retry. | ![](6-error.png) |
-| **7. Guest host.** The tile shows a lock, "Create an account" and a dimmed glow, and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
+| **7. Guest host.** The tile shows a lock, "Create an account" and a dimmed glow. It opens the sign-up form in a dialog over the game, so the guest never leaves it; signing up reloads the game with their seat moved onto the new account. | ![](7-guest.png) |
 
 (Screenshots are from the prototype this was built from; the shipped screens
 are the same components.)
@@ -207,7 +207,7 @@ as the admin generator. Unset the key to switch the feature off again.
   description that breaks the rules. A batch short of 10 is refunded, with a
   message asking the host to describe their group differently.
 - **Guests:** can't generate; the tile sends them to sign up.
-- **Re-roll:** one full credit.
+- **Regenerating:** one full credit, after a chance to edit the description.
 
 ## Still to do
 
