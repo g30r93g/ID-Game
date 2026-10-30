@@ -174,7 +174,7 @@ The flow, all on the host's existing card:
 | **4. Review.** "Use these scenarios" moves to the normal pick-scenario screen. Re-roll asks for confirmation because it costs a credit. | ![](4-review.png) |
 | **5. Out of credits.** The tile shows "Resets 1 Nov" with a dimmed glow. Opening it explains why and points back to the categories. | ![](5-exhausted.png) |
 | **6. Failure.** The error says the run was refunded, and the host's text stays in place for a retry. | ![](6-error.png) |
-| **7. Guest host.** The tile shows a lock, "Needs an account" and a dimmed glow, and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
+| **7. Guest host.** The tile shows a lock, "Create an account" and a dimmed glow, and leads to `/sign-in?tab=sign-up&next=/game/CODE`. | ![](7-guest.png) |
 
 To run it: `pnpm dev`, then open `/prototype/generate-scenarios`.
 

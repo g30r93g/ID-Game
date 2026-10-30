@@ -146,7 +146,7 @@ export function MakeYourOwnTile({
       <span className={"grow text-left"}>Make your own</span>
       <span className={"text-muted-foreground text-xs font-normal tabular-nums"}>
         {isGuest
-          ? "Needs an account"
+          ? "Create an account"
           : quota &&
             (exhausted ? `Resets ${formatReset(quota.resetsAt)}` : `${left} left`)}
       </span>
