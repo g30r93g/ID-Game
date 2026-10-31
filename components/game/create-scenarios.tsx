@@ -2,7 +2,7 @@
 
 import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { LoadingButton } from "@/components/ui/loading-button";
@@ -14,7 +14,12 @@ import {
   GenerationStatus,
   MakeYourOwnTile,
 } from "@/components/game/generate-scenarios";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SignInCard } from "@/components/sign-in-card";
 import { usePathname } from "next/navigation";
 
@@ -229,6 +234,7 @@ function CreateScenariosGamePhase({
       <Dialog open={signingUp} onOpenChange={setSigningUp}>
         <DialogContent
           className={"border-0 bg-transparent p-0 shadow-none sm:max-w-sm"}
+          showCloseButton={false}
         >
           <DialogTitle className={"sr-only"}>
             Create an account to make your own scenarios
@@ -240,6 +246,17 @@ function CreateScenariosGamePhase({
               className={"px-0"}
             />
           )}
+          {/* Above the card rather than in its corner, where the dialog's own
+              button lands on the sign-in tabs. After the card, so opening the
+              dialog focuses the form rather than this. */}
+          <DialogClose
+            className={
+              "bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 absolute -top-12 right-0 flex size-9 items-center justify-center rounded-full border outline-none focus-visible:ring-[3px]"
+            }
+          >
+            <X className={"size-4"} />
+            <span className={"sr-only"}>Close</span>
+          </DialogClose>
         </DialogContent>
       </Dialog>
       <div className={"grid grid-cols-1 lg:grid-cols-2 gap-2"}>
