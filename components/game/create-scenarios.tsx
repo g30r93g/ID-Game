@@ -14,7 +14,9 @@ import {
   GenerationStatus,
   MakeYourOwnTile,
 } from "@/components/game/generate-scenarios";
-import { upgradePath } from "@/lib/guest";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { SignInCard } from "@/components/sign-in-card";
+import { usePathname } from "next/navigation";
 
 interface CreateScenarioGamePhaseProps {
   gameId: Id<"games">;
@@ -48,6 +50,9 @@ function CreateScenariosGamePhase({
 
   // "Make your own": the categories, or the generation panel in their place.
   const [makingOwn, setMakingOwn] = useState<boolean>(false);
+  // A guest who opened it: the sign-up dialog.
+  const [signingUp, setSigningUp] = useState<boolean>(false);
+  const pathname = usePathname();
   // While this tab's generation action is in flight, and how it ended. The
   // server's record catches up on its own, but not always before the action
   // returns, so these keep the panel from flashing the previous batch.
@@ -211,15 +216,32 @@ function CreateScenariosGamePhase({
           onOpen={() => {
             capture("scenario_generation_open", { isGuest: quota.isGuest });
             if (quota.isGuest) {
-              // A full load, like every other way into sign-in, so it starts
-              // clean; the guest's seat moves onto the new account.
-              window.location.assign(upgradePath(window.location.pathname));
+              setSigningUp(true);
               return;
             }
             setMakingOwn(true);
           }}
         />
       )}
+      {/* A guest makes their account here rather than on /sign-in, so they
+          never leave the game. Success reloads this page, by then with their
+          seat moved onto the new account. */}
+      <Dialog open={signingUp} onOpenChange={setSigningUp}>
+        <DialogContent
+          className={"border-0 bg-transparent p-0 shadow-none sm:max-w-sm"}
+        >
+          <DialogTitle className={"sr-only"}>
+            Create an account to make your own scenarios
+          </DialogTitle>
+          {signingUp && (
+            <SignInCard
+              next={pathname}
+              initialMode={"sign-up"}
+              className={"px-0"}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
       <div className={"grid grid-cols-1 lg:grid-cols-2 gap-2"}>
         {scenarioCategories?.map((category) => {
           return (

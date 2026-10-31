@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { SignInCard } from "./sign-in-card";
+import { SignInCard } from "@/components/sign-in-card";
 
 // A thin server page so /sign-in prerenders as a static shell. SignInCard
 // reads `?next=` and `?tab=` with useSearchParams, which a static route can

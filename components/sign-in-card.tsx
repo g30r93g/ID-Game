@@ -29,6 +29,7 @@ import {
 } from "@/lib/passkey-nudge";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/display-name";
 import { isGuestPlaceholderName } from "@/lib/guest";
+import { cn } from "@/lib/utils";
 
 // "redirecting" covers the window between a credential being accepted and the
 // destination painting. It is not cosmetic: `proxy.ts` gates /game on session
@@ -66,9 +67,24 @@ const WEBAUTHN_NO_CREDENTIAL_CODES = new Set([
   "AUTH_CANCELLED",
 ]);
 
-export function SignInCard() {
+interface SignInCardProps {
+  /** Where to go once signed in. Defaults to the page's `?next=`. */
+  next?: string;
+  /** The tab to open on. Defaults to the page's `?tab=`. */
+  initialMode?: Mode;
+  /** For the outer wrapper, e.g. to drop the page padding inside a dialog. */
+  className?: string;
+}
+
+/**
+ * The sign-in and sign-up flow. The /sign-in page reads where to go from its
+ * query string; a dialog elsewhere passes `next` instead, so a guest can make
+ * an account without leaving the page they're on. Either way success is a
+ * full load of `next`, which carries a guest's seats onto the account.
+ */
+export function SignInCard({ next, initialMode, className }: SignInCardProps) {
   const searchParams = useSearchParams();
-  const nextParam = searchParams.get("next");
+  const nextParam = next ?? searchParams.get("next");
   const nextPath =
     nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
@@ -104,7 +120,8 @@ export function SignInCard() {
     if (bounce) leave();
   }, [bounce, leave]);
   const [mode, setMode] = React.useState<Mode>(
-    searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in",
+    initialMode ??
+      (searchParams.get("tab") === "sign-up" ? "sign-up" : "sign-in"),
   );
   // Sign-in tab is passkey-first; the email/OTP fields stay hidden until asked for.
   const [showEmailFlow, setShowEmailFlow] = React.useState(false);
@@ -297,7 +314,12 @@ export function SignInCard() {
   };
 
   return (
-    <div className="grid w-full grow items-center px-4 sm:justify-center">
+    <div
+      className={cn(
+        "grid w-full grow items-center px-4 sm:justify-center",
+        className,
+      )}
+    >
       {view === "start" && (
         <Card className="w-full sm:w-96">
           <Tabs
